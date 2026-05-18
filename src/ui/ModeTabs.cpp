@@ -86,15 +86,24 @@ void ModeTabs::recomputeLayout()
 
     const int durationW = textWidthPx (labelFont, durationLabel) + kTabPadX * 2;
 
-    // Region tab gets extra width for the AUTO badge when flagged.
-    // Conservative measurement: 8px font "AUTO" + padding ≈ 30 px + 6 px gap.
-    constexpr int kBadgeW   = 30;
-    constexpr int kBadgeGap = 6;
-    int regionW = textWidthPx (labelFont, regionLabel) + kTabPadX * 2;
-    if (autoFlag_)
-        regionW += kBadgeGap + kBadgeW;
+    // BETA badge — static, always shown on Region + Blocks. Signals "less mature
+    // mode than Duration" via neutral Fg3/Bg3 colours (cf. AUTO badge below which
+    // uses Accent for dynamic plugin-state). 30 px conservative width matches
+    // AUTO badge constants for visual rhythm.
+    constexpr int kBetaW   = 30;
+    constexpr int kBetaGap = 6;
 
-    const int blocksW = textWidthPx (labelFont, blocksLabel) + kTabPadX * 2;
+    // AUTO badge — dynamic, only when autoFlag_ true (REAPER time-selection triggered).
+    constexpr int kAutoW   = 30;
+    constexpr int kAutoGap = 6;
+
+    int regionW = textWidthPx (labelFont, regionLabel) + kTabPadX * 2
+                  + kBetaGap + kBetaW;
+    if (autoFlag_)
+        regionW += kAutoGap + kAutoW;
+
+    const int blocksW = textWidthPx (labelFont, blocksLabel) + kTabPadX * 2
+                        + kBetaGap + kBetaW;
 
     durationBounds_ = juce::Rectangle<int> (
         kPadX, 0, durationW, tabH);
@@ -148,45 +157,82 @@ void ModeTabs::paint (juce::Graphics& g)
     paintTab (durationBounds_, "Duration",
               mode_ == Mode::Duration, hoverIdx_ == 0, false);
 
-    // ── Region tab (with optional AUTO badge) ──────────────────────
+    // Shared helper to draw a small badge (BETA / AUTO style) at a given x/y
+    // inside a tab. Returns the rect drawn so caller can chain badges.
+    auto drawBadge = [&] (int x, int centreY,
+                          const juce::String& text,
+                          juce::Colour bg, juce::Colour fg)
+        -> juce::Rectangle<int>
+    {
+        const auto badgeFont = uiFont (fs::Xs - 1.0f, 700);
+        const int badgeTextW = textWidthPx (badgeFont, text);
+        constexpr int kBadgePadX = 4;
+        constexpr int kBadgePadY = 1;
+        const int badgeW = badgeTextW + kBadgePadX * 2 + 4;
+        const int badgeH = (int) badgeFont.getHeight() + kBadgePadY * 2;
+        const int badgeY = centreY - badgeH / 2;
+
+        const juce::Rectangle<float> badgeRect (
+            (float) x, (float) badgeY, (float) badgeW, (float) badgeH);
+        g.setColour (bg);
+        g.fillRoundedRectangle (badgeRect, 2.0f);
+        g.setColour (fg);
+        g.setFont (badgeFont);
+        g.drawText (text,
+                    juce::Rectangle<int> (x, badgeY, badgeW, badgeH),
+                    juce::Justification::centred, false);
+        return { x, badgeY, badgeW, badgeH };
+    };
+
+    constexpr int kBadgeGap = 6;
+
+    // ── Region tab (BETA always + AUTO when flagged) ───────────────
     {
         const bool isActive = (mode_ == Mode::Region);
-        // Region label is left-aligned with kTabPadX padding so the badge
-        // can sit immediately to the right with a small gap.
+        // Region label is left-aligned with kTabPadX padding so badges
+        // sit immediately to the right with a small gap.
         paintTab (regionBounds_, "Region", isActive, hoverIdx_ == 1, false,
-                  autoFlag_ ? kTabPadX : 0);
+                  kTabPadX);
 
+        const int regionLabelW = textWidthPx (labelFont, juce::String ("Region"));
+        int badgeX = regionBounds_.getX() + kTabPadX + regionLabelW + kBadgeGap;
+
+        // BETA badge first (always) — neutral Bg3/Fg3 normally; brightens to
+        // Bg4/Fg2 ONLY on hover (not on active/click state).
+        const bool regionHover = (hoverIdx_ == 1);
+        const juce::Colour regionBetaBg = regionHover ? Bg4 : Bg3;
+        const juce::Colour regionBetaFg = regionHover ? Fg2 : Fg3;
+        const auto betaRect = drawBadge (badgeX, regionBounds_.getCentreY(),
+                                          "BETA", regionBetaBg, regionBetaFg);
+        badgeX = betaRect.getRight() + kBadgeGap;
+
+        // AUTO badge after BETA (when flagged) — Accent colours.
         if (autoFlag_)
-        {
-            // AUTO badge — plugin.css:207-213. AccentDim bg + Accent text in
-            // small caps, padding 1px 4px, letter-spacing 0.1em, radius 2px.
-            const auto badgeFont = uiFont (fs::Xs - 1.0f, 700);
-            const juce::String badgeText { "AUTO" };
-            const int regionLabelW = textWidthPx (labelFont, juce::String ("Region"));
-            const int badgeTextW = textWidthPx (badgeFont, badgeText);
-            constexpr int kBadgePadX = 4;
-            constexpr int kBadgePadY = 1;
-            const int badgeW = badgeTextW + kBadgePadX * 2 + 4;
-            const int badgeH = (int) badgeFont.getHeight() + kBadgePadY * 2;
-            constexpr int kBadgeGap = 6;
-            const int badgeX = regionBounds_.getX() + kTabPadX + regionLabelW + kBadgeGap;
-            const int badgeY = regionBounds_.getCentreY() - badgeH / 2;
-
-            const juce::Rectangle<float> badgeRect (
-                (float) badgeX, (float) badgeY, (float) badgeW, (float) badgeH);
-            g.setColour (AccentDim);
-            g.fillRoundedRectangle (badgeRect, 2.0f);
-            g.setColour (Accent);
-            g.setFont (badgeFont);
-            g.drawText (badgeText,
-                        juce::Rectangle<int> (badgeX, badgeY, badgeW, badgeH),
-                        juce::Justification::centred, false);
-        }
+            drawBadge (badgeX, regionBounds_.getCentreY(),
+                        "AUTO", AccentDim, Accent);
     }
 
-    // ── Blocks tab ──────────────────────────────────────────────────
-    paintTab (blocksBounds_, "Blocks",
-              mode_ == Mode::Blocks, hoverIdx_ == 2, ! blocksEnabled_);
+    // ── Blocks tab (with BETA badge) ────────────────────────────────
+    {
+        const bool isActive   = (mode_ == Mode::Blocks);
+        const bool isDisabled = ! blocksEnabled_;
+        paintTab (blocksBounds_, "Blocks", isActive, hoverIdx_ == 2,
+                  isDisabled, kTabPadX);
+
+        const int blocksLabelW = textWidthPx (labelFont, juce::String ("Blocks"));
+        const int badgeX = blocksBounds_.getX() + kTabPadX + blocksLabelW
+                           + kBadgeGap;
+
+        // BETA badge dims when tab is disabled so it doesn't draw focus.
+        // Brightens on hover only (not active/click). When disabled, no hover
+        // brightness (hoverIdx_ already -1 for disabled tab per mouseMove).
+        const bool blocksHover = (hoverIdx_ == 2);
+        juce::Colour betaBg, betaFg;
+        if (isDisabled)        { betaBg = Bg2; betaFg = Fg4; }
+        else if (blocksHover)  { betaBg = Bg4; betaFg = Fg2; }
+        else                   { betaBg = Bg3; betaFg = Fg3; }
+        drawBadge (badgeX, blocksBounds_.getCentreY(), "BETA", betaBg, betaFg);
+    }
 }
 
 void ModeTabs::mouseMove (const juce::MouseEvent& e)

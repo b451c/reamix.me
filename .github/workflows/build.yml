@@ -1,14 +1,21 @@
 name: Build
 
 on:
+  # Auto-trigger ONLY on version-tag push (release flow) and pull-request
+  # validation. Plain commits to main do NOT auto-fire CI — solo dev iterates
+  # locally (cmake --build + ctest, ~50s). For ad-hoc cross-platform verify,
+  # use `gh workflow run build.yml --ref main` or the "Run workflow" button.
+  # Rationale: GitHub Free private repo has 2000 min/mo; macOS billed 10x.
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
 
 jobs:
