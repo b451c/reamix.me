@@ -1,0 +1,20 @@
+{
+  "phase_align": false,
+  "energy_compensate": true,
+  "max_phase_shift_ms": 3.0,
+  "kind": "adaptive",
+  "signal": "billie_jean rows [0]/[1] stereo, PA=False",
+  "why": "no-align control \u2014 bit-exact with unmodified Python adaptive_crossfade (no divergence on this branch)",
+  "out_shape": [
+    2,
+    3417
+  ],
+  "in_shape": [
+    2,
+    3417
+  ],
+  "result_shape": [
+    2,
+    3417
+  ]
+}

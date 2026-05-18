@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are most useful when framed around a **use case** — what audible or visual outcome can't you achieve today, and how would the proposed feature change that?
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What are you trying to do? What's blocking you today?
+      placeholder: |
+        I'm editing podcast episodes (60-90 minutes) and want to shorten them by ~20% while preserving the natural flow. Currently I have to manually cut sections — reamix.me would let me do this in one step IF…
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What specifically would change? UI element, mode, cost component, behavior?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you tried working around this with the current feature set? What did you try?
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Anything else
+      description: References to similar features in other tools, mockups, links to relevant discussions.

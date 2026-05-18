@@ -1,0 +1,17 @@
+[
+  "alignment_offset_sec",
+  "chroma_distance",
+  "edge_splice_similarity",
+  "energy_diff_db",
+  "quality_score",
+  "render_incoming_cut_sample",
+  "render_incoming_shift_sec",
+  "render_outgoing_cut_sample",
+  "render_outgoing_shift_sec",
+  "render_splice_score",
+  "render_stereo_similarity",
+  "resolved_overlap_sec",
+  "successor_similarity",
+  "total_cost",
+  "waveform_similarity"
+]

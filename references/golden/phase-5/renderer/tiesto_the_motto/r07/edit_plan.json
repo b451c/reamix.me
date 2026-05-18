@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/069. Ti\u00ebsto - The Motto.mp3",
+    "start_beat": 0,
+    "end_beat": 32,
+    "source_start_sec": 0.0,
+    "source_end_sec": 17.27120181405896,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 17.27120181405896,
+    "duration_sec": 17.27120181405896,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.076281179138322,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.076281179138322,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/069. Ti\u00ebsto - The Motto.mp3",
+    "start_beat": 65,
+    "end_beat": 117,
+    "source_start_sec": 33.40371882086168,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 17.194920634920635,
+    "timeline_end_sec": 43.79120181405896,
+    "duration_sec": 26.596281179138323,
+    "fade_in_sec": 0.076281179138322,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.076281179138322,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

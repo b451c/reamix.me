@@ -1,0 +1,50 @@
+{
+  "track": "wardruna_voluspa",
+  "target_ratio": 0.5,
+  "sample_rate": 22050,
+  "n_beats": 85,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    734977
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 33.33229024943311,
+  "n_transitions": 1,
+  "n_clips": 2,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 85,
+    "target_duration": 30.229564280737012,
+    "remix_path_len": 45,
+    "n_transitions": 1,
+    "total_cost": 3.0263265465209006
+  },
+  "sha256_truncated": {
+    "audio_in": "6f82b037505796bb",
+    "render_audio": "588b6bc6f516fde2",
+    "remix_path": "ec7c6240f7bf3f7a",
+    "transition_times": "ad7aae33095693f5"
+  }
+}

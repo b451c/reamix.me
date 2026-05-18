@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 - Nutshell.flac",
+    "start_beat": 0,
+    "end_beat": 18,
+    "source_start_sec": 0.0,
+    "source_end_sec": 17.285895691609976,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 17.285895691609976,
+    "duration_sec": 17.285895691609976,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.2109297052154195,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.2109297052154195,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 - Nutshell.flac",
+    "start_beat": 38,
+    "end_beat": 40,
+    "source_start_sec": 29.57201814058957,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 17.074965986394556,
+    "timeline_end_sec": 47.50294784580498,
+    "duration_sec": 30.42798185941043,
+    "fade_in_sec": 0.2109297052154195,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.2109297052154195,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

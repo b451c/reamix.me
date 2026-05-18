@@ -1,0 +1,86 @@
+[
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 4.496,
+    "label": "intro",
+    "start": 0.317
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 8.133,
+    "label": "chorus",
+    "start": 4.496
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 12.858,
+    "label": "chorus",
+    "start": 8.133
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 17.044,
+    "label": "chorus",
+    "start": 12.858
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 20.663,
+    "label": "chorus",
+    "start": 17.044
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 25.391,
+    "label": "chorus",
+    "start": 20.663
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 34.758,
+    "label": "chorus",
+    "start": 25.391
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 40.229,
+    "label": "chorus",
+    "start": 34.758
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 43.793,
+    "label": "chorus",
+    "start": 40.229
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 49.465,
+    "label": "chorus",
+    "start": 43.793
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 53.789,
+    "label": "chorus",
+    "start": 49.465
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 60.427,
+    "label": "outro",
+    "start": 53.789
+  }
+]

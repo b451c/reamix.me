@@ -1,0 +1,19 @@
+{
+  "crossfade_ms": 75.0,
+  "energy_compensate": false,
+  "kind": "simple",
+  "signal": "case_03 inputs (synthetic 80 Hz + 8 kHz phase-offset), simple path cf=75.0 ms EC=False",
+  "why": "control \u2014 no RMS compensation, no ramp, pure equal-power cos/sin crossfade over 3307 samples (no dependency on ramp arithmetic ordering)",
+  "out_shape": [
+    2,
+    22050
+  ],
+  "in_shape": [
+    2,
+    22050
+  ],
+  "result_shape": [
+    2,
+    40793
+  ]
+}

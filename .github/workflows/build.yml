@@ -1,0 +1,196 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: macOS-arm64
+            artifact: reaper_reamix-arm64.dylib
+            cmake_flags: -DCMAKE_OSX_ARCHITECTURES=arm64
+            ort_url: https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-arm64-1.24.4.tgz
+            ort_extract: tar xz --strip-components=1 -C vendor/onnxruntime
+
+          - os: macos-14
+            platform: macOS-x86_64
+            artifact: reaper_reamix-x86_64.dylib
+            cmake_flags: -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+            ort_url: https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-osx-x86_64-1.20.1.tgz
+            ort_extract: tar xz --strip-components=1 -C vendor/onnxruntime
+
+          - os: windows-latest
+            platform: Windows-x64
+            artifact: reaper_reamix-x64.dll
+            cmake_flags: -A x64
+            ort_url: https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-1.24.4.zip
+            ort_extract: ""
+
+          - os: ubuntu-22.04
+            platform: Linux-x86_64
+            artifact: reaper_reamix-x86_64.so
+            cmake_flags: ""
+            ort_url: https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz
+            ort_extract: tar xz --strip-components=1 -C vendor/onnxruntime
+
+          - os: ubuntu-22.04-arm
+            platform: Linux-aarch64
+            artifact: reaper_reamix-aarch64.so
+            cmake_flags: ""
+            ort_url: https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-aarch64-1.24.4.tgz
+            ort_extract: tar xz --strip-components=1 -C vendor/onnxruntime
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Download ONNX Runtime (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p vendor/onnxruntime
+          curl -L ${{ matrix.ort_url }} | ${{ matrix.ort_extract }}
+
+      - name: Download ONNX Runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "${{ matrix.ort_url }}" -OutFile ort.zip
+          Expand-Archive ort.zip -DestinationPath ort_tmp
+          $dir = Get-ChildItem ort_tmp -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path vendor/onnxruntime | Out-Null
+          Copy-Item -Recurse "$($dir.FullName)/*" vendor/onnxruntime/
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfreetype6-dev libx11-dev libxrandr-dev libxcursor-dev \
+            libxinerama-dev libasound2-dev libwebkit2gtk-4.0-dev \
+            libcurl4-openssl-dev
+
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_flags }}
+
+      - name: Build
+        run: cmake --build build --config Release -j
+
+      - name: Run tests
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build -j --output-on-failure
+
+      - name: Find artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem -Recurse build -Filter "reaper_reamix.dll" | Select-Object -First 1
+          if ($file) { Copy-Item $file.FullName "build/${{ matrix.artifact }}" }
+
+      - name: Rename artifact (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            mv build/reaper_reamix.dylib build/${{ matrix.artifact }}
+          else
+            mv build/reaper_reamix.so build/${{ matrix.artifact }}
+          fi
+
+      - name: Bundle ONNX Runtime (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            find vendor/onnxruntime/lib -name "libonnxruntime.so.*.*.*" ! -type l \
+              -exec cp {} "build/libonnxruntime.so.1-${{ matrix.platform }}" \;
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            find vendor/onnxruntime/lib -name "libonnxruntime.*.*.*.dylib" ! -type l \
+              -exec cp {} "build/libonnxruntime-${{ matrix.platform }}.dylib" \;
+          fi
+
+      - name: Bundle ONNX Runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item "vendor\onnxruntime\lib\onnxruntime.dll" "build\onnxruntime.dll" -ErrorAction SilentlyContinue
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            build/${{ matrix.artifact }}
+            build/libonnxruntime*
+            build/onnxruntime.dll
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            **/*.dylib
+            **/*.dll
+            **/*.so
+            **/libonnxruntime.so.1-*
+          body: |
+            ## reamix.me ${{ github.ref_name }}
+
+            Music-track retargeting for REAPER. Beat-aligned splicing — not time-stretching.
+
+            ### Three modes
+
+            - **Target Duration** — pick a length, algorithm finds the optimal splice path.
+            - **Region Remix** — retarget only the REAPER time-selection.
+            - **Block Assembly** — manually order sections; algorithm optimizes the junctions.
+
+            ### Download
+
+            | Platform | Plugin | ONNX Runtime |
+            |----------|--------|--------------|
+            | macOS (Apple Silicon) | `reaper_reamix-arm64.dylib` | `libonnxruntime-macOS-arm64.dylib` |
+            | macOS (Intel) | `reaper_reamix-x86_64.dylib` | `libonnxruntime-macOS-x86_64.dylib` |
+            | Windows 64-bit | `reaper_reamix-x64.dll` | `onnxruntime.dll` |
+            | Linux x86_64 | `reaper_reamix-x86_64.so` | `libonnxruntime.so.1-Linux-x86_64` |
+            | Linux aarch64 | `reaper_reamix-aarch64.so` | `libonnxruntime.so.1-Linux-aarch64` |
+
+            ### Installation
+
+            **Via ReaPack (recommended):**
+            See README for the import URL.
+
+            **Manual:**
+            1. Download the binary + matching ONNX Runtime for your platform.
+            2. Place both in REAPER's `UserPlugins/` folder.
+            3. On macOS, clear quarantine: `xattr -d com.apple.quarantine reaper_reamix-*.dylib`.
+            4. Restart REAPER → Extensions → reamix.me: Show/Hide Window.
+
+            On first analysis the beat-detection model (~79 MB) downloads to `~/.reamix/models/`.
+
+            ---
+
+            [Ko-fi](https://ko-fi.com/quickmd) | [Buy Me a Coffee](https://buymeacoffee.com/bsroczynskh) | [PayPal](https://www.paypal.com/paypalme/b451c)

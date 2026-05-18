@@ -1,0 +1,23 @@
+{
+  "anchor_local_window_ms": 120.0,
+  "anchor_min_context_ms": 120.0,
+  "anchor_search_beats": 1,
+  "anchor_search_max_extension_beats": 2,
+  "beat_sample": 4800,
+  "kind": "find_onset",
+  "lookahead_ms": null,
+  "lookback_ms": null,
+  "n_mono_energy": 20000,
+  "onset_search_lookahead_ms": 18.0,
+  "onset_search_lookback_ms": 70.0,
+  "signal": "synthetic mono_energy with RMS transient at sample 5000",
+  "sr": 44100,
+  "stereo_refine_coarse_step_samples": 64,
+  "stereo_refine_max_shift_ms": 12.0,
+  "transient_alignment_penalty_weight": 0.1,
+  "transient_center_penalty_weight": 0.14,
+  "vocal_activity_threshold": 0.28,
+  "vocal_crossfade_ms": 300.0,
+  "vocal_same_label_crossfade_ms": 180.0,
+  "why": "default path \u2014 asymmetric lookback=70ms + lookahead=18ms around beat=4800 \u2192 chunk envelope + diff + smooth + argmax"
+}

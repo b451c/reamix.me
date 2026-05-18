@@ -1,0 +1,20 @@
+{
+  "phase_align": true,
+  "energy_compensate": true,
+  "max_phase_shift_ms": 3.0,
+  "kind": "adaptive",
+  "signal": "billie_jean/boundary_waveforms.npy rows [0] and [1], stereo-duplicated",
+  "why": "production default path \u2014 PA=True + EC=True \u2014 exercises ADR-032 phase-align fix in mid + treble, bass unaffected (xf==max_xf)",
+  "out_shape": [
+    2,
+    3417
+  ],
+  "in_shape": [
+    2,
+    3417
+  ],
+  "result_shape": [
+    2,
+    3417
+  ]
+}

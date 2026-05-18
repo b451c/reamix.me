@@ -1,0 +1,5 @@
+intro
+chorus
+verse
+chorus
+outro

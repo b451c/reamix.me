@@ -1,0 +1,88 @@
+name: Bug report
+description: Report a problem with reamix.me
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. The fields below help reproduce and triage faster — please fill in what's applicable.
+
+  - type: input
+    id: version
+    attributes:
+      label: reamix.me version
+      description: Visible in the plugin window's bottom-right corner (e.g. `v1.0.0`).
+      placeholder: v1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: reaper-version
+    attributes:
+      label: REAPER version
+      description: Found in REAPER → About REAPER.
+      placeholder: 7.30
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows 10
+        - Windows 11
+        - Linux (x86_64)
+        - Linux (aarch64)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Numbered list. The more precise, the faster we can reproduce.
+      placeholder: |
+        1. Open REAPER
+        2. Drag a 3-minute track into the timeline
+        3. Open reamix.me, click Analyze
+        4. Slide the duration target to 2:00
+        5. Click Insert
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead. Include error messages, log output, or screenshots if available.
+    validations:
+      required: true
+
+  - type: textarea
+    id: audio
+    attributes:
+      label: Audio file context (if quality-related)
+      description: If the bug is about audible artifacts (clicks, off-downbeat splices, mid-vocal cuts), please include — genre, BPM, duration, vocal density. A 30-second public sample of similar character helps enormously.
+      placeholder: |
+        Genre: hip-hop
+        BPM: 95
+        Duration: 3:42
+        Vocal density: continuous vocals throughout
+        Sample: <link to publicly accessible clip>
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Anything else
+      description: Crash logs, REAPER console output, dylib timestamps, anything unusual.

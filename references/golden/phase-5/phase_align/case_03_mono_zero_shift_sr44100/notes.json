@@ -1,0 +1,8 @@
+{
+  "n": 2048,
+  "sr": 44100,
+  "known_shift": 0,
+  "signal": "sine 523.25 Hz (C5) \u2014 identical in/out",
+  "why": "best_shift==0 passthrough branch (output == input bit-exact)",
+  "shift_out": 0
+}

@@ -1,0 +1,50 @@
+{
+  "track": "eminem_without_me",
+  "target_ratio": 0.3,
+  "sample_rate": 22050,
+  "n_beats": 113,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    382496
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 17.34675736961451,
+  "n_transitions": 2,
+  "n_clips": 3,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 113,
+    "target_duration": 18.128319489955903,
+    "remix_path_len": 33,
+    "n_transitions": 2,
+    "total_cost": 2.4512459951695327
+  },
+  "sha256_truncated": {
+    "audio_in": "6ec944cd5bf9d2c5",
+    "render_audio": "37c8cd2916dac2ff",
+    "remix_path": "103f771c5685cb5c",
+    "transition_times": "3664b59097ba0807"
+  }
+}

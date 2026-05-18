@@ -1,0 +1,20 @@
+{
+  "phase_align": true,
+  "energy_compensate": false,
+  "max_phase_shift_ms": 3.0,
+  "kind": "adaptive",
+  "signal": "synthetic stereo 80 Hz + 8 kHz sines with phase offsets",
+  "why": "isolates PhaseAlign + envelope \u2014 cleanest view of ADR-032 fix (post-fade treble recovered from ~0.007 to ~0.35)",
+  "out_shape": [
+    2,
+    22050
+  ],
+  "in_shape": [
+    2,
+    22050
+  ],
+  "result_shape": [
+    2,
+    35280
+  ]
+}

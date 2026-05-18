@@ -1,0 +1,9 @@
+{
+  "n": 2048,
+  "sr": 44100,
+  "known_shift": -17,
+  "ndim": 2,
+  "signal": "stereo sine 440 Hz (L=1.0\u00d7, R=0.9\u00d7)",
+  "why": "stereo NCC-on-first-channel + all-channel shift-apply",
+  "shift_out": -17
+}

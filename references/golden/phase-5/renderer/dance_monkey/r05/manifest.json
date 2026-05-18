@@ -1,0 +1,50 @@
+{
+  "track": "dance_monkey",
+  "target_ratio": 0.5,
+  "sample_rate": 22050,
+  "n_beats": 99,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    679199
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 30.80267573696145,
+  "n_transitions": 1,
+  "n_clips": 2,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 99,
+    "target_duration": 30.19781734505478,
+    "remix_path_len": 51,
+    "n_transitions": 1,
+    "total_cost": 2.3117243810270374
+  },
+  "sha256_truncated": {
+    "audio_in": "d526c5ded5db5776",
+    "render_audio": "905e5a1b705762cc",
+    "remix_path": "4ded8bce99d4c129",
+    "transition_times": "866a11fe5b4255ad"
+  }
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 So What.flac",
+    "start_beat": 0,
+    "end_beat": 20,
+    "source_start_sec": 0.0,
+    "source_end_sec": 9.345034013605442,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 9.345034013605442,
+    "duration_sec": 9.345034013605442,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.06621315192743764,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.06621315192743764,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 So What.flac",
+    "start_beat": 57,
+    "end_beat": 76,
+    "source_start_sec": 25.284444444444443,
+    "source_end_sec": 34.11528344671202,
+    "timeline_start_sec": 9.278820861678005,
+    "timeline_end_sec": 18.10965986394558,
+    "duration_sec": 8.830839002267574,
+    "fade_in_sec": 0.06621315192743764,
+    "fade_out_sec": 0.06621315192743764,
+    "overlap_before_sec": 0.06621315192743764,
+    "overlap_after_sec": 0.06621315192743764,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 3,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 So What.flac",
+    "start_beat": 133,
+    "end_beat": 135,
+    "source_start_sec": 58.7566439909297,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 18.04344671201814,
+    "timeline_end_sec": 19.286802721088435,
+    "duration_sec": 1.2433560090702949,
+    "fade_in_sec": 0.06621315192743764,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.06621315192743764,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

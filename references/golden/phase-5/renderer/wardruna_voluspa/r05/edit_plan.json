@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/complete/mindux518/Music/Wardruna - V\u00f6lusp\u00e1 (Vikings OST).mp3",
+    "start_beat": 0,
+    "end_beat": 34,
+    "source_start_sec": 0.0,
+    "source_end_sec": 27.37668934240363,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 27.37668934240363,
+    "duration_sec": 27.37668934240363,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.10666666666666667,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.10666666666666667,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/complete/mindux518/Music/Wardruna - V\u00f6lusp\u00e1 (Vikings OST).mp3",
+    "start_beat": 75,
+    "end_beat": 84,
+    "source_start_sec": 53.93773242630385,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 27.270022675736964,
+    "timeline_end_sec": 33.33229024943311,
+    "duration_sec": 6.062267573696145,
+    "fade_in_sec": 0.10666666666666667,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.10666666666666667,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/lead vocal+fx.flac",
+    "start_beat": 0,
+    "end_beat": 53,
+    "source_start_sec": 0.0,
+    "source_end_sec": 25.639092970521542,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 25.639092970521542,
+    "duration_sec": 25.639092970521542,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.07115646258503401,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.07115646258503401,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/lead vocal+fx.flac",
+    "start_beat": 98,
+    "end_beat": 126,
+    "source_start_sec": 46.62362811791383,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 25.56793650793651,
+    "timeline_end_sec": 38.94430839002268,
+    "duration_sec": 13.376371882086168,
+    "fade_in_sec": 0.07115646258503401,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.07115646258503401,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

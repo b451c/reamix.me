@@ -1,0 +1,50 @@
+{
+  "track": "shostakovich_jazz_waltz",
+  "target_ratio": 0.3,
+  "sample_rate": 22050,
+  "n_beats": 165,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    448452
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 20.33795918367347,
+  "n_transitions": 2,
+  "n_clips": 3,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 165,
+    "target_duration": 18.041533522489594,
+    "remix_path_len": 55,
+    "n_transitions": 2,
+    "total_cost": 2.654268166924158
+  },
+  "sha256_truncated": {
+    "audio_in": "a901ab6675bd665a",
+    "render_audio": "d13beb36b3fe1343",
+    "remix_path": "f11642fee4b61e52",
+    "transition_times": "091a8a0cbd89aed6"
+  }
+}

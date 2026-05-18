@@ -1,0 +1,50 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/02. Daft Punk - Aerodynamic.flac",
+    "start_beat": 0,
+    "end_beat": 33,
+    "source_start_sec": 0.0,
+    "source_end_sec": 16.757414965986396,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 16.757414965986396,
+    "duration_sec": 16.757414965986396,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.07696145124716554,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.07696145124716554,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/02. Daft Punk - Aerodynamic.flac",
+    "start_beat": 58,
+    "end_beat": 82,
+    "source_start_sec": 28.515691609977324,
+    "source_end_sec": 40.36925170068027,
+    "timeline_start_sec": 16.68045351473923,
+    "timeline_end_sec": 28.534013605442176,
+    "duration_sec": 11.853560090702947,
+    "fade_in_sec": 0.07696145124716554,
+    "fade_out_sec": 0.07696145124716554,
+    "overlap_before_sec": 0.07696145124716554,
+    "overlap_after_sec": 0.07696145124716554,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 3,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/02. Daft Punk - Aerodynamic.flac",
+    "start_beat": 114,
+    "end_beat": 116,
+    "source_start_sec": 55.93560090702948,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 28.45705215419501,
+    "timeline_end_sec": 32.52145124716553,
+    "duration_sec": 4.064399092970522,
+    "fade_in_sec": 0.07696145124716554,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.07696145124716554,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

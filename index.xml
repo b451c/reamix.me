@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<index version="1" name="reamix.me">
+  <category name="Extensions">
+    <reapack name="reaper_reamix" type="extension" desc="reamix.me: music-track retargeting via beat-aligned splicing">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 Calibri;}}
+\f0\fs28 reamix.me - Music-track retargeting for REAPER\line
+\fs22\line
+Pick any song, set a target length, and reamix produces a version at that length that sounds like a natural edit of the song - not a time-stretched version.\line
+\line
+The concept is Adobe Audition Remix, re-implemented as a native REAPER extension. The technique is beat-aligned splicing, not time-stretching: the algorithm finds pairs of beats where splicing from one to the other is perceptually inaudible (matched phase, chroma, energy, structural role) and stitches those splices into a path that hits the target duration.\line
+\line
+\b Three modes:\b0\line
+\bullet  Target Duration - set a length, algorithm picks the optimal splice path\line
+\bullet  Region Remix - retarget only the REAPER time-selection\line
+\bullet  Block Assembly - manually order sections, algorithm optimizes the junctions\line
+\line
+\b Pipeline:\b0\line
+\bullet  Neural beat detection (beat-this, ISMIR 2024)\line
+\bullet  Structure segmentation (CBM, bar-level)\line
+\bullet  59-dim per-beat features (MFCC + chroma + spectral contrast)\line
+\bullet  Transition cost matrix (10 perceptual signals + hard gates)\line
+\bullet  Viterbi DP path optimization\line
+\bullet  Multi-band crossfade rendering\line
+\line
+\b Requirements:\b0\line
+\bullet  REAPER 6.0+\line
+\bullet  Internet connection for first-time model download (~79 MB)\line
+\line
+\b Note:\b0  On first analysis, reamix.me downloads the beat-detection neural network to ~/.reamix/models/. This happens once.\line
+}]]></description>
+        <link rel="website">https://github.com/b451c/reamix.me</link>
+        <link rel="donation">https://ko-fi.com/quickmd</link>
+        <link rel="donation">https://buymeacoffee.com/bsroczynskh</link>
+        <link rel="donation">https://www.paypal.com/paypalme/b451c</link>
+      </metadata>
+      <version name="1.0.0" author="b451c" time="2026-05-18T00:00:00Z">
+        <changelog><![CDATA[reamix.me 1.0.0 - First OSS release
+
+- Native REAPER extension (single .dylib / .dll / .so, no Python, no server, no installer)
+- Three remix modes: Target Duration, Region Remix, Block Assembly
+- Neural beat detection (beat-this ONNX, ISMIR 2024)
+- 10-component transition cost matrix tuned for perceptual inaudibility
+- Multi-band crossfade rendering (bass 200 ms, mid 100 ms, treble 40 ms, phase-aligned)
+- Live REAPER integration: time-selection polling, undo blocks, group tracking, save/reopen
+- Interactive waveform editor with splice markers, region overlay, playhead
+- Advanced cost-weight panel (8 raw weights + 4 Block Assembly tuning parameters)
+- Keyboard shortcuts: Space (preview), Esc (stop), Enter (insert)
+- Per-track persistence: cost weights, mode state, defaults survive REAPER restart
+- Model auto-downloads on first use (~79 MB)]]></changelog>
+        <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.0/reaper_reamix-arm64.dylib</source>
+        <source platform="darwin-arm64" file="libonnxruntime.1.24.4.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.0/libonnxruntime-macOS-arm64.dylib</source>
+        <source platform="darwin64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.0/reaper_reamix-x86_64.dylib</source>
+        <source platform="darwin64" file="libonnxruntime.1.20.1.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.0/libonnxruntime-macOS-x86_64.dylib</source>
+        <source platform="win64" file="reaper_reamix.dll">https://github.com/b451c/reamix.me/releases/download/v1.0.0/reaper_reamix-x64.dll</source>
+        <source platform="win64" file="onnxruntime.dll">https://github.com/b451c/reamix.me/releases/download/v1.0.0/onnxruntime.dll</source>
+        <source platform="linux64" file="reaper_reamix.so">https://github.com/b451c/reamix.me/releases/download/v1.0.0/reaper_reamix-x86_64.so</source>
+        <source platform="linux64" file="libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.0/libonnxruntime.so.1-Linux-x86_64</source>
+        <source platform="linux-aarch64" file="reaper_reamix.so">https://github.com/b451c/reamix.me/releases/download/v1.0.0/reaper_reamix-aarch64.so</source>
+        <source platform="linux-aarch64" file="libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.0/libonnxruntime.so.1-Linux-aarch64</source>
+      </version>
+    </reapack>
+  </category>
+</index>

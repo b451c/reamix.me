@@ -1,0 +1,8 @@
+{
+  "n": 2048,
+  "sr": 44100,
+  "known_shift": 5,
+  "signal": "white noise rng(42)",
+  "why": "API-default max_shift=64 + noise (non-sinusoidal corr)",
+  "shift_out": 5
+}

@@ -1,0 +1,50 @@
+{
+  "track": "billie_jean",
+  "target_ratio": 0.7,
+  "sample_rate": 22050,
+  "n_beats": 117,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    963200
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 43.682539682539684,
+  "n_transitions": 1,
+  "n_clips": 2,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 117,
+    "target_duration": 41.98320943569314,
+    "remix_path_len": 85,
+    "n_transitions": 1,
+    "total_cost": 3.828971474875389
+  },
+  "sha256_truncated": {
+    "audio_in": "e3a6b131a84b2195",
+    "render_audio": "a17fd138baa5403f",
+    "remix_path": "f046e2b74e8ceb12",
+    "transition_times": "066ea297c6f61711"
+  }
+}

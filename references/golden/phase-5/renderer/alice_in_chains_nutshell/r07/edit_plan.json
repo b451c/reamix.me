@@ -1,0 +1,18 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 - Nutshell.flac",
+    "start_beat": 0,
+    "end_beat": 30,
+    "source_start_sec": 3.390249433106576,
+    "source_end_sec": 24.639410430839003,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 21.249160997732428,
+    "duration_sec": 21.249160997732428,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

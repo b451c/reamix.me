@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/2 - Dance Monkey.flac",
+    "start_beat": 0,
+    "end_beat": 22,
+    "source_start_sec": 0.0,
+    "source_end_sec": 14.245079365079365,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 14.245079365079365,
+    "duration_sec": 14.245079365079365,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.09147392290249433,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.09147392290249433,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/2 - Dance Monkey.flac",
+    "start_beat": 71,
+    "end_beat": 98,
+    "source_start_sec": 43.35092970521542,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 14.15360544217687,
+    "timeline_end_sec": 30.802675736961447,
+    "duration_sec": 16.64907029478458,
+    "fade_in_sec": 0.09147392290249433,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.09147392290249433,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

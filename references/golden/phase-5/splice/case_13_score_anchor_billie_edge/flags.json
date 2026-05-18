@@ -1,0 +1,23 @@
+{
+  "anchor_index": 170,
+  "anchor_local_window_ms": 120.0,
+  "anchor_min_context_ms": 120.0,
+  "anchor_search_beats": 1,
+  "anchor_search_max_extension_beats": 2,
+  "kind": "score_anchor",
+  "n_channels": 2,
+  "n_samples": 3417,
+  "onset_search_lookahead_ms": 18.0,
+  "onset_search_lookback_ms": 70.0,
+  "signal": "billie_jean stereo boundary",
+  "sr": 22050,
+  "stereo_refine_coarse_step_samples": 64,
+  "stereo_refine_max_shift_ms": 12.0,
+  "transient_alignment_penalty_weight": 0.1,
+  "transient_center_penalty_weight": 0.14,
+  "vocal_activity_threshold": 0.28,
+  "vocal_crossfade_ms": 300.0,
+  "vocal_presence": 0.2,
+  "vocal_same_label_crossfade_ms": 180.0,
+  "why": "anchor at ~5% from edge \u2192 edge_penalty non-zero"
+}

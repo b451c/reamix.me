@@ -1,0 +1,19 @@
+{
+  "crossfade_ms": 75.0,
+  "energy_compensate": true,
+  "kind": "simple",
+  "signal": "case_04 inputs (synthetic 80 Hz + 8 kHz, incoming -20 dB), simple path cf=75.0 ms EC=True",
+  "why": "exercises RMS clamp saturation (gain=2.83) + ramp spanning 13228 samples (4*n_overlap), not capped by inLen",
+  "out_shape": [
+    2,
+    22050
+  ],
+  "in_shape": [
+    2,
+    22050
+  ],
+  "result_shape": [
+    2,
+    40793
+  ]
+}

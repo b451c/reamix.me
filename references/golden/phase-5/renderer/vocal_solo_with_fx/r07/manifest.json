@@ -1,0 +1,50 @@
+{
+  "track": "vocal_solo_with_fx",
+  "target_ratio": 0.7,
+  "sample_rate": 22050,
+  "n_beats": 127,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    858722
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 38.94430839002268,
+  "n_transitions": 1,
+  "n_clips": 2,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 127,
+    "target_duration": 42.19024344550238,
+    "remix_path_len": 83,
+    "n_transitions": 1,
+    "total_cost": 2.8553386032748826
+  },
+  "sha256_truncated": {
+    "audio_in": "c251cd057bbdbc45",
+    "render_audio": "a0fd31fdb2fc56ae",
+    "remix_path": "30bb39822f974e25",
+    "transition_times": "9e5ec84e842f153d"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "n": 31,
+  "sr": 44100,
+  "known_shift": 0,
+  "signal": "sine 440 Hz, n=31",
+  "why": "n<32 min-length gate \u2192 early return (incoming, 0)",
+  "shift_out": 0
+}

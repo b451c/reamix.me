@@ -1,0 +1,50 @@
+{
+  "track": "meshuggah_bleed",
+  "target_ratio": 0.3,
+  "sample_rate": 22050,
+  "n_beats": 115,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    392345
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 17.79342403628118,
+  "n_transitions": 1,
+  "n_clips": 2,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 115,
+    "target_duration": 18.038543299624795,
+    "remix_path_len": 38,
+    "n_transitions": 1,
+    "total_cost": 0.23967355094962706
+  },
+  "sha256_truncated": {
+    "audio_in": "9b699ee2f2750e02",
+    "render_audio": "8b2ec2964fe62f5a",
+    "remix_path": "614f0c95d27e0166",
+    "transition_times": "33fe5e0fd5482029"
+  }
+}

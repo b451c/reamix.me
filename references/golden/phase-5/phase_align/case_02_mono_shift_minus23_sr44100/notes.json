@@ -1,0 +1,8 @@
+{
+  "n": 2048,
+  "sr": 44100,
+  "known_shift": 23,
+  "signal": "sine 880 Hz",
+  "why": "negative-shift branch (incoming leads; best_shift positive)",
+  "shift_out": 23
+}

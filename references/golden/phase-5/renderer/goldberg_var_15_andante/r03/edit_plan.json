@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/48. Goldberg Variations, BWV 988 (1981 digital recording)_ Variatio 15 a 1 Clav. \u201cCanone alla Quinta in moto contrario\u201d. Andante.flac",
+    "start_beat": 0,
+    "end_beat": 11,
+    "source_start_sec": 0.0,
+    "source_end_sec": 9.077868480725623,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 9.077868480725623,
+    "duration_sec": 9.077868480725623,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.11628117913832199,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.11628117913832199,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/48. Goldberg Variations, BWV 988 (1981 digital recording)_ Variatio 15 a 1 Clav. \u201cCanone alla Quinta in moto contrario\u201d. Andante.flac",
+    "start_beat": 65,
+    "end_beat": 77,
+    "source_start_sec": 50.492879818594105,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 8.9615873015873,
+    "timeline_end_sec": 18.468707482993196,
+    "duration_sec": 9.507120181405895,
+    "fade_in_sec": 0.11628117913832199,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.11628117913832199,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

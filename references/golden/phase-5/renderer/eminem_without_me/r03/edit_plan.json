@@ -1,0 +1,50 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/121. Eminem - Without Me.mp3",
+    "start_beat": 0,
+    "end_beat": 13,
+    "source_start_sec": 0.0,
+    "source_end_sec": 7.576371882086168,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 7.576371882086168,
+    "duration_sec": 7.576371882086168,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.08018140589569162,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.08018140589569162,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/121. Eminem - Without Me.mp3",
+    "start_beat": 46,
+    "end_beat": 57,
+    "source_start_sec": 24.493650793650794,
+    "source_end_sec": 31.09015873015873,
+    "timeline_start_sec": 7.496190476190476,
+    "timeline_end_sec": 14.092698412698413,
+    "duration_sec": 6.596507936507937,
+    "fade_in_sec": 0.08018140589569162,
+    "fade_out_sec": 0.08018140589569162,
+    "overlap_before_sec": 0.08018140589569162,
+    "overlap_after_sec": 0.08018140589569162,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 3,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/121. Eminem - Without Me.mp3",
+    "start_beat": 106,
+    "end_beat": 112,
+    "source_start_sec": 56.66575963718821,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 14.012517006802721,
+    "timeline_end_sec": 17.34675736961451,
+    "duration_sec": 3.3342403628117916,
+    "fade_in_sec": 0.08018140589569162,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.08018140589569162,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

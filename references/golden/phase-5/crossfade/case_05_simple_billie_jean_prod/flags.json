@@ -1,0 +1,19 @@
+{
+  "crossfade_ms": 75.0,
+  "energy_compensate": true,
+  "kind": "simple",
+  "signal": "billie_jean boundary rows [0]/[1] stereo, cf=75.0 ms, EC=True",
+  "why": "simple_crossfade production default on real music \u2014 exercises RMS clamp on natural content + ramp saturated by inLen cap (3417 < 4*n_overlap=6612)",
+  "out_shape": [
+    2,
+    3417
+  ],
+  "in_shape": [
+    2,
+    3417
+  ],
+  "result_shape": [
+    2,
+    5181
+  ]
+}

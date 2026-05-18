@@ -1,0 +1,9 @@
+{
+  "found": true,
+  "render_incoming_cut_sample": 821741.0,
+  "render_incoming_shift_sec": 0.0021768707482993197,
+  "render_outgoing_cut_sample": 415157.0,
+  "render_outgoing_shift_sec": -0.0036281179138321997,
+  "render_splice_score": -0.22773547044006984,
+  "render_stereo_similarity": 0.5234678715815201
+}

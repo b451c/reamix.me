@@ -1,0 +1,21 @@
+{
+  "anchor_overlap_samples": 20374.0,
+  "render_anchor_in_beat": 61.0,
+  "render_anchor_in_sec": 28.491746031746032,
+  "render_anchor_incoming_start_beat": 60.0,
+  "render_anchor_local_similarity": 0.5480769973476958,
+  "render_anchor_out_beat": 30.0,
+  "render_anchor_out_sec": 14.100181405895691,
+  "render_anchor_outgoing_boundary_beat": 31.0,
+  "render_anchor_selected": 1.0,
+  "render_anchor_similarity": 0.5468749068611165,
+  "render_anchor_splice_score": 0.5288540802798727,
+  "render_incoming_cut_sample": 619520.0,
+  "render_incoming_end_sample": 639894.0,
+  "render_outgoing_cut_sample": 322560.0,
+  "render_outgoing_start_sample": 302186.0,
+  "render_splice_score": 0.5288540802798727,
+  "render_stereo_similarity": 0.5468749068611165,
+  "resolved_overlap_sec": 0.9239909297052155,
+  "selected": true
+}

@@ -1,0 +1,12 @@
+# Phase-2 (handcrafted features) parity test pins.
+#
+# These versions mirror references/python-source/uv.lock resolution.
+# Any drift invalidates references/golden/phase-2/dumps/**/manifest.json SHAs.
+#
+# See meta/RESEARCH.md 2026-04-20 phase-2 entry for rationale.
+
+librosa==0.11.0
+scipy==1.15.3
+numpy>=1.24,<2.0
+soundfile>=0.12        # librosa audio I/O backend
+audioread>=3.0         # MP3 fallback backend for librosa.load

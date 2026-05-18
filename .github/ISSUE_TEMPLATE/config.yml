@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: REAPER Forum discussion
+    url: https://forum.cockos.com/forumdisplay.php?f=20
+    about: For general questions or discussion about reamix.me, please use the REAPER Extensions forum.
+  - name: Security vulnerability
+    url: https://github.com/b451c/reamix.me/security/advisories/new
+    about: Report security issues privately via GitHub Security Advisories. Do NOT open a public issue.

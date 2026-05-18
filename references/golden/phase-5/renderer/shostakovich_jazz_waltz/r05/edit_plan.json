@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/17 - Jazz Suite no. 1_ I. Waltz.flac",
+    "start_beat": 0,
+    "end_beat": 50,
+    "source_start_sec": 0.0,
+    "source_end_sec": 19.03238095238095,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 19.03238095238095,
+    "duration_sec": 19.03238095238095,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.054648526077097505,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.054648526077097505,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/17 - Jazz Suite no. 1_ I. Waltz.flac",
+    "start_beat": 129,
+    "end_beat": 164,
+    "source_start_sec": 47.24390022675737,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 18.977732426303852,
+    "timeline_end_sec": 31.733832199546484,
+    "duration_sec": 12.75609977324263,
+    "fade_in_sec": 0.054648526077097505,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.054648526077097505,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

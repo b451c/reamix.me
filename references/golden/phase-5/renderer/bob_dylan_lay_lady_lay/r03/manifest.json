@@ -1,0 +1,50 @@
+{
+  "track": "bob_dylan_lay_lady_lay",
+  "target_ratio": 0.3,
+  "sample_rate": 22050,
+  "n_beats": 78,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    438736
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 19.89732426303855,
+  "n_transitions": 1,
+  "n_clips": 2,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 78,
+    "target_duration": 18.060993605774716,
+    "remix_path_len": 26,
+    "n_transitions": 1,
+    "total_cost": -1.1501965074862603
+  },
+  "sha256_truncated": {
+    "audio_in": "74a7df357c85f31c",
+    "render_audio": "5f9f03f098cdcf1c",
+    "remix_path": "16494c3e3cd8cead",
+    "transition_times": "1505f71c833089e4"
+  }
+}

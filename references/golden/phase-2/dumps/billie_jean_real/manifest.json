@@ -1,0 +1,141 @@
+{
+  "track": "billie_jean_real",
+  "audio_source": "references/golden/phase-1/billie_jean.mp3",
+  "audio_sha256": "84e29c3399da2ba556347aba76aa6ba43b44854553f01dc4690a816d60d82487",
+  "clip_range_sec": [
+    60.0,
+    120.0
+  ],
+  "y_samples": 1323000,
+  "sr": 22050,
+  "real_beats": true,
+  "pins": {
+    "librosa": "0.11.0",
+    "scipy": "1.15.3",
+    "numpy": "1.26.4"
+  },
+  "config": {
+    "n_fft": 2048,
+    "hop_length": 512,
+    "n_mels": 128,
+    "n_mfcc_std": 40,
+    "n_mfcc_fast": 20,
+    "n_contrast_bands": 6
+  },
+  "dumps": {
+    "y_audio": {
+      "file": "y_audio.npy",
+      "shape": [
+        1323000
+      ],
+      "dtype": "float32",
+      "sha256": "07ffc644322161d8a2989463cb367a567372d124c0055bd4552b20ad464a0a18",
+      "bytes": 5292128
+    },
+    "beat_times_real": {
+      "file": "beat_times_real.npy",
+      "shape": [
+        117
+      ],
+      "dtype": "float64",
+      "sha256": "daf2b32b6fa51bb47d401d1f77e190e0e374ef1cc4808b395ae3ab3175a15c14",
+      "bytes": 1064
+    },
+    "feature_matrix": {
+      "file": "feature_matrix.npy",
+      "shape": [
+        117,
+        59
+      ],
+      "dtype": "float64",
+      "sha256": "0ba64efd24697a182748d158950828756ec21cc9ebe4161f06e9e60f7c7d0d9d",
+      "bytes": 55352
+    },
+    "edge_features_start": {
+      "file": "edge_features_start.npy",
+      "shape": [
+        117,
+        59
+      ],
+      "dtype": "float64",
+      "sha256": "87632ab44410506ea7163f74a094c7dfe069cb6c8813daf5ef1ebf495ac6c5a9",
+      "bytes": 55352
+    },
+    "edge_features_end": {
+      "file": "edge_features_end.npy",
+      "shape": [
+        117,
+        59
+      ],
+      "dtype": "float64",
+      "sha256": "094cb868c41733dd35c28e745ed024f9868f287b4476f96cf46b2749594fdd46",
+      "bytes": 55352
+    },
+    "edge_rms_start": {
+      "file": "edge_rms_start.npy",
+      "shape": [
+        117
+      ],
+      "dtype": "float64",
+      "sha256": "1a72575a10791b86e32683c205a745d0b21d23df93e4504eb528e3ce7ec94ca6",
+      "bytes": 1064
+    },
+    "edge_rms_end": {
+      "file": "edge_rms_end.npy",
+      "shape": [
+        117
+      ],
+      "dtype": "float64",
+      "sha256": "8e667e6051917d708c9f0251b80e3c78ea721b0cd9ce635315caf7ca0eb4a505",
+      "bytes": 1064
+    },
+    "boundary_waveforms": {
+      "file": "boundary_waveforms.npy",
+      "shape": [
+        117,
+        3417
+      ],
+      "dtype": "float32",
+      "sha256": "5e99d4f5ab95935c9a40704d68e203f640388356ede9bb393b25ac6909b7841c",
+      "bytes": 1599284
+    },
+    "transition_waveforms": {
+      "file": "transition_waveforms.npy",
+      "shape": [
+        117,
+        13230
+      ],
+      "dtype": "float32",
+      "sha256": "ab3b6339b05ce57ed4e179bf6557a8a84f990554247537bdf59eb44f5e5a6dcb",
+      "bytes": 6191768
+    },
+    "rms_energy": {
+      "file": "rms_energy.npy",
+      "shape": [
+        117
+      ],
+      "dtype": "float64",
+      "sha256": "29129f8cbd32a861377ecd1546ebba486d610aaf9f8bf821f865e5374b04a3f8",
+      "bytes": 1064
+    },
+    "onset_strength": {
+      "file": "onset_strength.npy",
+      "shape": [
+        117
+      ],
+      "dtype": "float64",
+      "sha256": "3b0ff7fef221b393e3aa434128f104d32cb781f442be33cb023b1112e07b5bc6",
+      "bytes": 1064
+    },
+    "spectral_centroid": {
+      "file": "spectral_centroid.npy",
+      "shape": [
+        117
+      ],
+      "dtype": "float64",
+      "sha256": "e9304e3d62d70eabe724b480ecc3917a418786c98382144a137e2e90bc7bd34b",
+      "bytes": 1064
+    }
+  },
+  "generated_utc": "2026-04-20T19:40:32+00:00"
+}

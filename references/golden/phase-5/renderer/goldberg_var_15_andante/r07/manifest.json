@@ -1,0 +1,34 @@
+{
+  "track": "goldberg_var_15_andante",
+  "target_ratio": 0.7,
+  "sample_rate": 22050,
+  "n_beats": 78,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    1024193
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 46.44866213151928,
+  "n_transitions": 0,
+  "n_clips": 1,
+  "n_meta_keys": 0,
+  "meta_keys": [],
+  "optimizer_diag": {
+    "n_beats": 78,
+    "target_duration": 42.335784426602444,
+    "remix_path_len": 60,
+    "n_transitions": 0,
+    "total_cost": 2.500000666081932
+  },
+  "sha256_truncated": {
+    "audio_in": "7e95dce361fde185",
+    "render_audio": "107a60c2140aaf4c",
+    "remix_path": "dda64ddd7c28f66a",
+    "transition_times": "fdee2f2368bf2af9"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "track": "eno_music_for_airports_1_1",
+  "target_ratio": 0.7,
+  "sample_rate": 22050,
+  "n_beats": 84,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    935341
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 42.41909297052154,
+  "n_transitions": 1,
+  "n_clips": 2,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 84,
+    "target_duration": 41.79071530261671,
+    "remix_path_len": 60,
+    "n_transitions": 1,
+    "total_cost": 2.452834082052408
+  },
+  "sha256_truncated": {
+    "audio_in": "054c4a6e044fe1a7",
+    "render_audio": "5db30071f8625e0e",
+    "remix_path": "cd4ec28ae172284e",
+    "transition_times": "9fba16a639f37d44"
+  }
+}

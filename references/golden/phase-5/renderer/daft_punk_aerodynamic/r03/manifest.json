@@ -1,0 +1,50 @@
+{
+  "track": "daft_punk_aerodynamic",
+  "target_ratio": 0.3,
+  "sample_rate": 22050,
+  "n_beats": 117,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    379393
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 17.206031746031748,
+  "n_transitions": 2,
+  "n_clips": 3,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 117,
+    "target_duration": 18.015639638900755,
+    "remix_path_len": 36,
+    "n_transitions": 2,
+    "total_cost": 3.075846774415585
+  },
+  "sha256_truncated": {
+    "audio_in": "cfc86860c5e09cee",
+    "render_audio": "ab3bdbde67b53543",
+    "remix_path": "2d5e1c61b7ce40cf",
+    "transition_times": "14b2425fdb076d3d"
+  }
+}

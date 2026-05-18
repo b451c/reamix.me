@@ -1,0 +1,1030 @@
+{
+  "track": "woodkid_iron_acoustic",
+  "audio_source": "references/golden/phase-2/woodkid_iron_acoustic.flac",
+  "audio_sha256": "8cca217cdac2c138c075e895b3db700e86cd420e047d071c6d687af64fe6d4af",
+  "clip_range_sec": [
+    30,
+    90
+  ],
+  "y_samples": 1323000,
+  "sr": 22050,
+  "real_beats": false,
+  "pins": {
+    "librosa": "0.11.0",
+    "scipy": "1.15.3",
+    "numpy": "1.26.4"
+  },
+  "config": {
+    "n_fft": 2048,
+    "hop_length": 512,
+    "n_mels": 128,
+    "n_mfcc_std": 40,
+    "n_mfcc_fast": 20,
+    "n_contrast_bands": 6
+  },
+  "dumps": {
+    "y_audio": {
+      "file": "y_audio.npy",
+      "shape": [
+        1323000
+      ],
+      "dtype": "float32",
+      "sha256": "e9e9009cbfdf37d73f2f8b2a08da56303161ea7ffc462eac965dc8523e629983",
+      "bytes": 5292128
+    },
+    "stft_magnitude": {
+      "file": "stft_magnitude.npy",
+      "shape": [
+        1025,
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "fdaf1a4a3965db41bee01af68d97e702fd99da07923cd3e8a816c7bb966ea2f8",
+      "bytes": 21188928
+    },
+    "mel_power": {
+      "file": "mel_power.npy",
+      "shape": [
+        128,
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "14c074c85ad0cecf8f233a1f6ff954586fae169a6025e128c9b51e1df60996f8",
+      "bytes": 2646144
+    },
+    "log_mel": {
+      "file": "log_mel.npy",
+      "shape": [
+        128,
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "b2984abf93202e8ce9ee6bd267f786a9082c16647c5bac840539ef6cead98c85",
+      "bytes": 2646144
+    },
+    "log_mel_ref1": {
+      "file": "log_mel_ref1.npy",
+      "shape": [
+        128,
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "2b2337fe4614a31eb6995220b54c944d5a07913402df65a4bae54d4079b3f4b2",
+      "bytes": 2646144
+    },
+    "mfcc_40": {
+      "file": "mfcc_40.npy",
+      "shape": [
+        40,
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "c1e4c142c26575ab71abcae8a6c85137876fd851e510fec13658dc226b535fa8",
+      "bytes": 827008
+    },
+    "mfcc_20": {
+      "file": "mfcc_20.npy",
+      "shape": [
+        20,
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "f2ab3d66215b7f5cb6e75c04232693e6459408e820fbe2c3765b4be3e2fc48c1",
+      "bytes": 413568
+    },
+    "chroma_stft": {
+      "file": "chroma_stft.npy",
+      "shape": [
+        12,
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "aedb2c535b01d362ebbd04e857b6b4ccdfa5234c3b055efc960313a7255a4837",
+      "bytes": 248192
+    },
+    "tuning_est": {
+      "file": "tuning_est.npy",
+      "shape": [
+        1
+      ],
+      "dtype": "float64",
+      "sha256": "3a8906e18f9ee7e267766748e7918144e4ea6f1048db319731995b5199b6bc09",
+      "bytes": 136
+    },
+    "spectral_contrast": {
+      "file": "spectral_contrast.npy",
+      "shape": [
+        7,
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "1ef6288f35e31a7ff10a8f3ec553e0600b8aff32d13e8eb727c7801cba58e4da",
+      "bytes": 144832
+    },
+    "onset_strength": {
+      "file": "onset_strength.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "f811a9d06b907915cf5b8f68eabb07cfa3a0f8e4909aea4bb1569c8d61e4ef8a",
+      "bytes": 20800
+    },
+    "rms": {
+      "file": "rms.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "8cf200f512b4a12e8cc9cd72b917b449b285b16069b69883e7cec9dc83813b2d",
+      "bytes": 20800
+    },
+    "spectral_centroid": {
+      "file": "spectral_centroid.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "6876b9e55b1d9ae2d82236508204c3e4d279fbf183337391941e0da6353f3ff1",
+      "bytes": 20800
+    },
+    "beat_frames": {
+      "file": "beat_frames.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "int64",
+      "sha256": "8039b6c769434ca8ba2fd58611557cbab3608868c95a78abaef702c36fff09af",
+      "bytes": 1160
+    },
+    "beat_times": {
+      "file": "beat_times.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "e88c21397ea5c8f44649b051d148e36dabe2e25f200200a34aba6996efe849f3",
+      "bytes": 1160
+    },
+    "beat_sync_mel_power": {
+      "file": "beat_sync_mel_power.npy",
+      "shape": [
+        128,
+        130
+      ],
+      "dtype": "float64",
+      "sha256": "5af13a5dae5836588059c76dea0b98be5f0b1da8809da213fc1b5d2d767b6209",
+      "bytes": 133248
+    },
+    "edge_features_start": {
+      "file": "edge_features_start.npy",
+      "shape": [
+        129,
+        128
+      ],
+      "dtype": "float64",
+      "sha256": "9a51c23e8ccfb0f7e53f8139c79330b727170b89fc33b1f6c4f2dd3144e972d8",
+      "bytes": 132224
+    },
+    "edge_features_end": {
+      "file": "edge_features_end.npy",
+      "shape": [
+        129,
+        128
+      ],
+      "dtype": "float64",
+      "sha256": "edd1c6f75dac66ee619947e8ab95b4d9dadeaaf68eb63a6f70e1ba8fea517561",
+      "bytes": 132224
+    },
+    "edge_rms_start": {
+      "file": "edge_rms_start.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "c7e1356fa167c71a2200195a61ee9d12606d61ac38756ac13e2a61c0180917e4",
+      "bytes": 1160
+    },
+    "edge_rms_end": {
+      "file": "edge_rms_end.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "f927ffdd08b777b787cea6c33e133158e5b3edbe375aa58f9114c073fc30b262",
+      "bytes": 1160
+    },
+    "boundary_waveforms": {
+      "file": "boundary_waveforms.npy",
+      "shape": [
+        129,
+        3417
+      ],
+      "dtype": "float32",
+      "sha256": "42d61fe4830d7f93d1d78df6605c631fcbaaad757244de1cc87fc48e77c22859",
+      "bytes": 1763300
+    },
+    "transition_waveforms": {
+      "file": "transition_waveforms.npy",
+      "shape": [
+        129,
+        13230
+      ],
+      "dtype": "float32",
+      "sha256": "d42ef350c1f081e14cb1d61beb83e6e13f8f5aef2044e0e97778f8a4e5efc745",
+      "bytes": 6826808
+    },
+    "orch_std_feature_matrix": {
+      "file": "orch_std_feature_matrix.npy",
+      "shape": [
+        129,
+        59
+      ],
+      "dtype": "float64",
+      "sha256": "46df92c16fef62f539331cc6e3abd4d121daca050edce3195cc71161b515901f",
+      "bytes": 61016
+    },
+    "orch_std_edge_features_start": {
+      "file": "orch_std_edge_features_start.npy",
+      "shape": [
+        129,
+        59
+      ],
+      "dtype": "float64",
+      "sha256": "b38052165e61ce7b16c3bc3d315bba1f29a078ff6c994185cb93de09393532a7",
+      "bytes": 61016
+    },
+    "orch_std_edge_features_end": {
+      "file": "orch_std_edge_features_end.npy",
+      "shape": [
+        129,
+        59
+      ],
+      "dtype": "float64",
+      "sha256": "d790c751f9b277a3acb9426d4cb2ac40993ee8f1940fb74e78b89156a97a4f4d",
+      "bytes": 61016
+    },
+    "orch_std_rms_energy": {
+      "file": "orch_std_rms_energy.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "db97164c42e8df11ab6f6fa611b697ed5872a0e86a4c25dafdd9b7d2033d6e75",
+      "bytes": 1160
+    },
+    "orch_std_onset_strength": {
+      "file": "orch_std_onset_strength.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "af8f8edb7d89d455c9e71a570952d20026addab0dc717fcee8a3e5cc5cc01bf4",
+      "bytes": 1160
+    },
+    "orch_std_spectral_centroid": {
+      "file": "orch_std_spectral_centroid.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "e48991e3d6e896a3462ee4aededfe57f3b0e6d31eb0c6b04ce324ddca2205931",
+      "bytes": 1160
+    },
+    "orch_fast_feature_matrix": {
+      "file": "orch_fast_feature_matrix.npy",
+      "shape": [
+        129,
+        39
+      ],
+      "dtype": "float64",
+      "sha256": "fb6cbb83046c2b28d8418b2dfc2cd9f14e0f768bdf19f367fb154d1c3523c586",
+      "bytes": 40376
+    },
+    "orch_fast_edge_features_start": {
+      "file": "orch_fast_edge_features_start.npy",
+      "shape": [
+        129,
+        39
+      ],
+      "dtype": "float64",
+      "sha256": "5ca6dadf355487949bfed4f661f8f1c957cd3e520f322707a07b6a54de5f429b",
+      "bytes": 40376
+    },
+    "orch_fast_edge_features_end": {
+      "file": "orch_fast_edge_features_end.npy",
+      "shape": [
+        129,
+        39
+      ],
+      "dtype": "float64",
+      "sha256": "cc36b94147506e99e18ceff1fce0830de6650546e8943e6ca529f06ce400e0fd",
+      "bytes": 40376
+    },
+    "orch_std_vocal_activity": {
+      "file": "orch_std_vocal_activity.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "5d12ebd39e9bfa50073967e8c82b27a41432e35ad53688561f7023e3090d11d3",
+      "bytes": 1160
+    },
+    "orch_std_voiced_ratio": {
+      "file": "orch_std_voiced_ratio.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "0705c8b0cfeeedec5ae1657df0fed3cc9434796a4371257e83efbef871b5341e",
+      "bytes": 1160
+    },
+    "orch_std_f0_hz": {
+      "file": "orch_std_f0_hz.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "0705c8b0cfeeedec5ae1657df0fed3cc9434796a4371257e83efbef871b5341e",
+      "bytes": 1160
+    },
+    "orch_std_f0_confidence": {
+      "file": "orch_std_f0_confidence.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "0705c8b0cfeeedec5ae1657df0fed3cc9434796a4371257e83efbef871b5341e",
+      "bytes": 1160
+    },
+    "orch_std_edge_vocal_activity_start": {
+      "file": "orch_std_edge_vocal_activity_start.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "e9de0ae5b61831db4503040bd56bd05d7b544cac2f34c6b847d056c2fa32605b",
+      "bytes": 1160
+    },
+    "orch_std_edge_vocal_activity_end": {
+      "file": "orch_std_edge_vocal_activity_end.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "71ef92268fe6da12f6b6152b77a2070d92f3eca08320501b008efb7420977049",
+      "bytes": 1160
+    },
+    "orch_std_edge_vocal_onset_start": {
+      "file": "orch_std_edge_vocal_onset_start.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "470b78051ce600e76876aa23da19e59bb3fab10951b1dd019d924990f8cfd4fa",
+      "bytes": 1160
+    },
+    "orch_std_edge_vocal_release_end": {
+      "file": "orch_std_edge_vocal_release_end.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "0d72837394c83d0f6b3c68d04406c2339cba53575978857110b3d7927902a868",
+      "bytes": 1160
+    },
+    "hpss_y_harmonic": {
+      "file": "hpss_y_harmonic.npy",
+      "shape": [
+        1323000
+      ],
+      "dtype": "float32",
+      "sha256": "1b3dd5760633951dcd7df0565b23d3b51bab044bd4ea02ff930c6f0428923222",
+      "bytes": 5292128
+    },
+    "stft_magnitude_harmonic": {
+      "file": "stft_magnitude_harmonic.npy",
+      "shape": [
+        1025,
+        2584
+      ],
+      "dtype": "float32",
+      "sha256": "eefb553994c3d71913c7ea8da84763e9fbad40afce3d4b700dcc2d1d5904b7e5",
+      "bytes": 10594528
+    },
+    "spectral_flatness": {
+      "file": "spectral_flatness.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float32",
+      "sha256": "1dfdedbf7577e08e85792336e74779068be0b2b1c8a23cda17550d7cfd1b7d4e",
+      "bytes": 10464
+    },
+    "harmonic_ratio": {
+      "file": "harmonic_ratio.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "1df4727abdcf63e110c471bb2e3d30d271f78503b28ab3cc22d0826c50beb0e8",
+      "bytes": 20800
+    },
+    "flatness_inv": {
+      "file": "flatness_inv.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "382e3ada19b98d1bed601561d5f7e750dd0ce180c949500eb7779e8f5f581484",
+      "bytes": 20800
+    },
+    "voice_band_ratio": {
+      "file": "voice_band_ratio.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "d824daadb8c7e1e776432cc6ae124d3c311f4f32133c35b3a0a64df1f366a576",
+      "bytes": 20800
+    },
+    "vocal_activity_frame": {
+      "file": "vocal_activity_frame.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "ebb66d01547419d377af8005b5872b53e77ac1f2f5e2193f94fc5a3cfdf30548",
+      "bytes": 20800
+    },
+    "vocal_rise_frame": {
+      "file": "vocal_rise_frame.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "40ead7d488b0d90806d0c23c18d0bfd99a152f24360c0b5d7591ceaaff355600",
+      "bytes": 20800
+    },
+    "vocal_fall_frame": {
+      "file": "vocal_fall_frame.npy",
+      "shape": [
+        2584
+      ],
+      "dtype": "float64",
+      "sha256": "584dc700f93f6faffe19d503c9985b192bb96792e3950a5ba4ca54faa5bb3d51",
+      "bytes": 20800
+    },
+    "vocal_activity": {
+      "file": "vocal_activity.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "806afa1ca5ff77a7466e21fe9df7e08aa2878e70d45515ec9bb3760069d9d95c",
+      "bytes": 1160
+    },
+    "voiced_ratio": {
+      "file": "voiced_ratio.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "0705c8b0cfeeedec5ae1657df0fed3cc9434796a4371257e83efbef871b5341e",
+      "bytes": 1160
+    },
+    "f0_hz": {
+      "file": "f0_hz.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "0705c8b0cfeeedec5ae1657df0fed3cc9434796a4371257e83efbef871b5341e",
+      "bytes": 1160
+    },
+    "f0_confidence": {
+      "file": "f0_confidence.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "0705c8b0cfeeedec5ae1657df0fed3cc9434796a4371257e83efbef871b5341e",
+      "bytes": 1160
+    },
+    "edge_vocal_activity_start": {
+      "file": "edge_vocal_activity_start.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "5d2d04c1b9173086ef50ca5cfb068778a13cabc43b4dc7d4c396c41c759030ca",
+      "bytes": 1160
+    },
+    "edge_vocal_activity_end": {
+      "file": "edge_vocal_activity_end.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "96edcf0c572f13e7f68c2c752f503f1ad82233b9c8d49fb2cb31cadc4661e41a",
+      "bytes": 1160
+    },
+    "edge_vocal_onset_start": {
+      "file": "edge_vocal_onset_start.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "04a8e2484be50ade70cbc9c0bfe0a220cf5b71197c8febca4d3e8728912eaff5",
+      "bytes": 1160
+    },
+    "edge_vocal_release_end": {
+      "file": "edge_vocal_release_end.npy",
+      "shape": [
+        129
+      ],
+      "dtype": "float64",
+      "sha256": "5ce73f02d1dd75ee499ead10c6df0ed71753e5012267520334b9379abf880d83",
+      "bytes": 1160
+    },
+    "novelty_features_25d": {
+      "file": "novelty_features_25d.npy",
+      "shape": [
+        25,
+        2584
+      ],
+      "dtype": "float32",
+      "sha256": "6fe370d75a927bb12f5e87708d358d1ca85e7129a9bf3602edd393f805ad4946",
+      "bytes": 258528
+    },
+    "novelty_ssm_stride4": {
+      "file": "novelty_ssm_stride4.npy",
+      "shape": [
+        646,
+        646
+      ],
+      "dtype": "float32",
+      "sha256": "68d4f44962dddf20aafdc12dc8050e42e7f96ea47423bfc558ae379115e991c7",
+      "bytes": 1669392
+    },
+    "novelty_curve": {
+      "file": "novelty_curve.npy",
+      "shape": [
+        646
+      ],
+      "dtype": "float64",
+      "sha256": "48b566aed4d6a33cf53c8caa0d8e94bfb0657b75b78a447b1e78c02133d48b98",
+      "bytes": 5296
+    },
+    "novelty_peaks_raw": {
+      "file": "novelty_peaks_raw.npy",
+      "shape": [
+        5
+      ],
+      "dtype": "int64",
+      "sha256": "474ca75f21a9fdd98fc022a414be5a5c474eaebaf69a3cb55eeb68ca83312307",
+      "bytes": 168
+    },
+    "novelty_boundaries": {
+      "file": "novelty_boundaries.npy",
+      "shape": [
+        7
+      ],
+      "dtype": "float64",
+      "sha256": "d6ff9bfd88b4ee02bd0b65c8a8cc33b2cec597759ce484ffcdae9347dd34d648",
+      "bytes": 184
+    },
+    "novelty_embeddings": {
+      "file": "novelty_embeddings.npy",
+      "shape": [
+        6,
+        25
+      ],
+      "dtype": "float32",
+      "sha256": "9097b075011648b72568f3a1020b05e866b530d49dc511d0bd0430cd613114da",
+      "bytes": 728
+    },
+    "novelty_affinity": {
+      "file": "novelty_affinity.npy",
+      "shape": [
+        6,
+        6
+      ],
+      "dtype": "float32",
+      "sha256": "d26552a2fca9a3e030771752c4558554314331122fb503b1fec00156c431f6a9",
+      "bytes": 272
+    },
+    "novelty_silhouette_scores": {
+      "file": "novelty_silhouette_scores.npy",
+      "shape": [
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "4cb0f9def8670c22a58d6a1464ec71fccfb0376edc272440ff8567aaf8de34f2",
+      "bytes": 160
+    },
+    "novelty_best_k": {
+      "file": "novelty_best_k.npy",
+      "shape": [],
+      "dtype": "int64",
+      "sha256": "a01d9bb28d8cad54c27175caca6d3fe244274ee13430c828148cef8f32b22766",
+      "bytes": 136
+    },
+    "novelty_cluster_ids": {
+      "file": "novelty_cluster_ids.npy",
+      "shape": [
+        6
+      ],
+      "dtype": "int64",
+      "sha256": "83cf89879893f1c271e8bb85791e2d50fd0c9e3492ad25ec3316deff11e81bde",
+      "bytes": 176
+    },
+    "novelty_segments_fields": {
+      "file": "novelty_segments_fields.npy",
+      "shape": [
+        6,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "5cd1160cc536ef0e992e282b5bfbdabd205355bb46443130429ba478cbf2024f",
+      "bytes": 320
+    },
+    "novelty_segments_labels": {
+      "file": "novelty_segments_labels.txt",
+      "shape": [
+        6
+      ],
+      "dtype": "text",
+      "sha256": "a688a225825d0311d4c50c18f089262693a0a8a4985c4061ce99ef0de3f4c306",
+      "bytes": 39
+    },
+    "recurrence_beat_times": {
+      "file": "recurrence_beat_times.npy",
+      "shape": [
+        132
+      ],
+      "dtype": "float64",
+      "sha256": "2e06bc903db4b1933623452dd78ccf4017c9a2778bad5e1a13ca390f6cc207fa",
+      "bytes": 1184
+    },
+    "recurrence_feature_matrix": {
+      "file": "recurrence_feature_matrix.npy",
+      "shape": [
+        132,
+        59
+      ],
+      "dtype": "float64",
+      "sha256": "52b6a640c0e2d2ee09f47d7b7a925fbc5cbb3702c89b9b6bfc7bd4d6092c9265",
+      "bytes": 62432
+    },
+    "R_matrix": {
+      "file": "R_matrix.npy",
+      "shape": [
+        132,
+        132
+      ],
+      "dtype": "float64",
+      "sha256": "abf9062c3e92f47aee3f0fe6df99ad46de92c9d76e63fa59ddb2ec44159a698a",
+      "bytes": 139520
+    },
+    "R_feat": {
+      "file": "R_feat.npy",
+      "shape": [
+        132,
+        132
+      ],
+      "dtype": "float64",
+      "sha256": "0409e09fbe53c03063649a633c5db9d1e053fc002094408c6a60e9a212790335",
+      "bytes": 139520
+    },
+    "R_chroma": {
+      "file": "R_chroma.npy",
+      "shape": [
+        132,
+        132
+      ],
+      "dtype": "float64",
+      "sha256": "0712ff1acfac12ccff55398d9b21dee7bf835eb9c59fbd25947cac7ac3b2fd62",
+      "bytes": 139520
+    },
+    "R_homo": {
+      "file": "R_homo.npy",
+      "shape": [
+        132,
+        132
+      ],
+      "dtype": "float64",
+      "sha256": "89c6a9772deaef71cb7619a36bf81286944453cb756059e18cdf8299f2138a41",
+      "bytes": 139520
+    },
+    "beats_cpp": {
+      "file": "beats_cpp.npy",
+      "shape": [
+        128
+      ],
+      "dtype": "float64",
+      "sha256": "69af499a8703dec3b0ea7501e3069f684e79ad0d7acbe786cef349be8d1d75f1",
+      "bytes": 1152
+    },
+    "downbeats_cpp": {
+      "file": "downbeats_cpp.npy",
+      "shape": [
+        32
+      ],
+      "dtype": "float64",
+      "sha256": "82abe4a5531f04f0fedeb6d91fbcb306ad434dfbc3fd826ae2e32fa27188839a",
+      "bytes": 384
+    },
+    "feature_matrix_cbm": {
+      "file": "feature_matrix_cbm.npy",
+      "shape": [
+        128,
+        59
+      ],
+      "dtype": "float64",
+      "sha256": "17584d766bd79f00b7164f953ddaf1ec5add998dd1c4903e16940e78dc3f74da",
+      "bytes": 60544
+    },
+    "cbm_bar_features": {
+      "file": "cbm_bar_features.npy",
+      "shape": [
+        32,
+        59
+      ],
+      "dtype": "float32",
+      "sha256": "7f8df2d3f3794c16c2fcfba62c353de3ae5861b33769f303370e97d3d44880a3",
+      "bytes": 7680
+    },
+    "cbm_bar_times": {
+      "file": "cbm_bar_times.npy",
+      "shape": [
+        33
+      ],
+      "dtype": "float64",
+      "sha256": "fe2946c987f3e1ac7578e2812330700192b09f52e46ec29f68459dc10c5348fb",
+      "bytes": 392
+    },
+    "cbm_autosim": {
+      "file": "cbm_autosim.npy",
+      "shape": [
+        32,
+        32
+      ],
+      "dtype": "float32",
+      "sha256": "3dc79f112ec1370b8d4611b4f74d923faea68eb73f1bb703fa7f89bdf8c3bc7f",
+      "bytes": 4224
+    },
+    "cbm_bar_segments": {
+      "file": "cbm_bar_segments.npy",
+      "shape": [
+        4,
+        2
+      ],
+      "dtype": "int64",
+      "sha256": "6614102fe02c74254428cf69ab3611b04e7b6ab784c68d892ce046b9384e63ff",
+      "bytes": 192
+    },
+    "cbm_segments": {
+      "file": "cbm_segments.json",
+      "shape": [
+        4
+      ],
+      "dtype": "json",
+      "sha256": "96af10a47577b1606cfe2c1c5771734c46c24990028c6c86d9a357177bdca487",
+      "bytes": 462
+    },
+    "cbm_boundaries": {
+      "file": "cbm_boundaries.npy",
+      "shape": [
+        5
+      ],
+      "dtype": "float64",
+      "sha256": "b8bdad434d0d702404903e7a15246b5f71ba740aa8cb6b404bedcfe663ef8fc7",
+      "bytes": 168
+    },
+    "cbm_seg_normed_centroids": {
+      "file": "cbm_seg_normed_centroids.npy",
+      "shape": [
+        4,
+        59
+      ],
+      "dtype": "float32",
+      "sha256": "f9ed6d847f701ced0968497f2e4399eb43dafb73f10bb729f3e67b8cb1728bc7",
+      "bytes": 1072
+    },
+    "cbm_seg_sim": {
+      "file": "cbm_seg_sim.npy",
+      "shape": [
+        4,
+        4
+      ],
+      "dtype": "float32",
+      "sha256": "fdd78a550d2a4a5b7ff2746d68393a50e9ad82afb1f3aa660ab6f60848251b05",
+      "bytes": 192
+    },
+    "cbm_bar_energy": {
+      "file": "cbm_bar_energy.npy",
+      "shape": [
+        32
+      ],
+      "dtype": "float64",
+      "sha256": "fb3fe102eaf66b0981d8c60f8510b61e46a85bc032fab76c657f9ec1d9f0102e",
+      "bytes": 384
+    },
+    "cbm_segments_fields": {
+      "file": "cbm_segments_fields.npy",
+      "shape": [
+        4,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "68c49d208c9f6440d34e8ff0718c01d4ba6a87960ba5c26113a8b485c21cdd11",
+      "bytes": 256
+    },
+    "cbm_segments_labels": {
+      "file": "cbm_segments_labels.txt",
+      "shape": [
+        4
+      ],
+      "dtype": "text",
+      "sha256": "28a549a009d15e6bf051d588d85812dbe43ec2a459eb86fbdd2a0ff9b13e68ba",
+      "bytes": 28
+    },
+    "cbm_consolidated_segments_fields": {
+      "file": "cbm_consolidated_segments_fields.npy",
+      "shape": [
+        1,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "1f3d38b5619a4f0ecc76c7625d3cfc742863be54c6cffa2ca1ab465cc92fce58",
+      "bytes": 160
+    },
+    "cbm_consolidated_segments_labels": {
+      "file": "cbm_consolidated_segments_labels.txt",
+      "shape": [
+        1
+      ],
+      "dtype": "text",
+      "sha256": "06c20e17ca5214f5783ad87825bf756b03b76a2fa88821426cca0bbb134da371",
+      "bytes": 6
+    },
+    "novelty_consolidated_segments_fields": {
+      "file": "novelty_consolidated_segments_fields.npy",
+      "shape": [
+        5,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "6359c08a3cf79f436cf1789d10510c7ac10b95b97c3e5c15eb27599f54b1bc58",
+      "bytes": 288
+    },
+    "novelty_consolidated_segments_labels": {
+      "file": "novelty_consolidated_segments_labels.txt",
+      "shape": [
+        5
+      ],
+      "dtype": "text",
+      "sha256": "f31f0c8b70bccf12feee415b30c07ed5c236798632623e6634d40316a405db7e",
+      "bytes": 32
+    },
+    "dispatched_path": {
+      "file": "dispatched_path.txt",
+      "shape": [
+        1
+      ],
+      "dtype": "text",
+      "sha256": "0675c15723d632f6cd5c1fa4e2d85de0c1f3527e4edc73668f7ba618efb16506",
+      "bytes": 8
+    },
+    "dispatched_segments_fields": {
+      "file": "dispatched_segments_fields.npy",
+      "shape": [
+        5,
+        4
+      ],
+      "dtype": "float64",
+      "sha256": "6359c08a3cf79f436cf1789d10510c7ac10b95b97c3e5c15eb27599f54b1bc58",
+      "bytes": 288
+    },
+    "dispatched_segments_labels": {
+      "file": "dispatched_segments_labels.txt",
+      "shape": [
+        5
+      ],
+      "dtype": "text",
+      "sha256": "f31f0c8b70bccf12feee415b30c07ed5c236798632623e6634d40316a405db7e",
+      "bytes": 32
+    },
+    "dispatched_boundaries": {
+      "file": "dispatched_boundaries.npy",
+      "shape": [
+        6
+      ],
+      "dtype": "float64",
+      "sha256": "a3c72ca139f8e4a3124e6ea5337f956eb5ca0cb5c70423e9870df1e0e581f56f",
+      "bytes": 176
+    },
+    "repetition_from_beat": {
+      "file": "repetition_from_beat.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "int64",
+      "sha256": "e734dac55ea9fbbe782af2d8c02c3c5992131906228afb2aaaf137d6f3ed74db",
+      "bytes": 128
+    },
+    "repetition_to_beat": {
+      "file": "repetition_to_beat.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "int64",
+      "sha256": "e734dac55ea9fbbe782af2d8c02c3c5992131906228afb2aaaf137d6f3ed74db",
+      "bytes": 128
+    },
+    "repetition_waveform_similarity": {
+      "file": "repetition_waveform_similarity.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "float64",
+      "sha256": "fdee2f2368bf2af9c942f32cce9d982e48dfc46889bf923e99bc9ac834a4ba46",
+      "bytes": 128
+    },
+    "repetition_chroma_correlation": {
+      "file": "repetition_chroma_correlation.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "float64",
+      "sha256": "fdee2f2368bf2af9c942f32cce9d982e48dfc46889bf923e99bc9ac834a4ba46",
+      "bytes": 128
+    },
+    "repetition_alignment_lag_samples": {
+      "file": "repetition_alignment_lag_samples.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "int64",
+      "sha256": "e734dac55ea9fbbe782af2d8c02c3c5992131906228afb2aaaf137d6f3ed74db",
+      "bytes": 128
+    },
+    "repetition_from_section_idx": {
+      "file": "repetition_from_section_idx.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "int64",
+      "sha256": "e734dac55ea9fbbe782af2d8c02c3c5992131906228afb2aaaf137d6f3ed74db",
+      "bytes": 128
+    },
+    "repetition_to_section_idx": {
+      "file": "repetition_to_section_idx.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "int64",
+      "sha256": "e734dac55ea9fbbe782af2d8c02c3c5992131906228afb2aaaf137d6f3ed74db",
+      "bytes": 128
+    },
+    "repetition_from_bar": {
+      "file": "repetition_from_bar.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "int64",
+      "sha256": "e734dac55ea9fbbe782af2d8c02c3c5992131906228afb2aaaf137d6f3ed74db",
+      "bytes": 128
+    },
+    "repetition_to_bar": {
+      "file": "repetition_to_bar.npy",
+      "shape": [
+        0
+      ],
+      "dtype": "int64",
+      "sha256": "e734dac55ea9fbbe782af2d8c02c3c5992131906228afb2aaaf137d6f3ed74db",
+      "bytes": 128
+    },
+    "repetition_section_pairs": {
+      "file": "repetition_section_pairs.npy",
+      "shape": [
+        1,
+        2
+      ],
+      "dtype": "int64",
+      "sha256": "6cf5b00e090b9a988bfd1fbcaf4b39be8f06fb2ea74fdf1d46561b5a77b07fd7",
+      "bytes": 144
+    },
+    "repetition_counts": {
+      "file": "repetition_counts.txt",
+      "shape": [
+        2
+      ],
+      "dtype": "text",
+      "sha256": "8e6c120b87735aa3dcfe3bba6992c38752fbec30e54037777561bc51e70d91d6",
+      "bytes": 40
+    }
+  },
+  "generated_utc": "2026-04-21T21:24:32+00:00"
+}

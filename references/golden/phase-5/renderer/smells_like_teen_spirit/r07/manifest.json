@@ -1,0 +1,50 @@
+{
+  "track": "smells_like_teen_spirit",
+  "target_ratio": 0.7,
+  "sample_rate": 22050,
+  "n_beats": 118,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    964355
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 43.734920634920634,
+  "n_transitions": 1,
+  "n_clips": 2,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 118,
+    "target_duration": 42.33054318550305,
+    "remix_path_len": 86,
+    "n_transitions": 1,
+    "total_cost": 2.2651018606956095
+  },
+  "sha256_truncated": {
+    "audio_in": "5ca79959ede92537",
+    "render_audio": "2e417ddfe15a622b",
+    "remix_path": "fdb3e5aeb12ffeb2",
+    "transition_times": "ba55c31d534ebaeb"
+  }
+}

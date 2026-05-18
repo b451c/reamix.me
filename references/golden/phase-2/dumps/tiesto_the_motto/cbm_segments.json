@@ -1,0 +1,30 @@
+[
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 15.183,
+    "label": "chorus",
+    "start": 0.938
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 33.501,
+    "label": "chorus",
+    "start": 15.183
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 49.752,
+    "label": "chorus",
+    "start": 33.501
+  },
+  {
+    "cluster_id": 0,
+    "confidence": 0.8,
+    "end": 60.427,
+    "label": "outro",
+    "start": 49.752
+  }
+]

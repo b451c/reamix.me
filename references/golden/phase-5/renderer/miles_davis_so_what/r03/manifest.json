@@ -1,0 +1,50 @@
+{
+  "track": "miles_davis_so_what",
+  "target_ratio": 0.3,
+  "sample_rate": 22050,
+  "n_beats": 136,
+  "audio_in_shape": [
+    1,
+    1323000
+  ],
+  "audio_in_dtype": "float32",
+  "audio_out_shape": [
+    1,
+    425274
+  ],
+  "audio_out_dtype": "float32",
+  "duration_sec": 19.286802721088435,
+  "n_transitions": 2,
+  "n_clips": 3,
+  "n_meta_keys": 15,
+  "meta_keys": [
+    "alignment_offset_sec",
+    "chroma_distance",
+    "edge_splice_similarity",
+    "energy_diff_db",
+    "quality_score",
+    "render_incoming_cut_sample",
+    "render_incoming_shift_sec",
+    "render_outgoing_cut_sample",
+    "render_outgoing_shift_sec",
+    "render_splice_score",
+    "render_stereo_similarity",
+    "resolved_overlap_sec",
+    "successor_similarity",
+    "total_cost",
+    "waveform_similarity"
+  ],
+  "optimizer_diag": {
+    "n_beats": 136,
+    "target_duration": 18.011512451171875,
+    "remix_path_len": 44,
+    "n_transitions": 2,
+    "total_cost": 3.728485287174511
+  },
+  "sha256_truncated": {
+    "audio_in": "0046e1fd258993aa",
+    "render_audio": "1013af7f381c780f",
+    "remix_path": "6928c55be8f9ce7f",
+    "transition_times": "a928a8534409a0ec"
+  }
+}

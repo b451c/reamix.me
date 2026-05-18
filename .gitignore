@@ -1,0 +1,102 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+_deps/
+
+# IDE
+.idea/
+.vscode/
+*.user
+*.xcodeproj/
+*.xcworkspace/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Binaries / libs (these come from vendor submodules or prebuilt ONNX Runtime; never commit)
+*.dylib
+*.so
+*.so.*
+*.dll
+*.lib
+*.a
+*.o
+*.obj
+*.exe
+*.pdb
+
+# Models — downloaded at runtime, not checked in
+*.onnx
+
+# ONNX Runtime prebuilt — dropped in by developer; dSYM, headers, libs are ~20MB
+# Obtain matching release from REABeat's asset set (see phase-0-scaffold/spec.md)
+vendor/onnxruntime/
+
+# Golden test outputs (large, regenerable)
+references/golden/**/*.npy
+references/golden/**/*.wav
+references/golden/**/*.flac
+references/golden/**/*.mp3
+# Keep the small JSON ground-truth descriptors
+!references/golden/**/*.json
+
+# ADR-100 sesja 108 — optional historical reference symlinks (point to sibling
+# repos on local dev machines; broken for cloners). See references/SETUP.md for
+# how to recreate locally if you have the parent projects.
+references/python-source
+references/lua-source
+references/reabeat-template
+
+# Listening artifacts (regenerable from references/golden/**/render_audio.npy)
+references/listening/
+# Sesja 86 ADR-076 — track BUGGED-data markers for invalidated sweeps.
+# (Each marker added with `git add -f` per file; pattern below documents intent.)
+# !**/SESJA*_BUGGED.md   # NOTE: gitignore re-include doesn't traverse a wholly-
+#                        # ignored parent dir; `git add -f` is the only path.
+
+# Ancillary parity-test reference dumps (regenerable via tools/dump_*.py)
+# Covers .npy (large binary fixtures) + .txt (label/index arrays) + .json
+# (metadata descriptors) — all are dump-tool output, not source-of-truth.
+# Session-29 widened from *.npy only after 3 sessions (26-28) of accumulated
+# .txt slip-through leaving phase4/ + phase4_e2e/ dirs untracked.
+tests/parity/reference/data/**/*.npy
+tests/parity/reference/data/**/*.txt
+tests/parity/reference/data/**/*.json
+
+# Logs / tmp
+*.log
+*.tmp
+.tmp/
+
+# Python (for the `tools/dump_*.py` scripts, if any accumulate caches)
+__pycache__/
+*.pyc
+.venv/
+.venv-*/
+tools/.venv-calibration/
+tools/.slsk-credentials.local
+references/listening/dev-028/runs/
+references/listening/dev-028/corpus-pulls/
+
+# Multi-agent development workflow (kept locally only, never committed)
+meta/
+phases/
+CLAUDE.md
+.claude/
+tools/dev/
+
+# Internal references (kept locally; not for public repo)
+references/SETUP.md
+references/golden/dev-028/

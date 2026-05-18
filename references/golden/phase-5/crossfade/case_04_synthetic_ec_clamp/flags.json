@@ -1,0 +1,20 @@
+{
+  "phase_align": true,
+  "energy_compensate": true,
+  "max_phase_shift_ms": 3.0,
+  "kind": "adaptive",
+  "signal": "case_03 with incoming \u00d7 0.1 (-20 dB)",
+  "why": "exercises RMS clip(0.35, 2.83) saturation \u2014 gain per band saturates at 2.83 (upper cap)",
+  "out_shape": [
+    2,
+    22050
+  ],
+  "in_shape": [
+    2,
+    22050
+  ],
+  "result_shape": [
+    2,
+    35280
+  ]
+}

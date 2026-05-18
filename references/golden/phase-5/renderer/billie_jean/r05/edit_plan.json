@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/182. Michael Jackson - Billie Jean.mp3",
+    "start_beat": 0,
+    "end_beat": 18,
+    "source_start_sec": 0.0,
+    "source_end_sec": 10.156780045351473,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 10.156780045351473,
+    "duration_sec": 10.156780045351473,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.07687074829931972,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.07687074829931972,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/182. Michael Jackson - Billie Jean.mp3",
+    "start_beat": 79,
+    "end_beat": 116,
+    "source_start_sec": 40.83736961451247,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 10.079909297052154,
+    "timeline_end_sec": 29.242539682539682,
+    "duration_sec": 19.162630385487528,
+    "fade_in_sec": 0.07687074829931972,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.07687074829931972,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

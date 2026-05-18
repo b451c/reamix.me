@@ -1,0 +1,34 @@
+[
+  {
+    "clip_index": 1,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/complete/Klotterbooke/1969/051 - Bob Dylan - Lay Lady Lay.flac",
+    "start_beat": 0,
+    "end_beat": 13,
+    "source_start_sec": 0.0,
+    "source_end_sec": 10.957006802721088,
+    "timeline_start_sec": 0.0,
+    "timeline_end_sec": 10.957006802721088,
+    "duration_sec": 10.957006802721088,
+    "fade_in_sec": 0.0,
+    "fade_out_sec": 0.11573696145124716,
+    "overlap_before_sec": 0.0,
+    "overlap_after_sec": 0.11573696145124716,
+    "gap_after_sec": 0.0
+  },
+  {
+    "clip_index": 2,
+    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/complete/Klotterbooke/1969/051 - Bob Dylan - Lay Lady Lay.flac",
+    "start_beat": 66,
+    "end_beat": 77,
+    "source_start_sec": 50.94394557823129,
+    "source_end_sec": 60.0,
+    "timeline_start_sec": 10.84126984126984,
+    "timeline_end_sec": 19.89732426303855,
+    "duration_sec": 9.056054421768707,
+    "fade_in_sec": 0.11573696145124716,
+    "fade_out_sec": 0.0,
+    "overlap_before_sec": 0.11573696145124716,
+    "overlap_after_sec": 0.0,
+    "gap_after_sec": 0.0
+  }
+]

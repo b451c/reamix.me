@@ -1,0 +1,151 @@
+// Copy of references/reabeat-template/src/MelSpectrogram.cpp with class renamed
+// to MelSpectrogramReabeat. See MelSpectrogramReabeat.h for rationale.
+#include "MelSpectrogramReabeat.h"
+#include "pocketfft_hdronly.h"
+#include <algorithm>
+#include <numbers>
+
+MelSpectrogramReabeat::MelSpectrogramReabeat()
+{
+    createFilterbank();
+    createWindow();
+}
+
+float MelSpectrogramReabeat::hzToMel(float hz)
+{
+    constexpr double fMin = 0.0;
+    constexpr double fSp = 200.0 / 3.0;
+    double mels = (hz - fMin) / fSp;
+
+    constexpr double minLogHz = 1000.0;
+    constexpr double minLogMel = (minLogHz - fMin) / fSp;
+    const double logstep = std::log(6.4) / 27.0;
+
+    if (hz >= minLogHz)
+        mels = minLogMel + std::log(hz / minLogHz) / logstep;
+
+    return static_cast<float>(mels);
+}
+
+float MelSpectrogramReabeat::melToHz(float mel)
+{
+    constexpr double fMin = 0.0;
+    constexpr double fSp = 200.0 / 3.0;
+    double freqs = fMin + fSp * mel;
+
+    constexpr double minLogHz = 1000.0;
+    constexpr double minLogMel = (minLogHz - fMin) / fSp;
+    const double logstep = std::log(6.4) / 27.0;
+
+    if (mel >= minLogMel)
+        freqs = minLogHz * std::exp(logstep * (mel - minLogMel));
+
+    return static_cast<float>(freqs);
+}
+
+void MelSpectrogramReabeat::createWindow()
+{
+    window_.resize(kWinLength);
+    for (int i = 0; i < kWinLength; ++i)
+        window_[i] = 0.5f * (1.0f - std::cos(2.0f * static_cast<float>(std::numbers::pi) * i / kWinLength));
+}
+
+void MelSpectrogramReabeat::createFilterbank()
+{
+    constexpr int nFreqs = kNfft / 2 + 1;
+
+    double melMin = hzToMel(kFmin);
+    double melMax = hzToMel(kFmax);
+
+    std::vector<double> melPoints(kNmels + 2);
+    for (int i = 0; i < kNmels + 2; ++i)
+        melPoints[i] = melMin + (melMax - melMin) * i / (kNmels + 1);
+
+    std::vector<double> hzPoints(kNmels + 2);
+    for (int i = 0; i < kNmels + 2; ++i)
+        hzPoints[i] = melToHz(static_cast<float>(melPoints[i]));
+
+    std::vector<double> freqs(nFreqs);
+    for (int i = 0; i < nFreqs; ++i)
+        freqs[i] = static_cast<double>(i) * kSampleRate / kNfft;
+
+    filterbank_.resize(nFreqs, std::vector<double>(kNmels, 0.0));
+    for (int i = 0; i < nFreqs; ++i)
+    {
+        double hzI = freqs[i];
+        for (int j = 0; j < kNmels; ++j)
+        {
+            double hzLeft = hzPoints[j];
+            double hzCenter = hzPoints[j + 1];
+            double hzRight = hzPoints[j + 2];
+
+            double leftSlope = (hzCenter != hzLeft) ? (hzI - hzLeft) / (hzCenter - hzLeft) : 0.0;
+            double rightSlope = (hzRight != hzCenter) ? (hzRight - hzI) / (hzRight - hzCenter) : 0.0;
+
+            filterbank_[i][j] = std::max(0.0, std::min(leftSlope, rightSlope));
+        }
+    }
+}
+
+int MelSpectrogramReabeat::getFrameCount(int audioLength) const
+{
+    int padded = audioLength + kNfft;
+    return (padded - kNfft) / kHopLength + 1;
+}
+
+std::vector<std::vector<float>> MelSpectrogramReabeat::compute(const std::vector<float>& audio)
+{
+    constexpr int nFreqs = kNfft / 2 + 1;
+    int padSize = kNfft / 2;
+
+    std::vector<float> padded;
+    padded.reserve(audio.size() + 2 * padSize);
+
+    for (int i = padSize; i >= 1; --i)
+        padded.push_back(audio[i]);
+
+    padded.insert(padded.end(), audio.begin(), audio.end());
+
+    int audioSize = static_cast<int>(audio.size());
+    for (int i = 1; i <= padSize; ++i)
+        padded.push_back(audio[audioSize - 1 - i]);
+
+    int numFrames = (static_cast<int>(padded.size()) - kNfft) / kHopLength + 1;
+    if (numFrames <= 0)
+        return {};
+
+    std::vector<std::vector<float>> output(numFrames, std::vector<float>(kNmels));
+
+    pocketfft::shape_t shape = {static_cast<size_t>(kNfft)};
+    pocketfft::stride_t strideIn = {sizeof(float)};
+    pocketfft::stride_t strideOut = {sizeof(std::complex<float>)};
+
+    std::vector<float> frame(kNfft);
+    std::vector<std::complex<float>> fftOut(nFreqs);
+
+    constexpr double kNormFactor = 1.0 / 32.0;  // 1/sqrt(1024)
+
+    for (int i = 0; i < numFrames; ++i)
+    {
+        int start = i * kHopLength;
+        for (int j = 0; j < kNfft; ++j)
+            frame[j] = padded[start + j] * window_[j];
+
+        pocketfft::r2c(shape, strideIn, strideOut, 0, true, frame.data(), fftOut.data(), 1.0f);
+
+        for (int m = 0; m < kNmels; ++m)
+        {
+            double melEnergy = 0.0;
+            for (int k = 0; k < nFreqs; ++k)
+            {
+                double real = fftOut[k].real();
+                double imag = fftOut[k].imag();
+                double amplitude = std::sqrt(real * real + imag * imag) * kNormFactor;
+                melEnergy += amplitude * filterbank_[k][m];
+            }
+            output[i][m] = static_cast<float>(std::log1p(kLogMultiplier * std::max(melEnergy, kAmin)));
+        }
+    }
+
+    return output;
+}
