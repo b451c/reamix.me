@@ -23,6 +23,7 @@
 // fallback-always-fires pattern → bisect, do NOT widen gate.
 
 #include "render/Splice.h"
+#include <cstdint>
 
 #include <algorithm>
 #include <cfenv>

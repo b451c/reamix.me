@@ -1,4 +1,5 @@
 #include "analysis/BeatWindows.h"
+#include <cstdint>
 
 #include <cmath>
 

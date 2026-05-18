@@ -1,4 +1,5 @@
 #include "analysis/FeatureExtractor.h"
+#include <cstdint>
 
 #include "analysis/BeatSync.h"
 #include "analysis/BeatWindows.h"

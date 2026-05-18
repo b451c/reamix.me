@@ -1,4 +1,5 @@
 #include "remix/SegmentData.h"
+#include <cstdint>
 
 #include <algorithm>
 #include <cctype>

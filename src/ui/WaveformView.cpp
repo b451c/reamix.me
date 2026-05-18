@@ -1,4 +1,5 @@
 #include "WaveformView.h"
+#include <cstdint>
 #include "LookAndFeelReamix.h"
 #include "KindDisplay.h"
 

@@ -18,6 +18,7 @@
 //   * transition_times f64 max_abs ≤ 1e-9.
 
 #include "render/Renderer.h"
+#include <cstdint>
 
 #include "render/Crossfade.h"
 
