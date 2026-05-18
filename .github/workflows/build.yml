@@ -92,7 +92,10 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_flags }}
 
       - name: Build
-        run: cmake --build build --config Release -j
+        # -j 2 (not -j unbounded) — GitHub-hosted runners have ~7 GB RAM;
+        # parallel C++20 compiles of JUCE + 40+ parity test targets can OOM
+        # the runner (SIGTERM exit 143). Two parallel jobs is the safe floor.
+        run: cmake --build build --config Release -j 2
 
       - name: Run tests
         if: runner.os != 'Windows'
