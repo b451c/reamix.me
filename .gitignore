@@ -97,6 +97,9 @@ CLAUDE.md
 .claude/
 tools/dev/
 
+# Demo app sandbox (Remotion video render — local only)
+demo/
+
 # Internal references (kept locally; not for public repo)
 references/SETUP.md
 references/golden/dev-028/
