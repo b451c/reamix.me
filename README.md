@@ -106,6 +106,10 @@ The repo is organized as a **port** of an earlier Python+Lua implementation. Eac
 
 Each pipeline stage has parity tests against the Python reference. CI runs the full parity suite on every PR; failures block merges.
 
+### DSP heritage
+
+The `src/dsp/` layer is a bit-exact C++ port of [librosa](https://librosa.org/) + [scipy.signal](https://docs.scipy.org/doc/scipy/reference/signal.html) primitives — mel filterbank, MFCC, chroma STFT, HPSS, onset strength, butterworth + SOS filtering, DCT type-II ortho, YIN pitch tracking, spectral centroid, RMS. The port runs in pure C++ with no Python interpreter; parity tests in `tests/parity/` verify numerical equivalence to the librosa/scipy reference within ~1e-6 ULP per module. If you need a portable C++ alternative to librosa for embedded / game / plugin audio work, this layer may eventually be extracted into its own repository — open an issue if that's interesting to you.
+
 For contributors, the canonical entry point is **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ## License
@@ -136,6 +140,7 @@ Bundled font licenses are preserved under `assets/fonts/*-LICENSE.txt`.
 
 ## Acknowledgments
 
+- **[librosa](https://librosa.org/)** and **[scipy](https://scipy.org/)** — the DSP primitives in `src/dsp/` are a faithful C++ port of librosa + `scipy.signal`. The Python reference is the source of truth for every parity test in `tests/parity/`.
 - **CPJKU** for the [beat-this](https://github.com/CPJKU/beat_this) model (ISMIR 2024) — best published F1 scores for beat + downbeat tracking.
 - **Adobe Audition** for popularizing the Remix workflow that motivated this project.
 - **[REABeat](https://github.com/b451c/ReaBeat)** — sibling REAPER extension by the same author; serves as the architectural template for native C++/JUCE/REAPER integration.
