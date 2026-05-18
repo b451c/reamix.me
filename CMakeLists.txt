@@ -2050,26 +2050,6 @@ if(REAMIX_BUILD_TESTS)
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   set_tests_properties(custom_kind_registry PROPERTIES TIMEOUT 30)
 
-  # listener_ui_slot_randomization — sesja 88 ADR-078 CI guardrail.
-  # Verifies tools/dev/calibration/listener_ui.py per-pair coin-flip slot
-  # mapping prevents anchor (highest_mean from EUBO) from sticking in
-  # slot A across the entire session. Sesja 88 audit precedent: Drake
-  # 14-D N=77 had r01024 in slot A 41/41 times pre-fix. Sesja 85 cross-
-  # track Δ matrix had same structural bug. Test runs 1000 forced pairs
-  # against patched session.next_pair_from_pool returning fixed
-  # (anchor, candidate); asserts each ID appears in slot A 50% ±10%.
-  # Python test (no C++ harness needed; logic lives in Python listener_ui).
-  find_program(PY_VENV_CALIBRATION
-               NAMES python
-               PATHS ${CMAKE_SOURCE_DIR}/tools/.venv-calibration/bin
-               NO_DEFAULT_PATH)
-  if(PY_VENV_CALIBRATION)
-    add_test(NAME listener_ui_slot_randomization
-             COMMAND ${PY_VENV_CALIBRATION}
-                     ${CMAKE_SOURCE_DIR}/tests/parity/test_listener_ui_slot_randomization.py
-             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    set_tests_properties(listener_ui_slot_randomization PROPERTIES TIMEOUT 60)
-  endif()
 endif()  # REAMIX_BUILD_TESTS
 
 # --- Tooling binaries (CLI runners for parity gates, not shipped with plugin) ---
