@@ -22,7 +22,13 @@
     #endif
     #include <Accelerate/Accelerate.h>
 #else
-    #error "NoveltySegmenter::clusterSegments currently requires Apple Accelerate (LAPACK). See ADR-021 § Consequences — cross-platform Eigen/OpenBLAS ADR deferred to phase-7."
+    // Cross-platform fallback (Linux, Windows): Eigen SelfAdjointEigenSolver
+    // replaces LAPACK dsyevd. Eigen returns eigenvalues in ascending order
+    // (same as dsyevd) and eigenvectors as columns of the result matrix in
+    // column-major layout. The downstream deterministicSignFlip() makes the
+    // pipeline sign-robust, so Eigen vs LAPACK eigenvector sign differences
+    // resolve to the same final clustering output.
+    #include <Eigen/Eigenvalues>
 #endif
 
 namespace reamix::analysis {
@@ -660,22 +666,26 @@ void buildNormalizedLaplacian(const float* affinity, int n,
     }
 }
 
-// Symmetric eigendecomposition via Accelerate LAPACK `dsyevd`. Returns
-// eigenvalues in ascending order and eigenvectors in the columns of the
-// input matrix (LAPACK overwrites).
+// Symmetric eigendecomposition. Returns eigenvalues in ascending order and
+// eigenvectors as columns of evecsColumnMajor in column-major layout.
 //
-// eigvals: length n (ascending). evecsRowMajor: n×n row-major after transpose
-// from LAPACK's column-major output — evecsRowMajor[i*n + j] = i-th element
-// of j-th eigenvector (i.e. each column j is one eigenvector of length n).
+// macOS path: LAPACK `dsyevd` via Apple Accelerate (preserved for bit-exact
+// parity with prior macOS-only builds).
+// Cross-platform path: Eigen SelfAdjointEigenSolver. Both return ascending
+// eigenvalues and column-major eigenvectors; downstream deterministicSignFlip
+// makes the pipeline sign-robust to algorithm-specific eigenvector signs.
 bool symmetricEigh(const std::vector<double>& laplacian, int n,
                    std::vector<double>& eigvals,
                    std::vector<double>& evecsColumnMajor)
 {
+    eigvals.assign(static_cast<std::size_t>(n), 0.0);
+    evecsColumnMajor.assign(static_cast<std::size_t>(n) * n, 0.0);
+
+#if defined(__APPLE__)
     // LAPACK dsyevd is column-major; since L is symmetric, row-major input
     // equals column-major input bit-exact. Output A (in-place) holds
     // eigenvectors as columns in column-major layout.
     evecsColumnMajor = laplacian;  // working copy (LAPACK overwrites)
-    eigvals.assign(static_cast<std::size_t>(n), 0.0);
 
     __LAPACK_int N     = n;
     __LAPACK_int lda   = n;
@@ -703,6 +713,21 @@ bool symmetricEigh(const std::vector<double>& laplacian, int n,
             eigvals.data(), work.data(), &lwork,
             iwork.data(), &liwork, &info);
     return info == 0;
+#else
+    // Eigen SelfAdjointEigenSolver: column-major matrix input by default.
+    // L is symmetric so row-major == column-major bit-exact reinterpretation.
+    Eigen::Map<const Eigen::MatrixXd> mapInput(
+        laplacian.data(), n, n);
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(mapInput);
+    if (solver.info() != Eigen::Success) return false;
+
+    const auto& ev   = solver.eigenvalues();    // ascending order
+    const auto& evec = solver.eigenvectors();   // column-major
+
+    std::copy(ev.data(), ev.data() + n, eigvals.begin());
+    std::copy(evec.data(), evec.data() + (n * n), evecsColumnMajor.begin());
+    return true;
+#endif
 }
 
 // sklearn's `_deterministic_vector_sign_flip` makes eigenvector signs

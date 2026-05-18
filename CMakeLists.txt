@@ -33,6 +33,16 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/vendor/JUCE/CMakeLists.txt")
 endif()
 add_subdirectory(vendor/JUCE EXCLUDE_FROM_ALL)
 
+# Eigen (header-only, MPL 2.0). Used on non-Apple platforms as the
+# LAPACK fallback for NoveltySegmenter::symmetricEigh. macOS keeps the
+# Accelerate path. Targets linking NoveltySegmenter.cpp link this as
+# `eigen` interface library.
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/vendor/Eigen/Eigen/Eigenvalues")
+  message(FATAL_ERROR "Eigen not found. Run: git submodule update --init")
+endif()
+add_library(eigen INTERFACE)
+target_include_directories(eigen INTERFACE "${CMAKE_SOURCE_DIR}/vendor/Eigen")
+
 # ONNX Runtime
 set(ORT_DIR "${CMAKE_SOURCE_DIR}/vendor/onnxruntime")
 if(NOT EXISTS "${ORT_DIR}/include/onnxruntime_cxx_api.h")
@@ -97,6 +107,7 @@ juce_add_binary_data(reamix_font_binary SOURCES
 
 # JUCE modules
 target_link_libraries(reaper_reamix PRIVATE
+  eigen
   reamix_font_binary
   juce::juce_gui_basics
   juce::juce_gui_extra
@@ -780,6 +791,7 @@ if(REAMIX_BUILD_TESTS)
     ${POCKETFFT_DIR}
     tests/parity/reference
   )
+  target_link_libraries(test_novelty_segmenter PRIVATE eigen)
   if(APPLE)
     target_link_libraries(test_novelty_segmenter PRIVATE "-framework Accelerate")
   endif()
@@ -846,6 +858,7 @@ if(REAMIX_BUILD_TESTS)
     ${POCKETFFT_DIR}
     tests/parity/reference
   )
+  target_link_libraries(test_structure_analyzer PRIVATE eigen)
   if(APPLE)
     target_link_libraries(test_structure_analyzer PRIVATE "-framework Accelerate")
   endif()
@@ -2131,6 +2144,7 @@ if(ORT_FOUND)
     ${POCKETFFT_DIR}
   )
   target_link_libraries(warm_cache PRIVATE
+    eigen
     onnxruntime
     juce::juce_audio_formats
     juce::juce_cryptography
@@ -2185,6 +2199,7 @@ if(ORT_FOUND)
     ${POCKETFFT_DIR}
   )
   target_link_libraries(calibration_harness PRIVATE
+    eigen
     onnxruntime
     juce::juce_audio_formats
     juce::juce_cryptography

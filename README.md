@@ -133,6 +133,7 @@ In practice this means:
 | [reaper-sdk](https://github.com/justinfrankel/reaper-sdk) | LGPL-2.1 / custom | REAPER plugin headers |
 | [WDL](https://www.cockos.com/wdl/) (SWELL) | zlib | macOS / Linux dialog layer |
 | [PocketFFT](https://gitlab.mpcdf.mpg.de/mtr/pocketfft) | BSD-3-Clause | FFT |
+| [Eigen](https://eigen.tuxfamily.org/) | MPL 2.0 | Cross-platform LAPACK fallback (non-Apple eigendecomposition) |
 | [Inter](https://github.com/rsms/inter) | SIL OFL 1.1 | UI font |
 | [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | SIL OFL 1.1 | Monospace font |
 

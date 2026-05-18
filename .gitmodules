@@ -7,3 +7,6 @@
 [submodule "vendor/JUCE"]
 	path = vendor/JUCE
 	url = https://github.com/juce-framework/JUCE.git
+[submodule "vendor/Eigen"]
+	path = vendor/Eigen
+	url = https://gitlab.com/libeigen/eigen.git
