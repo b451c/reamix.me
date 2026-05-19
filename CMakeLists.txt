@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 
 if(APPLE)
-  project(reaper_reamix VERSION 1.0.1 LANGUAGES C CXX OBJCXX)
+  project(reaper_reamix VERSION 1.0.2 LANGUAGES C CXX OBJCXX)
 else()
-  project(reaper_reamix VERSION 1.0.1 LANGUAGES C CXX)
+  project(reaper_reamix VERSION 1.0.2 LANGUAGES C CXX)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -179,12 +179,13 @@ if(APPLE)
     OUTPUT_NAME "reaper_reamix"
   )
 
-  # Set rpath to look for dylibs next to the plugin binary
-  # SKIP_BUILD_RPATH=OFF + BUILD_RPATH_USE_ORIGIN=OFF + explicit BUILD_RPATH
-  # prevents CMake from adding the ORT vendor path as an extra RPATH entry
+  # Sesja 111 v1.0.2 — dual RPATH: search both UserPlugins/ root (manual
+  # install convention) and UserPlugins/reamix/ subdir (ReaPack install
+  # ships ORT to subdir to avoid conflict with REABeat which claims
+  # ownership of onnxruntime.dll / libonnxruntime.*.dylib at root level).
   set_target_properties(reaper_reamix PROPERTIES
-    BUILD_RPATH "@loader_path"
-    INSTALL_RPATH "@loader_path"
+    BUILD_RPATH "@loader_path;@loader_path/reamix"
+    INSTALL_RPATH "@loader_path;@loader_path/reamix"
     BUILD_WITH_INSTALL_RPATH ON
   )
 
@@ -217,16 +218,18 @@ elseif(UNIX)
   else()
     set(LINUX_ARCH "x86_64")
   endif()
+  # Sesja 111 v1.0.2 — dual RPATH: search both UserPlugins/ root (manual
+  # install convention) and UserPlugins/reamix/ subdir (ReaPack install
+  # ships ORT to subdir to avoid conflict with REABeat ownership).
   set_target_properties(reaper_reamix PROPERTIES
     SUFFIX ".so"
     PREFIX ""
     OUTPUT_NAME "reaper_reamix-${LINUX_ARCH}"
     BUILD_RPATH_USE_ORIGIN ON
-    INSTALL_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN:$ORIGIN/reamix"
   )
-  # Look for libonnxruntime.so in same directory as the plugin
   set_target_properties(reaper_reamix PROPERTIES
-    LINK_FLAGS "-Wl,-rpath,$ORIGIN"
+    LINK_FLAGS "-Wl,-rpath,$ORIGIN:$ORIGIN/reamix"
   )
   target_link_libraries(reaper_reamix PRIVATE dl pthread curl)
 

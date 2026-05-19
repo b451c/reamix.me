@@ -194,10 +194,21 @@ REAPER_PLUGIN_DLL_EXPORT int ReaperPluginEntry(
                     break;
                 }
             }
+            // Sesja 111 v1.0.2 — try subdir first (ReaPack install ships
+            // ORT to UserPlugins\reamix\ to avoid conflict with REABeat
+            // which claims ownership of UserPlugins\onnxruntime.dll).
+            // Fallback to root for manual install convention.
             wchar_t ortPath[MAX_PATH] = {};
             wcscpy_s(ortPath, selfPath);
-            wcscat_s(ortPath, L"onnxruntime.dll");
-            LoadLibraryW(ortPath);
+            wcscat_s(ortPath, L"reamix\\onnxruntime.dll");
+            HMODULE hOrt = LoadLibraryW(ortPath);
+            if (!hOrt)
+            {
+                wchar_t rootPath[MAX_PATH] = {};
+                wcscpy_s(rootPath, selfPath);
+                wcscat_s(rootPath, L"onnxruntime.dll");
+                LoadLibraryW(rootPath);
+            }
         }
     }
 #endif

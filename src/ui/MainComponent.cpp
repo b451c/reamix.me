@@ -2267,6 +2267,12 @@ MainComponent::MainComponent()
     // window is actually visible) before the modal grabs focus.
     juce::MessageManager::callAsync ([this] { showWelcomeIfFirstLaunch(); });
 
+    // Sesja 111 v1.0.2 — update check on session start. Detached background
+    // thread queries GitHub Releases API; if a newer tag is found, surfaces
+    // an AlertWindow with "Open Releases" / "Later" buttons. Safe to abort
+    // mid-flight via updateCheckAborted_ flag (set in destructor).
+    checkForUpdatesAsync();
+
     // DEV-080 sesja 108 — pull user-set defaults from ExtState into host-side
     // mirrors BEFORE any compute path can read currentQualityWeights().
     // Synchronous on the message thread; cheap (one GetExtState + one JSON
@@ -2314,6 +2320,11 @@ MainComponent::~MainComponent()
         preWarmThread_->stopThread (30000);
         preWarmThread_.reset();
     }
+
+    // Sesja 111 v1.0.2 — flag update-check thread to skip any pending
+    // network read / message-thread callback. Thread is detached so we
+    // don't join here; the flag check inside each step prevents UAF.
+    updateCheckAborted_.store (true);
 
     // Pipeline workers — wait for any in-flight thread before our members
     // (beatDetector_, analysisBundles_, etc.) get destroyed. Alive flags
@@ -5577,6 +5588,104 @@ void MainComponent::showWelcomeIfFirstLaunch()
         body,
         "OK",
         this);
+}
+
+namespace
+{
+    struct VersionTriplet { int major{0}, minor{0}, patch{0}; };
+
+    std::optional<VersionTriplet> parseVersionTag (const juce::String& tag)
+    {
+        // Accept "v1.0.2" or "1.0.2".
+        auto trimmed = tag.startsWithIgnoreCase ("v") ? tag.substring (1) : tag;
+        auto parts = juce::StringArray::fromTokens (trimmed, ".", "");
+        if (parts.size() < 3) return std::nullopt;
+        VersionTriplet v;
+        v.major = parts[0].getIntValue();
+        v.minor = parts[1].getIntValue();
+        v.patch = parts[2].getIntValue();
+        return v;
+    }
+
+    bool isStrictlyNewer (const VersionTriplet& latest, const VersionTriplet& current)
+    {
+        if (latest.major != current.major) return latest.major > current.major;
+        if (latest.minor != current.minor) return latest.minor > current.minor;
+        return latest.patch > current.patch;
+    }
+}
+
+void MainComponent::checkForUpdatesAsync()
+{
+    // Capture current version literal at compile time so a future bump in
+    // StatusBar version_ + a future tag both flow through one comparison.
+    // Keep this string in lockstep with StatusBar.h::version_ — see memory
+    // feedback_release_tag_bump_ui_version_lockstep.md.
+    constexpr const char* kCurrentVersion = "v1.0.2";
+
+    std::thread ([this]
+    {
+        if (updateCheckAborted_.load()) return;
+
+        juce::URL url ("https://api.github.com/repos/b451c/reamix.me/releases/latest");
+        auto stream = url.createInputStream (
+            juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                .withConnectionTimeoutMs (10000));
+
+        if (! stream || updateCheckAborted_.load()) return;
+
+        const auto json = stream->readEntireStreamAsString();
+        if (updateCheckAborted_.load() || json.isEmpty()) return;
+
+        const auto parsed = juce::JSON::parse (json);
+        if (! parsed.isObject()) return;
+
+        const auto tagName = parsed.getProperty ("tag_name", {}).toString();
+        if (tagName.isEmpty()) return;
+
+        const auto latest  = parseVersionTag (tagName);
+        const auto current = parseVersionTag (kCurrentVersion);
+        if (! latest || ! current) return;
+
+        if (! isStrictlyNewer (*latest, *current)) return;
+
+        if (updateCheckAborted_.load()) return;
+
+        juce::MessageManager::callAsync ([this, tagName]
+        {
+            if (updateCheckAborted_.load()) return;
+            showUpdateAvailableModal (tagName);
+        });
+    }).detach();
+}
+
+void MainComponent::showUpdateAvailableModal (const juce::String& latestTag)
+{
+    if (updateAvailableShown_) return;
+    updateAvailableShown_ = true;
+
+    const juce::String body = juce::String::fromUTF8 (
+        "A newer version of reamix.me is available.\n\n"
+        "  Current: v1.0.2\n"
+        "  Latest:  ") + latestTag + juce::String::fromUTF8 (
+        "\n\n"
+        "Update via:\n"
+        "  \xe2\x80\xa2 ReaPack \xe2\x80\x94 Extensions \xe2\x80\x92 ReaPack \xe2\x80\x92 Synchronize packages\n"
+        "  \xe2\x80\xa2 Manual download from the Releases page");
+
+    juce::AlertWindow::showOkCancelBox (
+        juce::AlertWindow::InfoIcon,
+        juce::String::fromUTF8 ("reamix.me \xe2\x80\x94 Update available"),
+        body,
+        "Open Releases",
+        "Later",
+        this,
+        juce::ModalCallbackFunction::create ([] (int result)
+        {
+            if (result == 1) // "Open Releases" button (index 1, "OK"-slot)
+                juce::URL ("https://github.com/b451c/reamix.me/releases/latest")
+                    .launchInDefaultBrowser();
+        }));
 }
 
 void MainComponent::showStartupErrorWithPlatformHint (const juce::String& err)

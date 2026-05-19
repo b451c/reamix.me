@@ -195,6 +195,13 @@ private:
     void showWelcomeIfFirstLaunch();
     void showStartupErrorWithPlatformHint (const juce::String& err);
 
+    // Sesja 111 v1.0.2 — check GitHub Releases for newer version. Runs on
+    // a detached std::thread; if a newer tag is found, posts back to the
+    // message thread and surfaces an AlertWindow with an "Open Releases"
+    // button. Aborted via updateCheckAborted_ when MainComponent destructs.
+    void checkForUpdatesAsync();
+    void showUpdateAvailableModal (const juce::String& latestTag);
+
     // ── Components (unchanged by ADR-047) ────────────────────────────
     reamix::ui::LookAndFeelReamix lookAndFeel_;
     reamix::ui::HeaderBar         headerBar_;
@@ -369,8 +376,10 @@ private:
 
     reamix::ui::PreviewController previewController_;
     bool swsModalShown_ { false };
-    bool welcomeShown_       { false };  // Sesja 111 KROK 3
-    bool startupErrorShown_  { false };  // Sesja 111 KROK 4
+    bool welcomeShown_         { false };  // Sesja 111 KROK 3
+    bool startupErrorShown_    { false };  // Sesja 111 KROK 4
+    bool updateAvailableShown_ { false };  // Sesja 111 v1.0.2 update-check
+    std::atomic<bool> updateCheckAborted_ { false };
 
     std::optional<reamix::ui::WaveformView::SelectionRange> selectedRange_;
 
