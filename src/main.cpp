@@ -170,6 +170,38 @@ REAPER_PLUGIN_DLL_EXPORT int ReaperPluginEntry(
     if (REAPERAPI_LoadAPI(rec->GetFunc) != 0)
         return 0;
 
+#ifdef _WIN32
+    // Pre-load onnxruntime.dll from our DLL's directory (UserPlugins)
+    // before delay-load resolves it from System32, where Windows 10/11
+    // ship onnxruntime.dll v1.17 (Windows ML). Our binary needs the
+    // v1.24.4 sidecar we install next to the plugin. CMakeLists.txt:210
+    // sets /DELAYLOAD:onnxruntime.dll; this LoadLibraryW pre-binds the
+    // correct version to the process before any ONNX symbol resolves.
+    // Pattern ported verbatim from REABeat src/main.cpp (commit 7f5b17c).
+    {
+        wchar_t selfPath[MAX_PATH] = {};
+        HMODULE hSelf = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCWSTR)ReaperPluginEntry, &hSelf);
+        if (hSelf && GetModuleFileNameW(hSelf, selfPath, MAX_PATH))
+        {
+            for (int i = (int)wcslen(selfPath) - 1; i >= 0; --i)
+            {
+                if (selfPath[i] == L'\\' || selfPath[i] == L'/')
+                {
+                    selfPath[i + 1] = 0;
+                    break;
+                }
+            }
+            wchar_t ortPath[MAX_PATH] = {};
+            wcscpy_s(ortPath, selfPath);
+            wcscat_s(ortPath, L"onnxruntime.dll");
+            LoadLibraryW(ortPath);
+        }
+    }
+#endif
+
     // Capture rec->GetFunc for lazy SWS resolution (ADR-036 ⚑ P1 primary
     // preview path). Actual CF_Preview_* symbol lookup happens at first
     // Preview click, not here — REAPER loads extensions alphabetically and

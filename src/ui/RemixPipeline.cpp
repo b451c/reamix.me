@@ -12,6 +12,7 @@
 #include "ui/RemixCache.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 
 #include <utility>
