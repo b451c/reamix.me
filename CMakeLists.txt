@@ -141,6 +141,13 @@ target_compile_definitions(reaper_reamix PRIVATE
   JUCE_MODAL_LOOPS_PERMITTED=1
   JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
   JUCE_WEB_BROWSER=0
+  # Sesja 111 v1.0.4 — register JUCE's built-in MP3 decoder on every
+  # platform. macOS and Windows already decode MP3 via CoreAudioFormat /
+  # WindowsMediaAudioFormat (system codecs registered first by JUCE's
+  # registerBasicFormats); Linux has neither and was failing with
+  # "Unable to decode audio file" on MP3 input. Adding the MP3AudioFormat
+  # fallback fixes Linux + keeps macOS/Windows on their preferred decoders.
+  JUCE_USE_MP3AUDIOFORMAT=1
   $<$<PLATFORM_ID:Linux>:JUCE_USE_CURL=1>
   $<$<NOT:$<PLATFORM_ID:Linux>>:JUCE_USE_CURL=0>
   WDL_NO_DEFINE_MINMAX
