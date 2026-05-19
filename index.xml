@@ -34,6 +34,21 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <link rel="donation">https://buymeacoffee.com/bsroczynskh</link>
         <link rel="donation">https://www.paypal.com/paypalme/b451c</link>
       </metadata>
+      <version name="1.0.7" author="b451c" time="2026-05-19T23:55:00Z">
+        <changelog><![CDATA[reamix.me 1.0.7 — Linux popover rendering polish (CallOutBox)
+
+- Fix: the "Mark section" picker popover (also block-edit popover, change-kind picker) rendered with static-noise artefacts around its rounded shape on Linux — same root cause as the 1.0.6 AlertWindow fix but in juce::CallOutBox (the popover host) rather than juce::AlertWindow. JUCE's default drawCallOutBoxBackground paints only a drop shadow + a 0.8-alpha rounded path; pixels outside that path stay transparent. macOS/Windows pre-clear the backing buffer, Linux X11/Cairo does not. Override drawCallOutBoxBackground in LookAndFeelReamix to fill the entire component with the plugin background colour BEFORE the base paint runs — Linux/BSD only via #if JUCE_LINUX || JUCE_BSD so macOS/Windows keep the floating-bubble look unchanged.]]></changelog>
+        <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.7/reaper_reamix-arm64.dylib</source>
+        <source platform="darwin-arm64" file="reamix/libonnxruntime.1.24.4.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.7/libonnxruntime-macOS-arm64.dylib</source>
+        <source platform="darwin64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.7/reaper_reamix-x86_64.dylib</source>
+        <source platform="darwin64" file="reamix/libonnxruntime.1.20.1.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.7/libonnxruntime-macOS-x86_64.dylib</source>
+        <source platform="win64" file="reaper_reamix.dll">https://github.com/b451c/reamix.me/releases/download/v1.0.7/reaper_reamix-x64.dll</source>
+        <source platform="win64" file="reamix/onnxruntime.dll">https://github.com/b451c/reamix.me/releases/download/v1.0.7/onnxruntime.dll</source>
+        <source platform="linux64" file="reaper_reamix.so">https://github.com/b451c/reamix.me/releases/download/v1.0.7/reaper_reamix-x86_64.so</source>
+        <source platform="linux64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.7/libonnxruntime.so.1-Linux-x86_64</source>
+        <source platform="linux-aarch64" file="reaper_reamix.so">https://github.com/b451c/reamix.me/releases/download/v1.0.7/reaper_reamix-aarch64.so</source>
+        <source platform="linux-aarch64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.7/libonnxruntime.so.1-Linux-aarch64</source>
+      </version>
       <version name="1.0.6" author="b451c" time="2026-05-19T23:30:00Z">
         <changelog><![CDATA[reamix.me 1.0.6 — Linux modal-dialog rendering polish
 

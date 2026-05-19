@@ -268,6 +268,52 @@ void LookAndFeelReamix::drawLinearSlider (juce::Graphics& g,
     g.drawEllipse (thumb, 2.0f);
 }
 
+// ── CallOutBox ──────────────────────────────────────────────────────
+
+void LookAndFeelReamix::drawCallOutBoxBackground (juce::CallOutBox& box,
+                                                   juce::Graphics& g,
+                                                   const juce::Path& path,
+                                                   juce::Image& cachedImage)
+{
+    // DEV-086 sesja 113 — Linux popover noise fix.
+    //
+    // juce::LookAndFeel_V4::drawCallOutBoxBackground paints (in order):
+    //   1. drop shadow into a cached ARGB image (alpha-gradient → fully
+    //      transparent outside the shadow radius)
+    //   2. drawImageAt of that cached image
+    //   3. fillPath of the rounded-rect-with-arrow path at alpha=0.8
+    //      (semi-transparent fill)
+    //   4. strokePath outline
+    //
+    // No g.fillAll() anywhere — pixels outside the drop shadow + path
+    // stay whatever the backing buffer was. macOS/Windows native peer
+    // windows pre-clear the backing buffer on creation, so transparent
+    // areas render as either a transparent NSWindow (composited against
+    // host content) or as a default-cleared HWND. X11/Cairo on Linux
+    // does NOT clear a fresh peer window's backing buffer, so the first
+    // frame leaks whatever bytes were in memory — manifesting as
+    // "ciemne zglitchowane tło" around the popover plus rainbow specks
+    // at the arrow tip.
+    //
+    // Fix: on Linux, fill the entire component with the plugin background
+    // colour before the base paint runs. CallOutBox as a top-level peer
+    // has no parent, so this solid fill becomes the "outside" of the
+    // popover. The drop shadow + path still render on top with their
+    // intended alpha — visually the popover gains a subtle solid
+    // rectangle around its rounded shape, which is a vastly better
+    // trade-off than X11 garbage.
+    //
+    // Platform-gated to Linux/BSD only: macOS and Windows already paint
+    // correctly with transparent outside-path area, and replacing that
+    // with a solid colour would visually break the floating-bubble
+    // intent on those platforms.
+   #if JUCE_LINUX || JUCE_BSD
+    g.fillAll (reamix::theme::Bg0);
+   #endif
+
+    juce::LookAndFeel_V4::drawCallOutBoxBackground (box, g, path, cachedImage);
+}
+
 // ── Popup menu ──────────────────────────────────────────────────────
 
 void LookAndFeelReamix::drawPopupMenuBackground (juce::Graphics& g, int width, int height)

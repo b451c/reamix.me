@@ -69,6 +69,14 @@ public:
     // drawDefaultTick mirrors this offset.
     int getSliderThumbRadius (juce::Slider&) override { return 6; }
 
+    // CallOutBox (popover host for block kind picker, block edit, etc.).
+    // Linux X11/Cairo doesn't pre-clear fresh top-level peer backing
+    // buffers; the JUCE default paint leaves transparent pixels outside
+    // the rounded path + drop shadow, so X11 backing-buffer noise shows
+    // through as "ciemne zglitchowane tło" around the popover.
+    void drawCallOutBoxBackground (juce::CallOutBox&, juce::Graphics&,
+                                    const juce::Path&, juce::Image&) override;
+
     // Popup menu — CSS: .rx-menu (plugin.css:583-601).
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
     void drawPopupMenuItem       (juce::Graphics&, const juce::Rectangle<int>& area,
