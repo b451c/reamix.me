@@ -19,17 +19,19 @@ The concept is **Adobe Audition Remix**, re-implemented as a native REAPER exten
 | **Region Remix** | Retarget only the REAPER time-selection; rest of the track untouched. |
 | **Block Assembly** | Manually order sections (Intro → Chorus → Verse → Chorus → Outro); the algorithm optimizes only the splice at each junction. |
 
-## Install via ReaBoot (one-click, recommended)
+## Install via ReaBoot (one-click — Windows + macOS)
 
-[ReaBoot](https://reaboot.com/) is a cross-platform one-click installer for REAPER extensions. It detects your REAPER install, downloads the package, and registers it with ReaPack automatically — no manual import steps.
+[ReaBoot](https://reaboot.com/) is a cross-platform one-click installer for REAPER extensions. It detects your REAPER install (standard or portable), downloads the package, and registers it with ReaPack automatically.
 
 [**Install reamix.me via ReaBoot →**](https://reaboot.com/?package=https://raw.githubusercontent.com/b451c/reamix.me/main/index.xml)
 
 After ReaBoot finishes, restart REAPER → **Extensions → reamix.me: Show/Hide Window**.
 
-## Install via ReaPack
+> **Linux users on a system-installed REAPER**: ReaBoot has a [documented limitation](https://github.com/helgoboss/reaboot#supported-os) with this configuration. Use the ReaPack manual import below — it works identically on all platforms.
 
-Prefer manual control? You can add the reamix.me repository to [ReaPack](https://reapack.com/) (REAPER's package manager) directly:
+## Install via ReaPack (works on all platforms)
+
+If you're on Linux with system-installed REAPER, prefer manual control, or already use [ReaPack](https://reapack.com/) (REAPER's package manager):
 
 1. [Install ReaPack](https://reapack.com/) if you don't have it already.
 2. In REAPER: **Extensions → ReaPack → Import repositories…** and paste:
