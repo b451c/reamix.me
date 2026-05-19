@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <optional>
 
 namespace reamix::reaper
 {

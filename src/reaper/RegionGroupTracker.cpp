@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <optional>
 
 namespace reamix::reaper::regionGroupTracker
 {

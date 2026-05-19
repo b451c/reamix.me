@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <mutex>
 
 #include "Theme.h"
 #include "BlockEditPopover.h"

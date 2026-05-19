@@ -1,5 +1,7 @@
 #include "ContextMenu.h"
 
+#include <functional>
+
 namespace reamix::ui
 {
 

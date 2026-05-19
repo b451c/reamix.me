@@ -21,6 +21,7 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <numeric>

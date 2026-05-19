@@ -1,6 +1,7 @@
 #include "SourcePanel.h"
 #include "Theme.h"
 
+#include <chrono>
 #include <cmath>
 
 namespace reamix::ui

@@ -4,6 +4,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <algorithm>
 #include <optional>
 #include <vector>
 

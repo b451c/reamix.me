@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <memory>
+#include <optional>
 
 namespace reamix {
 
