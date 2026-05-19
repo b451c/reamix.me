@@ -9,6 +9,7 @@
 #include "Theme.h"
 #include "BlockEditPopover.h"
 #include "BlockKindPickerPopover.h"
+#include "OpaqueAlertWindow.h"
 #include "KindDisplay.h"
 #include "ContextMenu.h"
 #include "analysis/ModelManager.h"
@@ -4795,7 +4796,7 @@ void MainComponent::showAddCustomKindModal (double clampedStart, double clampedE
     // On confirm: registry.add(name, color) → returns new id → save registry
     // → create UserBlock with customKindId = new id → push + sort + persist.
     // On cancel: just-marked region is forfeit (no UserBlock created).
-    auto* aw = new juce::AlertWindow ("Add custom kind",
+    auto* aw = new reamix::OpaqueAlertWindow ("Add custom kind",
                                        "Name your section type and pick a color.",
                                        juce::AlertWindow::NoIcon);
     aw->addTextEditor ("name", "", "Name");
@@ -4866,7 +4867,7 @@ void MainComponent::showAddCustomKindModalEditContext (
     // ADR-092 sesja 100c — edit-context Add. Variant of showAddCustomKindModal
     // without the marked-region commit. Block being edited stays unchanged;
     // user clicks the new tile in the popover to apply it explicitly.
-    auto* aw = new juce::AlertWindow ("Add custom kind",
+    auto* aw = new reamix::OpaqueAlertWindow ("Add custom kind",
                                        "Name your section type and pick a color.",
                                        juce::AlertWindow::NoIcon);
     aw->addTextEditor ("name", "", "Name");
@@ -4934,7 +4935,7 @@ void MainComponent::showEditCustomKindModal (const juce::String& id,
 
     if (action == Action::Rename)
     {
-        auto* aw = new juce::AlertWindow ("Rename custom kind",
+        auto* aw = new reamix::OpaqueAlertWindow ("Rename custom kind",
                                            "Enter new name for \"" + entry->name + "\".",
                                            juce::AlertWindow::NoIcon);
         aw->addTextEditor ("name", entry->name, "Name");
@@ -4960,7 +4961,7 @@ void MainComponent::showEditCustomKindModal (const juce::String& id,
 
     if (action == Action::Recolor)
     {
-        auto* aw = new juce::AlertWindow ("Change color",
+        auto* aw = new reamix::OpaqueAlertWindow ("Change color",
                                            "Pick a new color for \"" + entry->name + "\".",
                                            juce::AlertWindow::NoIcon);
         using namespace reamix::theme;
@@ -5014,7 +5015,7 @@ void MainComponent::showEditCustomKindModal (const juce::String& id,
               + " this kind. They will revert to their built-in fallback."
             : "Delete \"" + entry->name + "\"?";
 
-        auto* aw = new juce::AlertWindow ("Delete custom kind", warn,
+        auto* aw = new reamix::OpaqueAlertWindow ("Delete custom kind", warn,
                                            juce::AlertWindow::NoIcon);
         aw->addButton ("Delete", 1, juce::KeyPress (juce::KeyPress::returnKey));
         aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -5094,7 +5095,7 @@ void MainComponent::showRenameBlockDialog (int blockIdx)
     const juce::String currentLabel = b.labelOverride.has_value() ? *b.labelOverride
                                                                    : juce::String();
 
-    auto* aw = new juce::AlertWindow ("Rename block",
+    auto* aw = new reamix::OpaqueAlertWindow ("Rename block",
                                        "Enter a custom name for this block (leave blank to revert to kind label).",
                                        juce::MessageBoxIconType::NoIcon);
     aw->addTextEditor ("name", currentLabel, "Name:");
@@ -5177,7 +5178,7 @@ void MainComponent::showDeleteBlockConfirm (int blockIdx)
         ? *b.labelOverride
         : reamix::ui::builtinKindLabel (b.kind);
 
-    auto* aw = new juce::AlertWindow ("Delete block",
+    auto* aw = new reamix::OpaqueAlertWindow ("Delete block",
         juce::String ("Delete block \"") + name + "\"?\n"
         "Any queue entries referencing this block will also be removed.",
         juce::MessageBoxIconType::WarningIcon);
@@ -5208,7 +5209,7 @@ void MainComponent::showDeleteBlocksBatchConfirm (std::vector<int> blockIndices)
     if (blockIndices.empty()) return;
     std::sort (blockIndices.begin(), blockIndices.end(), std::greater<int>());
 
-    auto* aw = new juce::AlertWindow ("Delete blocks",
+    auto* aw = new reamix::OpaqueAlertWindow ("Delete blocks",
         juce::String ("Delete ") + juce::String ((int) blockIndices.size())
             + " blocks?\nQueue entries referencing them will also be removed.",
         juce::MessageBoxIconType::WarningIcon);
@@ -5814,7 +5815,7 @@ void MainComponent::checkForUpdatesAsync()
     // StatusBar version_ + a future tag both flow through one comparison.
     // Keep this string in lockstep with StatusBar.h::version_ — see memory
     // feedback_release_tag_bump_ui_version_lockstep.md.
-    constexpr const char* kCurrentVersion = "v1.0.5";
+    constexpr const char* kCurrentVersion = "v1.0.6";
 
     std::thread ([this]
     {
@@ -5859,7 +5860,7 @@ void MainComponent::showUpdateAvailableModal (const juce::String& latestTag)
 
     const juce::String body = juce::String::fromUTF8 (
         "A newer version of reamix.me is available.\n\n"
-        "  Current: v1.0.5\n"
+        "  Current: v1.0.6\n"
         "  Latest:  ") + latestTag + juce::String::fromUTF8 (
         "\n\n"
         "Update via:\n"
