@@ -790,6 +790,11 @@ void WaveformView::paintSplashOverlay (juce::Graphics& g,
     const auto& logo = LookAndFeelReamix::brandLogo();
     if (logo.isValid())
     {
+        // Sesja 111 v1.0.3 — match HeaderBar logo rendering: bicubic
+        // interpolation for clean sun-burst rays under aggressive
+        // downscale (source 128×124 → target logoSize). See HeaderBar
+        // cpp:153 for the Windows VM jagged-edges precedent.
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImageWithin (logo,
                            logoRect.getX(), logoRect.getY(),
                            logoRect.getWidth(), logoRect.getHeight(),

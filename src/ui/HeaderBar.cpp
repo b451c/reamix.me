@@ -150,6 +150,12 @@ void HeaderBar::paint (juce::Graphics& g)
     const auto& logo = LookAndFeelReamix::brandLogo();
     if (logo.isValid())
     {
+        // Sesja 111 v1.0.3 — source PNG is 128×124, target render here is 18×18
+        // (≈7x downscale). JUCE's default mediumResamplingQuality produces
+        // jagged sun-burst rays on Windows (Direct2D/GDI less forgiving than
+        // macOS Quartz). highResamplingQuality uses bicubic interpolation —
+        // smooth rays at small sizes.
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
         g.drawImageWithin (logo,
                            (int) markRect.getX(), (int) markRect.getY(),
                            (int) markRect.getWidth(), (int) markRect.getHeight(),
