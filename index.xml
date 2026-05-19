@@ -35,9 +35,9 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <link rel="donation">https://www.paypal.com/paypalme/b451c</link>
       </metadata>
       <version name="1.0.7" author="b451c" time="2026-05-19T23:55:00Z">
-        <changelog><![CDATA[reamix.me 1.0.7 — Linux popover rendering polish (CallOutBox)
+        <changelog><![CDATA[reamix.me 1.0.7 - Linux popover rendering polish (CallOutBox)
 
-- Fix: the "Mark section" picker popover (also block-edit popover, change-kind picker) rendered with static-noise artefacts around its rounded shape on Linux — same root cause as the 1.0.6 AlertWindow fix but in juce::CallOutBox (the popover host) rather than juce::AlertWindow. JUCE's default drawCallOutBoxBackground paints only a drop shadow + a 0.8-alpha rounded path; pixels outside that path stay transparent. macOS/Windows pre-clear the backing buffer, Linux X11/Cairo does not. Override drawCallOutBoxBackground in LookAndFeelReamix to fill the entire component with the plugin background colour BEFORE the base paint runs — Linux/BSD only via #if JUCE_LINUX || JUCE_BSD so macOS/Windows keep the floating-bubble look unchanged.]]></changelog>
+- Fix: the "Mark section" picker popover (also block-edit popover, change-kind picker) rendered with static-noise artefacts around its rounded shape on Linux - same root cause as the 1.0.6 AlertWindow fix but in juce::CallOutBox (the popover host) rather than juce::AlertWindow. JUCE's default drawCallOutBoxBackground paints only a drop shadow + a 0.8-alpha rounded path; pixels outside that path stay transparent. macOS/Windows pre-clear the backing buffer, Linux X11/Cairo does not. Override drawCallOutBoxBackground in LookAndFeelReamix to fill the entire component with the plugin background colour BEFORE the base paint runs - Linux/BSD only via #if JUCE_LINUX || JUCE_BSD so macOS/Windows keep the floating-bubble look unchanged.]]></changelog>
         <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.7/reaper_reamix-arm64.dylib</source>
         <source platform="darwin-arm64" file="reamix/libonnxruntime.1.24.4.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.7/libonnxruntime-macOS-arm64.dylib</source>
         <source platform="darwin64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.7/reaper_reamix-x86_64.dylib</source>
@@ -50,7 +50,7 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <source platform="linux-aarch64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.7/libonnxruntime.so.1-Linux-aarch64</source>
       </version>
       <version name="1.0.6" author="b451c" time="2026-05-19T23:30:00Z">
-        <changelog><![CDATA[reamix.me 1.0.6 — Linux modal-dialog rendering polish
+        <changelog><![CDATA[reamix.me 1.0.6 - Linux modal-dialog rendering polish
 
 - Fix: "Add custom kind", "Rename block", "Delete block", and similar dialogs in Block Assembly rendered with static-noise artefacts behind their rounded corners on Linux. Root cause: JUCE's juce::AlertWindow paints a rounded-rect inside its local bounds and leaves the corner pixels untouched; macOS/Windows native peer windows pre-clear the backing buffer, but X11/Cairo on Linux does not, so the first frame showed uninitialised memory. Replaced juce::AlertWindow with a thin OpaqueAlertWindow subclass that fills the full bounds with the dialog background colour before the base paint runs. Affected dialogs (8 sites): Add/Rename/Delete custom kind, Change color, Rename/Delete block, Delete blocks.]]></changelog>
         <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.6/reaper_reamix-arm64.dylib</source>
@@ -65,10 +65,10 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <source platform="linux-aarch64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.6/libonnxruntime.so.1-Linux-aarch64</source>
       </version>
       <version name="1.0.5" author="b451c" time="2026-05-19T22:00:00Z">
-        <changelog><![CDATA[reamix.me 1.0.5 — Linux brand-logo polish + Region "Insert as new item" mode + CI cache speed
+        <changelog><![CDATA[reamix.me 1.0.5 - Linux brand-logo polish + Region "Insert as new item" mode + CI cache speed
 
 - Fix: brand logo rendered with jagged edges on Linux (Cairo/Pango) despite the 1.0.3 bicubic resampling fix. Replaced the bundled PNG with a true-vector SVG (42 rounded-rect rays + central hole baked into geometry); JUCE rasterises per render call so every backend (Quartz, Direct2D, Cairo/Pango) draws sharp at any size.
-- New: Region mode "Edit source in place" checkbox in the duration panel (visible only on the Region tab). Default ON preserves the existing splice-into-source behaviour. When OFF, the remix is inserted as a new media item immediately after the source on the same track — source clip stays untouched. Subsequent Inserts in this mode REPLACE the previously-appended clips (Update flow), matching the splice path's UX.
+- New: Region mode "Edit source in place" checkbox in the duration panel (visible only on the Region tab). Default ON preserves the existing splice-into-source behaviour. When OFF, the remix is inserted as a new media item immediately after the source on the same track - source clip stays untouched. Subsequent Inserts in this mode REPLACE the previously-appended clips (Update flow), matching the splice path's UX.
 - Internal: REAMIX_VERSION compile definition moved out of global compile flags into a generated header (src/version.h, configured by CMake). Version bumps no longer invalidate ccache for the ~200 unrelated translation units. Expected CI release-flow speedup: ~20 min → ~12-15 min wall.
 - Linux: section-kind picker popover marked opaque so X11/Cairo paints a solid background under the pill grid (no more rainbow-pixel artifacts behind the menu).]]></changelog>
         <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.5/reaper_reamix-arm64.dylib</source>
@@ -83,9 +83,9 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <source platform="linux-aarch64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.5/libonnxruntime.so.1-Linux-aarch64</source>
       </version>
       <version name="1.0.4" author="b451c" time="2026-05-19T15:00:00Z">
-        <changelog><![CDATA[reamix.me 1.0.4 — Linux MP3 decode fix
+        <changelog><![CDATA[reamix.me 1.0.4 - Linux MP3 decode fix
 
-- Fix: "Unable to decode audio file" on Linux for MP3 inputs. JUCE's registerBasicFormats registers different decoders per platform — macOS uses CoreAudioFormat and Windows uses WindowsMediaAudioFormat (both decode MP3 via system codecs), but Linux has neither. Defined JUCE_USE_MP3AUDIOFORMAT=1 so JUCE's built-in MP3 decoder is registered everywhere; macOS and Windows still prefer their system codec, which remains first in JUCE's registration order — no regression.
+- Fix: "Unable to decode audio file" on Linux for MP3 inputs. JUCE's registerBasicFormats registers different decoders per platform - macOS uses CoreAudioFormat and Windows uses WindowsMediaAudioFormat (both decode MP3 via system codecs), but Linux has neither. Defined JUCE_USE_MP3AUDIOFORMAT=1 so JUCE's built-in MP3 decoder is registered everywhere; macOS and Windows still prefer their system codec, which remains first in JUCE's registration order - no regression.
 - WAV, FLAC, OGG Vorbis, AIFF continue to work unchanged on all platforms.]]></changelog>
         <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.4/reaper_reamix-arm64.dylib</source>
         <source platform="darwin-arm64" file="reamix/libonnxruntime.1.24.4.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.4/libonnxruntime-macOS-arm64.dylib</source>
@@ -99,11 +99,11 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <source platform="linux-aarch64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.4/libonnxruntime.so.1-Linux-aarch64</source>
       </version>
       <version name="1.0.3" author="b451c" time="2026-05-19T14:00:00Z">
-        <changelog><![CDATA[reamix.me 1.0.3 — Preview UX polish + Windows visual fixes
+        <changelog><![CDATA[reamix.me 1.0.3 - Preview UX polish + Windows visual fixes
 
 - Fix: Preview volume defaulting to 0% on a fresh REAPER profile (Windows VM regression). REAPER's GetExtState returns "" for unset keys on some platforms; the preview_volume read now rejects empty strings as "not set" instead of parsing them as 0.0.
 - New: Welcome modal mentions SWS Extension as a (free, optional) dependency for Preview playback.
-- New: Startup-time SWS probe (~2.5s after plugin load) surfaces "Preview disabled — install SWS Extension" hint in the status bar when SWS is missing — so users learn this before clicking Preview and hearing silence.
+- New: Startup-time SWS probe (~2.5s after plugin load) surfaces "Preview disabled - install SWS Extension" hint in the status bar when SWS is missing - so users learn this before clicking Preview and hearing silence.
 - Fix: Brand logo rendering on Windows. Source PNG is 128×124, target render is 18×18 in the header (≈7x downscale); switched to bicubic resampling (Graphics::highResamplingQuality) on both render sites for clean sun-burst rays on Direct2D/GDI.
 - README: SWS Extension listed under System requirements as a recommended optional dependency.]]></changelog>
         <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.3/reaper_reamix-arm64.dylib</source>
@@ -118,9 +118,9 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <source platform="linux-aarch64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.3/libonnxruntime.so.1-Linux-aarch64</source>
       </version>
       <version name="1.0.2" author="b451c" time="2026-05-19T12:00:00Z">
-        <changelog><![CDATA[reamix.me 1.0.2 — ReaPack coexistence fix
+        <changelog><![CDATA[reamix.me 1.0.2 - ReaPack coexistence fix
 
-- Fix: ReaPack conflict with REABeat (or any future package shipping ONNX Runtime) — the ONNX Runtime library now installs to UserPlugins/reamix/ subdirectory instead of UserPlugins/ root. No more "already owned by another package" errors when installing reamix.me alongside REABeat.
+- Fix: ReaPack conflict with REABeat (or any future package shipping ONNX Runtime) - the ONNX Runtime library now installs to UserPlugins/reamix/ subdirectory instead of UserPlugins/ root. No more "already owned by another package" errors when installing reamix.me alongside REABeat.
 - Plugin RPATH searches both UserPlugins/ root (manual install convention) and UserPlugins/reamix/ (ReaPack install target), so both install paths work without code changes from the user.
 - Windows pre-load LoadLibraryW tries reamix\onnxruntime.dll first, falls back to root for manual installs.]]></changelog>
         <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.2/reaper_reamix-arm64.dylib</source>
@@ -135,11 +135,11 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <source platform="linux-aarch64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.2/libonnxruntime.so.1-Linux-aarch64</source>
       </version>
       <version name="1.0.1" author="b451c" time="2026-05-19T00:00:00Z">
-        <changelog><![CDATA[reamix.me 1.0.1 — Reliability + UX polish
+        <changelog><![CDATA[reamix.me 1.0.1 - Reliability + UX polish
 
 - First-launch welcome modal with platform-specific setup hints (macOS Privacy & Security walkthrough, Linux libcurl install command)
 - Visible progress UI when downloading the AI model (status bar shows "Downloading · X / Y MB" with spinner, then "Loading model" during validation)
-- REABeat coexistence — if REABeat is already installed, reamix.me reuses its cached beat-detection model instead of re-downloading 80 MB
+- REABeat coexistence - if REABeat is already installed, reamix.me reuses its cached beat-detection model instead of re-downloading 80 MB
 - Startup error AlertWindow with platform-specific fix instructions on missing dependencies (libcurl, network, macOS Privacy & Security block)
 - ExtState persistence for welcome modal (shown only once per user)]]></changelog>
         <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.1/reaper_reamix-arm64.dylib</source>

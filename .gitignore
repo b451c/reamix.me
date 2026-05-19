@@ -37,10 +37,10 @@ Thumbs.db
 *.exe
 *.pdb
 
-# Models — downloaded at runtime, not checked in
+# Models - downloaded at runtime, not checked in
 *.onnx
 
-# ONNX Runtime prebuilt — dropped in by developer; dSYM, headers, libs are ~20MB
+# ONNX Runtime prebuilt - dropped in by developer; dSYM, headers, libs are ~20MB
 # Obtain matching release from REABeat's asset set (see phase-0-scaffold/spec.md)
 vendor/onnxruntime/
 
@@ -52,7 +52,7 @@ references/golden/**/*.mp3
 # Keep the small JSON ground-truth descriptors
 !references/golden/**/*.json
 
-# ADR-100 sesja 108 — optional historical reference symlinks (point to sibling
+# ADR-100 sesja 108 - optional historical reference symlinks (point to sibling
 # repos on local dev machines; broken for cloners). See references/SETUP.md for
 # how to recreate locally if you have the parent projects.
 references/python-source
@@ -61,14 +61,14 @@ references/reabeat-template
 
 # Listening artifacts (regenerable from references/golden/**/render_audio.npy)
 references/listening/
-# Sesja 86 ADR-076 — track BUGGED-data markers for invalidated sweeps.
+# Sesja 86 ADR-076 - track BUGGED-data markers for invalidated sweeps.
 # (Each marker added with `git add -f` per file; pattern below documents intent.)
 # !**/SESJA*_BUGGED.md   # NOTE: gitignore re-include doesn't traverse a wholly-
 #                        # ignored parent dir; `git add -f` is the only path.
 
 # Ancillary parity-test reference dumps (regenerable via tools/dump_*.py)
 # Covers .npy (large binary fixtures) + .txt (label/index arrays) + .json
-# (metadata descriptors) — all are dump-tool output, not source-of-truth.
+# (metadata descriptors) - all are dump-tool output, not source-of-truth.
 # Session-29 widened from *.npy only after 3 sessions (26-28) of accumulated
 # .txt slip-through leaving phase4/ + phase4_e2e/ dirs untracked.
 tests/parity/reference/data/**/*.npy
@@ -97,10 +97,10 @@ CLAUDE.md
 .claude/
 tools/dev/
 
-# Demo app sandbox (Remotion video render — local only)
+# Demo app sandbox (Remotion video render - local only)
 demo/
 
-# Forum drafts (Cockos REAPER forum posts + replies — local working copies)
+# Forum drafts (Cockos REAPER forum posts + replies - local working copies)
 forum-posts/
 
 # Internal references (kept locally; not for public repo)
