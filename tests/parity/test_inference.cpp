@@ -144,7 +144,14 @@ int main(int argc, char** argv)
     opts.SetInterOpNumThreads(1);
     opts.AddConfigEntry("session.use_deterministic_compute", "1");
 
+#ifdef _WIN32
+    // ORT 1.24.4 on Windows uses ORTCHAR_T = wchar_t for the path argument.
+    // Mirror BeatDetector::loadModel pattern (src/analysis/BeatDetector.cpp:50-55).
+    std::wstring widePath(modelPath.begin(), modelPath.end());
+    Ort::Session session(env, widePath.c_str(), opts);
+#else
     Ort::Session session(env, modelPath.c_str(), opts);
+#endif
 
     // Case A — short input: single-chunk path.
     // 2 s of 440 Hz sine @ 22050 Hz → 101 mel frames (same input as test_mel).

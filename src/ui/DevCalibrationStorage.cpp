@@ -31,7 +31,12 @@ juce::String DevCalibrationStorage::nowIsoUtc()
 {
     const auto now = std::time (nullptr);
     std::tm tm {};
+   #ifdef _WIN32
+    // MSVC ships gmtime_s with reversed argument order vs POSIX gmtime_r.
+    gmtime_s (&tm, &now);
+   #else
     gmtime_r (&now, &tm);
+   #endif
     char buf [32];
     std::strftime (buf, sizeof (buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
     return juce::String (buf);
