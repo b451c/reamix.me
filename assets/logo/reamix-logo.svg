@@ -1,0 +1,49 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="124" viewBox="0 0 128 124">
+  <title>reamix.me logo (mask baked into geometry)</title>
+  <g fill="#c8a04b">
+
+    <rect x="62.500" y="3.800" width="3.000" height="41.400" rx="1.500" ry="1.500" transform="rotate(6.600 64 62)" />
+    <rect x="62.500" y="-4.200" width="3.000" height="49.400" rx="1.500" ry="1.500" transform="rotate(15.400 64 62)" />
+    <rect x="62.500" y="0.900" width="3.000" height="44.300" rx="1.500" ry="1.500" transform="rotate(22.300 64 62)" />
+    <rect x="62.500" y="8.400" width="3.000" height="36.800" rx="1.500" ry="1.500" transform="rotate(31.500 64 62)" />
+    <rect x="62.500" y="-3.200" width="3.000" height="48.400" rx="1.500" ry="1.500" transform="rotate(39.100 64 62)" />
+    <rect x="62.500" y="2.000" width="3.000" height="43.200" rx="1.500" ry="1.500" transform="rotate(47.400 64 62)" />
+    <rect x="62.500" y="-1.100" width="3.000" height="46.300" rx="1.500" ry="1.500" transform="rotate(55.800 64 62)" />
+    <rect x="62.500" y="3.900" width="3.000" height="41.300" rx="1.500" ry="1.500" transform="rotate(64.000 64 62)" />
+    <rect x="62.500" y="-0.900" width="3.000" height="46.100" rx="1.500" ry="1.500" transform="rotate(72.900 64 62)" />
+    <rect x="62.500" y="5.900" width="3.000" height="39.300" rx="1.500" ry="1.500" transform="rotate(80.700 64 62)" />
+    <rect x="62.500" y="0.800" width="3.000" height="44.400" rx="1.500" ry="1.500" transform="rotate(90.100 64 62)" />
+    <rect x="62.500" y="2.900" width="3.000" height="42.300" rx="1.500" ry="1.500" transform="rotate(99.100 64 62)" />
+    <rect x="62.500" y="2.800" width="3.000" height="42.400" rx="1.500" ry="1.500" transform="rotate(108.000 64 62)" />
+    <rect x="62.500" y="6.900" width="3.000" height="38.300" rx="1.500" ry="1.500" transform="rotate(116.600 64 62)" />
+    <rect x="62.500" y="-1.300" width="3.000" height="46.500" rx="1.500" ry="1.500" transform="rotate(124.400 64 62)" />
+    <rect x="62.500" y="1.900" width="3.000" height="43.300" rx="1.500" ry="1.500" transform="rotate(132.800 64 62)" />
+    <rect x="62.500" y="-3.400" width="3.000" height="48.600" rx="1.500" ry="1.500" transform="rotate(141.000 64 62)" />
+    <rect x="62.500" y="0.100" width="3.000" height="45.100" rx="1.500" ry="1.500" transform="rotate(148.900 64 62)" />
+    <rect x="62.500" y="4.300" width="3.000" height="40.900" rx="1.500" ry="1.500" transform="rotate(156.700 64 62)" />
+    <rect x="62.500" y="-4.400" width="3.000" height="49.600" rx="1.500" ry="1.500" transform="rotate(164.700 64 62)" />
+    <rect x="62.500" y="-0.500" width="3.000" height="45.700" rx="1.500" ry="1.500" transform="rotate(173.100 64 62)" />
+    <rect x="62.500" y="-1.800" width="3.000" height="47.000" rx="1.500" ry="1.500" transform="rotate(181.700 64 62)" />
+    <rect x="62.500" y="4.100" width="3.000" height="41.100" rx="1.500" ry="1.500" transform="rotate(189.800 64 62)" />
+    <rect x="62.500" y="-5.100" width="3.000" height="50.300" rx="1.500" ry="1.500" transform="rotate(197.300 64 62)" />
+    <rect x="62.500" y="0.300" width="3.000" height="44.900" rx="1.500" ry="1.500" transform="rotate(205.300 64 62)" />
+    <rect x="62.500" y="-0.800" width="3.000" height="46.000" rx="1.500" ry="1.500" transform="rotate(214.200 64 62)" />
+    <rect x="62.500" y="7.300" width="3.000" height="37.900" rx="1.500" ry="1.500" transform="rotate(221.800 64 62)" />
+    <rect x="62.500" y="1.300" width="3.000" height="43.900" rx="1.500" ry="1.500" transform="rotate(231.400 64 62)" />
+    <rect x="62.500" y="-3.600" width="3.000" height="48.800" rx="1.500" ry="1.500" transform="rotate(241.100 64 62)" />
+    <rect x="62.500" y="-4.500" width="3.000" height="49.700" rx="1.500" ry="1.500" transform="rotate(250.200 64 62)" />
+    <rect x="62.500" y="1.500" width="3.000" height="43.700" rx="1.500" ry="1.500" transform="rotate(260.200 64 62)" />
+    <rect x="62.500" y="8.800" width="3.000" height="36.400" rx="1.500" ry="1.500" transform="rotate(270.100 64 62)" />
+    <rect x="62.500" y="0.400" width="3.000" height="44.800" rx="1.500" ry="1.500" transform="rotate(280.300 64 62)" />
+    <rect x="62.500" y="4.500" width="3.000" height="40.700" rx="1.500" ry="1.500" transform="rotate(288.800 64 62)" />
+    <rect x="62.500" y="-7.900" width="3.000" height="53.100" rx="1.500" ry="1.500" transform="rotate(298.800 64 62)" />
+    <rect x="62.500" y="-7.700" width="3.000" height="52.900" rx="1.500" ry="1.500" transform="rotate(308.600 64 62)" />
+    <rect x="62.500" y="-7.300" width="3.000" height="52.500" rx="1.500" ry="1.500" transform="rotate(317.700 64 62)" />
+    <rect x="62.500" y="-7.200" width="3.000" height="52.400" rx="1.500" ry="1.500" transform="rotate(326.400 64 62)" />
+    <rect x="62.500" y="-1.700" width="3.000" height="46.900" rx="1.500" ry="1.500" transform="rotate(334.600 64 62)" />
+    <rect x="62.500" y="-4.800" width="3.000" height="50.000" rx="1.500" ry="1.500" transform="rotate(342.600 64 62)" />
+    <rect x="62.500" y="11.400" width="3.000" height="33.800" rx="1.500" ry="1.500" transform="rotate(349.800 64 62)" />
+    <rect x="62.500" y="7.100" width="3.000" height="38.100" rx="1.500" ry="1.500" transform="rotate(358.300 64 62)" />
+  </g>
+</svg>

@@ -66,6 +66,15 @@ struct RegionGroup
     // legacy entries written before sesja 67 (Update path treats as "fresh
     // Insert" fallback).
     double                    originalItemDurationSec {0.0};
+
+    // DEV-081 sesja 112 — distinguishes "splice into source" entries
+    // (false, the legacy Region Insert behaviour) from "insert as new item
+    // after source" entries (true, the DEV-081 non-destructive path).
+    // Drives Update lookup so a subsequent Insert with the checkbox
+    // unchecked deletes the previously-appended clips and lays new clips
+    // at the same basePosition instead of stacking next to them. Legacy
+    // entries (pre-DEV-081) parse as false.
+    bool                      isAppend {false};
 };
 
 // Look up a Region group by item GUID. Two paths:

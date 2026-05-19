@@ -134,12 +134,16 @@ public:
                              const juce::Colour& textColour,
                              const juce::Colour& backgroundColour);
 
-    // Session 49 — shared brand logo image (radiating sun-burst, gold).
-    // Bundled as BinaryData::reamixlogo_png. Load once, cache as a static
-    // juce::Image so every HeaderBar + WaveformView splash paint reuses the
-    // same decoded pixel buffer. Callers use `g.drawImageWithin` to fit the
-    // logo into whatever rect they have (the image is square).
-    static const juce::Image& brandLogo();
+    // Brand logo — vectorized sun-burst (radial rays + central hole).
+    // DEV-082 sesja 112: replaces the prior BinaryData PNG which produced
+    // jagged edges on Linux Cairo/Pango at small target sizes (HeaderBar
+    // 18px, WaveformView splash 40px) even with bicubic resampling.
+    // Bundled as BinaryData::reamixlogo_svg, parsed once via
+    // juce::Drawable::createFromImageData and cached as a function-local
+    // static. Callers pass any rect — Drawable::drawWithin handles
+    // aspect-correct centered placement.
+    static void drawBrandLogo (juce::Graphics& g,
+                               juce::Rectangle<float> bounds);
 
 private:
     // One Typeface::Ptr per (family, style) pair. Populated lazily on first

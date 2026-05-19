@@ -35,8 +35,65 @@ namespace
 
 DurationPanel::DurationPanel()
 {
-    setInterceptsMouseClicks (true, false);
+    // DEV-081 sesja 112 — second arg flipped false → true so the new
+    // checkbox child (replaceOriginalToggle_) receives its own click
+    // events. Slider drag still works because clicks landing outside any
+    // child component fall through to DurationPanel's mouseDown.
+    setInterceptsMouseClicks (true, true);
     setOpaque (true);
+
+    // DEV-081 sesja 112 — "Replace original item" checkbox, bottom row.
+    // Default ON preserves the pre-DEV-081 Duration-mode Insert behaviour
+    // (overwrites the source clip with the remix). When OFF, MainComponent's
+    // Insert handler sets InsertSpec.insertAsNewItem = true + shifts the
+    // base timeline position to source.end so the source clip remains
+    // untouched and the remix lands immediately after it on the same track.
+    //
+    // Tooltip format mirrors AdvancedWeightsPanel toggles (ON: … / OFF: …)
+    // so the wording style stays consistent across the plugin.
+    using namespace reamix::theme;
+    replaceOriginalToggle_.setButtonText ("Edit source in place");
+    replaceOriginalToggle_.setToggleState (true, juce::dontSendNotification);
+    replaceOriginalToggle_.setColour (juce::ToggleButton::textColourId, Fg2);
+    replaceOriginalToggle_.setColour (juce::ToggleButton::tickColourId, Accent);
+    replaceOriginalToggle_.setTooltip (juce::String::fromUTF8 (
+        "ON: Insert splices the remix into the source clip on the same track "
+        "— the region segment is swapped for the remix; pre/post-region "
+        "audio is preserved. Source clip is edited in place.\n"
+        "OFF: Source clip stays exactly as is. The remix is inserted as a "
+        "new item immediately after the source on the same track."));
+    replaceOriginalToggle_.onClick = [this]
+    {
+        if (onShouldReplaceOriginalToggled)
+            onShouldReplaceOriginalToggled (replaceOriginalToggle_.getToggleState());
+    };
+    // DEV-081 sesja 112 — checkbox only applies in Region mode (the new
+    // insert-as-new-item path only fires when the remix carries a region).
+    // addChildComponent (not addAndMakeVisible) keeps it hidden at startup;
+    // setRegion(info) calls setVisible(true) when Region display is active.
+    addChildComponent (replaceOriginalToggle_);
+}
+
+void DurationPanel::setShouldReplaceOriginal (bool on) noexcept
+{
+    // dontSendNotification — caller is restoring persisted state; we don't
+    // want to re-broadcast to the persistence callback on startup.
+    replaceOriginalToggle_.setToggleState (on, juce::dontSendNotification);
+}
+
+bool DurationPanel::shouldReplaceOriginal() const noexcept
+{
+    return replaceOriginalToggle_.getToggleState();
+}
+
+void DurationPanel::setRegionTabActive (bool active) noexcept
+{
+    // DEV-081 sesja 112 — track Region tab visibility, not regionInfo_.
+    if (replaceOriginalToggle_.isVisible() != active)
+    {
+        replaceOriginalToggle_.setVisible (active);
+        repaint();
+    }
 }
 
 void DurationPanel::setRange (double minSec, double maxSec)
@@ -137,6 +194,18 @@ void DurationPanel::resized()
     tickrowBounds_ = juce::Rectangle<int> (sliderCol_.getX(),
                                              trackHitArea_.getBottom() + gap,
                                              sliderCol_.getWidth(), tickH);
+
+    // DEV-081 sesja 112 — checkbox row at the bottom 22 px. Left-aligned to
+    // the slider column so it sits below the tickrow rather than under the
+    // dense readout column (which already carries the target label + value +
+    // delta chip). The toggle reports its width to JUCE so the click target
+    // matches the label extent.
+    const int toggleRowH = 22;
+    const int toggleY = h - toggleRowH - 4;
+    replaceOriginalToggle_.setBounds (sliderCol_.getX(),
+                                       toggleY,
+                                       juce::jmax (160, w - sliderCol_.getX() - padX),
+                                       toggleRowH);
 }
 
 void DurationPanel::paint (juce::Graphics& g)

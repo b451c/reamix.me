@@ -135,41 +135,16 @@ void HeaderBar::paint (juce::Graphics& g)
         bounds.getHeight()
     };
 
-    // Session 49 — brand mark is now the bundled sun-burst logo PNG rather
-    // than the simple rounded-square Accent dot the mockup shipped. Scaled
-    // up to 18×18 in the 40h header (was 10×10 as a pure marker dot) so the
-    // detail is legible; any smaller and the radial rays muddle. If the logo
-    // failed to decode (unlikely once bundled), fall back to the original
-    // Accent dot so the header still renders.
+    // Brand mark — vectorized sun-burst SVG (DEV-082 sesja 112).
+    // Renders sharp on every backend at any size, including Linux Cairo/
+    // Pango where the prior PNG raster path produced jagged edges even
+    // with high-quality resampling.
     const int markSize = 18;
     const juce::Rectangle<float> markRect (
         (float) markArea.getX(),
         (float) markArea.getCentreY() - (float) markSize * 0.5f,
         (float) markSize, (float) markSize);
-
-    const auto& logo = LookAndFeelReamix::brandLogo();
-    if (logo.isValid())
-    {
-        // Sesja 111 v1.0.3 — source PNG is 128×124, target render here is 18×18
-        // (≈7x downscale). JUCE's default mediumResamplingQuality produces
-        // jagged sun-burst rays on Windows (Direct2D/GDI less forgiving than
-        // macOS Quartz). highResamplingQuality uses bicubic interpolation —
-        // smooth rays at small sizes.
-        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-        g.drawImageWithin (logo,
-                           (int) markRect.getX(), (int) markRect.getY(),
-                           (int) markRect.getWidth(), (int) markRect.getHeight(),
-                           juce::RectanglePlacement::centred
-                           | juce::RectanglePlacement::onlyReduceInSize,
-                           false);
-    }
-    else
-    {
-        g.setColour (Accent);
-        g.fillRoundedRectangle (markRect, r::R1);
-        g.setColour (juce::Colour (0x40000000));
-        g.drawRoundedRectangle (markRect.reduced (0.5f), r::R1, 1.0f);
-    }
+    LookAndFeelReamix::drawBrandLogo (g, markRect);
 
     // Name "reamix" — plugin.css:37-42 (13/600 Fg0, 0.01em letter-spacing)
     auto textWidth = [] (const juce::Font& font, const juce::String& text)

@@ -148,6 +148,10 @@ namespace
         if (parts.size() > 6)
             g.itemGuids = splitByComma (parts[6]);
         g.originalItemDurationSec = parts.size() > 7 ? parts[7].getDoubleValue() : 0.0;
+        // DEV-081 sesja 112 — isAppend appended as 9th field. Legacy
+        // entries (pre-DEV-081) lack the field and default to false
+        // (= splice semantics, the original Region Insert behaviour).
+        g.isAppend = parts.size() > 8 && parts[8].getIntValue() != 0;
 
         return g;
     }
@@ -198,7 +202,8 @@ void saveRegionGroup (const RegionGroup& group)
         + formatDouble (group.targetSec)      + "|"
         + group.tmpWavPath                    + "|"
         + itemsCsv                            + "|"
-        + formatDouble (group.originalItemDurationSec);
+        + formatDouble (group.originalItemDurationSec) + "|"
+        + juce::String (group.isAppend ? 1 : 0);
 
     writeExtState (perGroupKey (group.sourceGuid).toRawUTF8(), payload);
 

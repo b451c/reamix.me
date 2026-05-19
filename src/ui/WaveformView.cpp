@@ -782,33 +782,13 @@ void WaveformView::paintSplashOverlay (juce::Graphics& g,
     const float groupTop = canvas.getCentreY() - groupH * 0.5f;
     const float markX    = canvas.getCentreX() - markW * 0.5f;
 
-    // Brand logo — bundled PNG via LookAndFeelReamix::brandLogo(). Falls
-    // back to the original Accent rounded-square if decode fails.
+    // Brand logo — vectorized sun-burst SVG (DEV-082 sesja 112).
+    // Renders sharp on every backend at any size; replaces the PNG +
+    // bicubic-resampling fallback.
     const float logoY = groupTop + (markH - (float) logoSize) * 0.5f;
-    const juce::Rectangle<int> logoRect ((int) markX, (int) logoY,
-                                          logoSize, logoSize);
-    const auto& logo = LookAndFeelReamix::brandLogo();
-    if (logo.isValid())
-    {
-        // Sesja 111 v1.0.3 — match HeaderBar logo rendering: bicubic
-        // interpolation for clean sun-burst rays under aggressive
-        // downscale (source 128×124 → target logoSize). See HeaderBar
-        // cpp:153 for the Windows VM jagged-edges precedent.
-        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-        g.drawImageWithin (logo,
-                           logoRect.getX(), logoRect.getY(),
-                           logoRect.getWidth(), logoRect.getHeight(),
-                           juce::RectanglePlacement::centred
-                           | juce::RectanglePlacement::onlyReduceInSize,
-                           false);
-    }
-    else
-    {
-        g.setColour (Accent);
-        g.fillRoundedRectangle (logoRect.toFloat(), r::R2);
-        g.setColour (juce::Colour (0x40000000));
-        g.drawRoundedRectangle (logoRect.toFloat().reduced (0.5f), r::R2, 1.0f);
-    }
+    const juce::Rectangle<float> logoRect (markX, logoY,
+                                            (float) logoSize, (float) logoSize);
+    LookAndFeelReamix::drawBrandLogo (g, logoRect);
 
     // Row: "reamix" + ".me" vertically centered against the logo height.
     const float textRowTop = groupTop + (markH - (float) reamixFont.getHeight()) * 0.5f;

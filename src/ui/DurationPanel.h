@@ -58,7 +58,26 @@ public:
     void setActive (bool) noexcept;
     bool isActive() const noexcept { return enabled_; }
 
+    // DEV-081 sesja 112 — "Replace original item" checkbox state. Controls
+    // whether Insert overwrites the source clip (true, current behaviour)
+    // or leaves the source intact and appends remix clips right after it
+    // on the same track (false). Default true preserves the pre-DEV-081
+    // workflow. Caller persists state via ExtState; programmatic set on
+    // startup uses setShouldReplaceOriginal.
+    void setShouldReplaceOriginal (bool) noexcept;
+    bool shouldReplaceOriginal()   const noexcept;
+
+    // DEV-081 sesja 112 — checkbox visibility tracks the Region tab, NOT
+    // the regionInfo_ payload (so the user sees the toggle as soon as they
+    // switch to the Region tab, even before a time selection is created).
+    // MainComponent calls this from recomputeRegionState whenever appMode_
+    // changes.
+    void setRegionTabActive (bool) noexcept;
+
+    static constexpr int kPanelHeight = 100; // DEV-081: 78 → 100 to host the checkbox row.
+
     std::function<void(double)> onTargetChanged;
+    std::function<void(bool)>   onShouldReplaceOriginalToggled;
 
     void paint            (juce::Graphics&) override;
     void resized          () override;
@@ -91,6 +110,10 @@ private:
     juce::Rectangle<int> trackBounds_;     // 4px-thick track line rect
     juce::Rectangle<int> trackHitArea_;    // 22h tall interaction strip
     juce::Rectangle<int> tickrowBounds_;
+
+    // DEV-081 sesja 112 — checkbox host; positioned in the bottom 22 px row
+    // by resized(). Listener is wired in ctor → invokes onShouldReplaceOriginalToggled.
+    juce::ToggleButton replaceOriginalToggle_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DurationPanel)
 };

@@ -147,6 +147,25 @@ struct InsertSpec
 
     // Undo-block label shown in REAPER's Undo history.
     juce::String undoLabel { "Insert remix clips" };
+
+    // DEV-081 sesja 112 — non-destructive insert (Region mode). When true,
+    // the bridge SKIPS step 1 (delete existingItemGuidsToDelete) AND step 2
+    // (delete sourceItemToDelete), preserving the original source item on
+    // the timeline; the remix clips are inserted at `basePositionSec`
+    // (caller is responsible for setting that to a non-overlapping target,
+    // e.g. source.position + source.length so the remix sits right after).
+    // Default false = legacy destructive behaviour (replace source).
+    bool insertAsNewItem { false };
+
+    // DEV-081 sesja 112 — REAPER selection restore target. After the
+    // post-insert SelectAllMediaItems(false) + per-clip selection that
+    // insertRemixClips runs at the end of its loop, the bridge calls
+    // SelectAllMediaItems(false) + SetMediaItemSelected(this, true) so
+    // the polling timer in MainComponent does NOT see a "selected item
+    // changed" signal and force-flip appMode_ to Duration. Set this to
+    // picked->itemPtr at the Region insert-as-new-item call site; leave
+    // null for destructive paths where the source has been deleted.
+    void* preserveSelectionItemPtr { nullptr };
 };
 
 struct InsertResult

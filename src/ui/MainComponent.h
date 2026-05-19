@@ -438,6 +438,14 @@ private:
     bool insertSpliceMarkersEnabled_ { true };
     bool insertRenderRegionEnabled_  { true };
 
+    // DEV-081 sesja 112 — Duration-mode "Replace original item on Insert"
+    // checkbox state mirror. Default true preserves the pre-DEV-081
+    // destructive Insert (overwrites the source clip). When false, the
+    // Duration Insert path sets InsertSpec.insertAsNewItem and shifts
+    // basePositionSec so the remix sits right after the source on the
+    // same track. Persisted to ExtState `insert_replace_original`.
+    bool insertReplaceOriginalEnabled_ { true };
+
     // ── Mode + region state (sesja 60, step 6) ───────────────────
     // Three-mode UX per user decision: user picks the mode by clicking a tab
     // (Duration / Region / Blocks). REAPER time-selection auto-flips the

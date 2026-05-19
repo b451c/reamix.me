@@ -1,0 +1,22 @@
+#pragma once
+
+// Auto-generated from src/version.h.in by CMake configure_file at configure
+// time. The literal version string is substituted from CMake PROJECT_VERSION.
+//
+// DEV-082 sesja 112 follow-up — REAMIX_VERSION decoupling for CI cache speed.
+// Previously this value was injected as a global `target_compile_definitions`
+// REAMIX_VERSION="X.Y.Z" entry, which became part of the compile-command
+// fingerprint that ccache hashes. Result: every release tag bump invalidated
+// every cached .cpp.o (200+ files), forcing a full rebuild on CI even with
+// the ccache action populated. Moving the version literal into a generated
+// header keeps the compile flags identical across versions; only the small
+// set of files that #include this header recompiles on a version bump
+// (StatusBar / MainComponent / main), and the JUCE / vendor objects stay
+// cached. Expected CI release-flow speedup: ~20 min wall → ~12-15 min.
+//
+// The generated header lives in the build tree
+// (${CMAKE_CURRENT_BINARY_DIR}/generated/version.h) and is exposed via
+// target_include_directories, so source files use `#include "version.h"`
+// without referencing a build-tree path explicitly.
+
+#define REAMIX_VERSION "@PROJECT_VERSION@"

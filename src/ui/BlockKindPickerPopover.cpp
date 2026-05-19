@@ -56,6 +56,14 @@ BlockKindPickerPopover::BlockKindPickerPopover (SegmentKind smartDefault,
     setSize (kContentWidth, contentHeightFor (rowsFor (pillCount())));
     setWantsKeyboardFocus (true);
     setMouseClickGrabsKeyboardFocus (true);
+
+    // DEV-083 sesja 112 — paint() fills the entire bounds with Bg2 before
+    // drawing pills, so the component is fully opaque. Marking it as such
+    // tells JUCE to skip painting the parent (CallOutBox bubble interior)
+    // beneath us, which on Linux X11/Cairo eliminates the corrupted-pixel
+    // / rainbow artifacts that surfaced when the compositor alpha-blended
+    // against uninitialised backing-buffer memory.
+    setOpaque (true);
 }
 
 int BlockKindPickerPopover::pillCount() const

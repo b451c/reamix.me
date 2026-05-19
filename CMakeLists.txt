@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 
 if(APPLE)
-  project(reaper_reamix VERSION 1.0.4 LANGUAGES C CXX OBJCXX)
+  project(reaper_reamix VERSION 1.0.5 LANGUAGES C CXX OBJCXX)
 else()
-  project(reaper_reamix VERSION 1.0.4 LANGUAGES C CXX)
+  project(reaper_reamix VERSION 1.0.5 LANGUAGES C CXX)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -98,11 +98,14 @@ juce_add_binary_data(reamix_font_binary SOURCES
   assets/fonts/JetBrainsMono-Regular.ttf
   assets/fonts/JetBrainsMono-Medium.ttf
   assets/fonts/JetBrainsMono-SemiBold.ttf
-  # Session 49 — brand logo (replaces the simple rounded-square dot in
-  # HeaderBar + WaveformView splash). Filename → JUCE symbol:
-  # reamix-logo.png → reamixlogo_png / reamixlogo_pngSize. See
-  # LookAndFeelReamix for the Image loader helper.
-  assets/logo/reamix-logo.png
+  # Brand logo — true-vector SVG (42 rounded-rect rays + central hole
+  # baked into geometry). DEV-082 sesja 112: replaces the prior 128×124
+  # PNG which produced jagged edges on Linux Cairo/Pango at small target
+  # sizes (sesja 111 v1.0.3 PNG-bicubic fix landed but ineffective on
+  # Linux). SVG rasterizes per render call so every backend (Quartz,
+  # Direct2D, Cairo/Pango) draws sharp at any size. JUCE symbol:
+  # reamix-logo.svg → reamixlogo_svg / reamixlogo_svgSize.
+  assets/logo/reamix-logo.svg
 )
 
 # JUCE modules
@@ -133,6 +136,19 @@ target_include_directories(reaper_reamix PRIVATE
   ${WDL_DIR}/swell
   ${POCKETFFT_DIR}
   src
+  ${CMAKE_CURRENT_BINARY_DIR}/generated
+)
+
+# DEV-082 sesja 112 follow-up — REAMIX_VERSION decoupling for CI cache speed.
+# Generates ${CMAKE_CURRENT_BINARY_DIR}/generated/version.h from
+# src/version.h.in with PROJECT_VERSION substituted. Only files that
+# `#include "version.h"` recompile on a version bump (the global compile-
+# definition approach forced a full rebuild because ccache hashed the
+# whole compile command line). See src/version.h.in for the full rationale.
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/version.h
+  @ONLY
 )
 
 target_compile_definitions(reaper_reamix PRIVATE
@@ -151,7 +167,10 @@ target_compile_definitions(reaper_reamix PRIVATE
   $<$<PLATFORM_ID:Linux>:JUCE_USE_CURL=1>
   $<$<NOT:$<PLATFORM_ID:Linux>>:JUCE_USE_CURL=0>
   WDL_NO_DEFINE_MINMAX
-  REAMIX_VERSION="${PROJECT_VERSION}"
+  # REAMIX_VERSION moved out of target_compile_definitions sesja 112 (DEV-082
+  # follow-up) into a generated header so version bumps don't invalidate the
+  # ccache key for every .cpp file. See src/version.h.in + configure_file
+  # below.
   $<$<NOT:$<PLATFORM_ID:Windows>>:SWELL_PROVIDED_BY_APP>
   $<$<PLATFORM_ID:Windows>:NOMINMAX>
   $<$<PLATFORM_ID:Windows>:WIN32_LEAN_AND_MEAN>

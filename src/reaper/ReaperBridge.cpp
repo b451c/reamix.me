@@ -289,7 +289,12 @@ InsertResult insertRemixClips (const InsertSpec& spec)
     PreventUIRefresh (1);
     SelectAllMediaItems (nullptr, false);
 
-    // Step 1: delete existing remix items (Update path) by GUID.
+    // Step 1: delete existing remix items by GUID — runs in BOTH destructive
+    // and insert-as-new modes. For insert-as-new (DEV-081 sesja 112) this is
+    // the Update flow: previous insert-as-new clips for the same source are
+    // removed before the new ones land at the same basePosition. Caller
+    // populates spec.existingItemGuidsToDelete only when an Update is
+    // intended; left empty otherwise the loop is a no-op.
     if (DeleteTrackMediaItem)
     {
         for (const auto& guid : spec.existingItemGuidsToDelete)
@@ -302,8 +307,9 @@ InsertResult insertRemixClips (const InsertSpec& spec)
                 DeleteTrackMediaItem (itTrack, (MediaItem*) it);
         }
 
-        // Step 2: delete the source item if requested (replace-source path).
-        if (spec.sourceItemToDelete != nullptr)
+        // Step 2: delete the source item ONLY when not in insert-as-new mode.
+        // insert-as-new explicitly preserves the source clip on the timeline.
+        if (! spec.insertAsNewItem && spec.sourceItemToDelete != nullptr)
             DeleteTrackMediaItem (track, (MediaItem*) spec.sourceItemToDelete);
     }
 
@@ -395,6 +401,23 @@ InsertResult insertRemixClips (const InsertSpec& spec)
             addSpliceMarkers (spec.basePositionSec, spec.spliceTimesRel);
         if (spec.addRenderRegion)
             addRenderRegion (spec.basePositionSec, rangeEnd, spec.renderRegionName);
+    }
+
+    // DEV-081 sesja 112 — when inserting as new item (Region mode
+    // non-destructive path), restore selection to the original source
+    // BEFORE UpdateArrange so the MainComponent polling timer keeps the
+    // same selected-item identity it had before Insert. Without this, the
+    // post-loop SetMediaItemSelected calls above left every NEW clip
+    // selected, polling detected an itemChanged signal on the next tick,
+    // and applySelectedItem force-flipped appMode_ to Duration — the
+    // regression user reported in sesja 112 ("przeskakuje tryb na
+    // duration"). Bridge honours this field only when insertAsNewItem
+    // is true; legacy destructive paths leave selection on inserted clips
+    // because the source was deleted anyway.
+    if (spec.insertAsNewItem && spec.preserveSelectionItemPtr != nullptr)
+    {
+        SelectAllMediaItems (nullptr, false);
+        SetMediaItemSelected ((MediaItem*) spec.preserveSelectionItemPtr, true);
     }
 
     PreventUIRefresh (-1);

@@ -5,6 +5,7 @@
 #include <functional>
 #include <mutex>
 
+#include "version.h"
 #include "Theme.h"
 #include "BlockEditPopover.h"
 #include "BlockKindPickerPopover.h"
@@ -351,6 +352,13 @@ MainComponent::MainComponent()
             const juce::String s = juce::String::fromUTF8 (rawRegion);
             insertRenderRegionEnabled_ = (s == "1");
         }
+        // DEV-081 sesja 112 — load "Replace original item on Insert" toggle.
+        const char* rawReplace = GetExtState ("reamix.me", "insert_replace_original");
+        if (rawReplace != nullptr && rawReplace[0] != '\0')
+        {
+            const juce::String s = juce::String::fromUTF8 (rawReplace);
+            insertReplaceOriginalEnabled_ = (s == "1");
+        }
     }
 #endif
 
@@ -371,6 +379,25 @@ MainComponent::MainComponent()
     // ── Wiring ───────────────────────────────────────────────────────
 
     sourcePanel_.onAnalyze = [this] { startAnalyze(); };
+
+    // DEV-081 sesja 112 — push persisted "Replace original" toggle state
+    // into the DurationPanel checkbox (default true = pre-DEV-081
+    // destructive Insert). dontSendNotification path inside the setter
+    // avoids re-triggering the persistence callback below at startup.
+    durationPanel_.setShouldReplaceOriginal (insertReplaceOriginalEnabled_);
+
+    durationPanel_.onShouldReplaceOriginalToggled = [this] (bool replace)
+    {
+        insertReplaceOriginalEnabled_ = replace;
+#if REAMIX_WITH_REAPER_IO
+        if (SetExtState)
+            SetExtState ("reamix.me", "insert_replace_original",
+                         replace ? "1" : "0", true);
+#endif
+        statusBar_.setText (replace
+            ? juce::String::fromUTF8 ("Insert: replace source clip with remix")
+            : juce::String::fromUTF8 ("Insert: keep source, append remix after it"));
+    };
 
     durationPanel_.onTargetChanged = [this] (double sec)
     {
@@ -611,6 +638,132 @@ MainComponent::MainComponent()
         const bool remixIsRegional = (remix.regionEndSec - remix.regionStartSec) > 0.001;
         if (remixIsRegional)
         {
+            // DEV-081 sesja 112 — Region-mode "Replace original item on Insert"
+            // checkbox (DurationPanel checkbox, visible only while DurationPanel
+            // is in REGION display mode). When unchecked, bypass the splice
+            // machinery below entirely: the source clip stays untouched and the
+            // remix is appended as a fresh sequence of items immediately after
+            // the selected source on the same track. Implemented via the simpler
+            // insertRemixClips path with insertAsNewItem set; ReaperBridge skips
+            // all delete operations in that mode.
+            if (! insertReplaceOriginalEnabled_)
+            {
+                // DEV-081 sesja 112 — Update flow mirror of the splice path:
+                // look up a previous insert-as-new entry (isAppend=true) for
+                // the selected item GUID. Direct hit when picked IS the
+                // original source clip; indirect when picked is one of the
+                // previously-appended clips. If found, the new clips REPLACE
+                // the old ones at the same basePosition + on the same track,
+                // mirroring the splice Update behaviour the user reported as
+                // missing ("wstawia w to samo miejsce co wczesniejsze
+                // zamiast zamienic", sesja 112).
+                const juce::String pickedItemGuid =
+                    reamix::reaper::getItemGuid (picked->itemPtr);
+                auto existingAppend =
+                    reamix::reaper::regionGroupTracker::findGroupForSelectedItem (pickedItemGuid);
+                const bool isAppendUpdate = existingAppend.has_value()
+                                             && existingAppend->isAppend;
+
+                reamix::reaper::InsertSpec asNewSpec;
+                asNewSpec.originalSourcePath = currentSourcePath_;
+                asNewSpec.clips              = &remix.editPlan.clips;
+                asNewSpec.insertAsNewItem    = true;
+                asNewSpec.addSpliceMarkers   = insertSpliceMarkersEnabled_;
+                asNewSpec.addRenderRegion    = insertRenderRegionEnabled_;
+                asNewSpec.spliceTimesRel     = remix.transitionTimesSec;
+                asNewSpec.renderRegionName   =
+                    juce::File (currentSourcePath_).getFileNameWithoutExtension();
+
+                if (isAppendUpdate)
+                {
+                    // Reuse stored position + delete previous clips. Bridge
+                    // already handles existingItemGuidsToDelete when
+                    // insertAsNewItem=true (we no longer guard it with the
+                    // insertAsNewItem flag inside the bridge).
+                    asNewSpec.existingItemGuidsToDelete = existingAppend->itemGuids;
+                    asNewSpec.basePositionSec           = existingAppend->basePosition;
+
+                    // Track-resolution: prefer the originally-recorded track
+                    // (in case user moved the source between Inserts). Falls
+                    // back to picked->trackPtr if the recorded track is gone.
+                    void* groupTrack = existingAppend->trackGuid.isNotEmpty()
+                        ? reamix::reaper::findTrackByGuid (existingAppend->trackGuid)
+                        : nullptr;
+                    asNewSpec.trackPtr = (groupTrack != nullptr)
+                                            ? groupTrack
+                                            : picked->trackPtr;
+
+                    // Restore selection to the original source for the
+                    // polling-timer guard. The stored sourceGuid is the
+                    // original source clip; if it's been deleted manually,
+                    // fall back to whatever picked currently points at.
+                    void* sourceItem = reamix::reaper::findItemByGuid (existingAppend->sourceGuid);
+                    asNewSpec.preserveSelectionItemPtr =
+                        (sourceItem != nullptr) ? sourceItem : picked->itemPtr;
+                    asNewSpec.undoLabel = "Region remix: update appended item";
+                }
+                else
+                {
+                    // Fresh insert-as-new — append at source.end on the same
+                    // track. Selection-restore target is the picked source.
+                    asNewSpec.trackPtr                 = picked->trackPtr;
+                    asNewSpec.basePositionSec          = picked->positionSec
+                                                         + picked->durationSec;
+                    asNewSpec.preserveSelectionItemPtr = picked->itemPtr;
+                    asNewSpec.undoLabel                = "Region remix: insert as new item";
+                }
+
+                busyDeferInsert_.startBusy (juce::String::fromUTF8 (
+                    isAppendUpdate ? "Updating in REAPER\xE2\x80\xA6"
+                                   : "Inserting into REAPER\xE2\x80\xA6"));
+                transportBar_.setInsertBusy (true, juce::String::fromUTF8 (
+                    isAppendUpdate ? "Updating\xE2\x80\xA6" : "Inserting\xE2\x80\xA6"));
+                headerBar_.setStatusKind (reamix::ui::HeaderStatus::Analyzing);
+                const auto asNewResult = reamix::reaper::insertRemixClips (asNewSpec);
+                busyDeferInsert_.stopBusy();
+                transportBar_.setInsertBusy (false);
+                headerBar_.setStatusKind (asNewResult.ok
+                                           ? reamix::ui::HeaderStatus::Ready
+                                           : reamix::ui::HeaderStatus::Error);
+                if (! asNewResult.ok)
+                {
+                    statusBar_.setError ((isAppendUpdate
+                        ? juce::String ("Region update-as-new failed: ")
+                        : juce::String ("Region insert-as-new failed: "))
+                        + asNewResult.errorMessage);
+                    return;
+                }
+
+                // Persist tracker entry so the next Insert in this mode finds
+                // the new clip GUIDs + reuses the same basePosition for the
+                // Update flow above. sourceGuid carries forward across
+                // Updates (= the original source identity); itemGuids /
+                // basePosition refresh per Insert.
+                {
+                    reamix::reaper::regionGroupTracker::RegionGroup g;
+                    g.sourceGuid     = isAppendUpdate
+                                          ? existingAppend->sourceGuid
+                                          : pickedItemGuid;
+                    g.trackGuid      = reamix::reaper::getTrackGuid (asNewSpec.trackPtr);
+                    g.basePosition   = asNewSpec.basePositionSec;
+                    g.regionStartSec = remix.regionStartSec;
+                    g.regionEndSec   = remix.regionEndSec;
+                    g.targetSec      = remix.targetSec;
+                    g.tmpWavPath     = remix.tmpWavPath;
+                    g.itemGuids      = asNewResult.insertedItemGuids;
+                    g.isAppend       = true;
+                    reamix::reaper::regionGroupTracker::saveRegionGroup (g);
+                }
+
+                transportBar_.setState (reamix::ui::TransportState::Inserted);
+                statusBar_.setNotice ((isAppendUpdate
+                    ? juce::String ("Updated ")
+                    : juce::String ("Inserted "))
+                    + juce::String (asNewResult.clipCount)
+                    + " region clips as new item after source");
+                return;
+            }
+
             // DEV-033 / ADR-054 — split timeline at the algorithm's *actual*
             // entry/exit beat positions, not user's region bounds. This
             // eliminates the source-content jump at pre-region→remix and
@@ -653,8 +806,16 @@ MainComponent::MainComponent()
             auto existingRegionGroup =
                 reamix::reaper::regionGroupTracker::findGroupForSelectedItem (pickedItemGuid);
 
+            // DEV-081 sesja 112 — an entry with isAppend=true comes from a
+            // previous insert-as-new-item Insert (checkbox unchecked) and
+            // does NOT describe a splice into the source. The splice flow
+            // here must ignore it (no delete payloads, no D_LENGTH restore
+            // — those would corrupt the still-intact source). Append clips
+            // from prior runs are left on the timeline for the user to
+            // remove manually if they want to switch modes.
             const bool isRegionUpdate = existingRegionGroup.has_value()
-                                         && existingRegionGroup->sourceGuid.isNotEmpty();
+                                         && existingRegionGroup->sourceGuid.isNotEmpty()
+                                         && ! existingRegionGroup->isAppend;
 
             // Resolve the source item to split. For Update path this is the
             // canonical pre-region piece (= group->sourceGuid item, which
@@ -3632,6 +3793,14 @@ void MainComponent::recomputeRegionState()
     modeTabs_.setMode (appMode_);
     modeTabs_.setAutoFlag (appMode_ == Mode::Region && regionFromAuto_);
 
+    // DEV-081 sesja 112 — "Replace original item on Insert" checkbox is
+    // only meaningful in Region mode (the non-destructive insert path is
+    // wired into the Region Insert branch). DurationPanel hides the
+    // checkbox in Duration / Blocks; here we keep visibility in sync with
+    // the Region tab itself rather than the regionInfo_ payload so the
+    // toggle appears the instant the user clicks the Region tab.
+    durationPanel_.setRegionTabActive (appMode_ == Mode::Region);
+
     // ADR-051 — Block Assembly mode is the only place segBar drag-mark
     // is active and where user blocks render. Other modes hide the tiles
     // (the segBar reverts to anchor-only base layer).
@@ -5205,7 +5374,7 @@ void MainComponent::resized()
     if (inBlocks)
         blockAssemblyPanel_.setBounds (r.removeFromTop (blockAssemblyPanel_.getPreferredHeight()));
     else
-        durationPanel_.setBounds (r.removeFromTop (78));
+        durationPanel_.setBounds (r.removeFromTop (reamix::ui::DurationPanel::kPanelHeight));
 
     statusBar_    .setBounds (r.removeFromBottom (22));
     transportBar_ .setBounds (r.removeFromBottom (54));
@@ -5645,7 +5814,7 @@ void MainComponent::checkForUpdatesAsync()
     // StatusBar version_ + a future tag both flow through one comparison.
     // Keep this string in lockstep with StatusBar.h::version_ — see memory
     // feedback_release_tag_bump_ui_version_lockstep.md.
-    constexpr const char* kCurrentVersion = "v1.0.4";
+    constexpr const char* kCurrentVersion = "v1.0.5";
 
     std::thread ([this]
     {
@@ -5690,7 +5859,7 @@ void MainComponent::showUpdateAvailableModal (const juce::String& latestTag)
 
     const juce::String body = juce::String::fromUTF8 (
         "A newer version of reamix.me is available.\n\n"
-        "  Current: v1.0.4\n"
+        "  Current: v1.0.5\n"
         "  Latest:  ") + latestTag + juce::String::fromUTF8 (
         "\n\n"
         "Update via:\n"

@@ -549,15 +549,23 @@ void LookAndFeelReamix::drawKbdChip (juce::Graphics& g, juce::Rectangle<float> a
     g.drawText (text, area, juce::Justification::centred, true);
 }
 
-const juce::Image& LookAndFeelReamix::brandLogo()
+void LookAndFeelReamix::drawBrandLogo (juce::Graphics& g,
+                                        juce::Rectangle<float> bounds)
 {
-    // Session 49 — load the bundled brand logo PNG once, cache in a
-    // function-local static. JUCE's ImageCache would also work but this
-    // keeps lifetime tied to the plugin rather than any purge policy.
-    static const juce::Image logo = juce::ImageFileFormat::loadFrom (
-        BinaryData::reamixlogo_png,
-        (std::size_t) BinaryData::reamixlogo_pngSize);
-    return logo;
+    // DEV-082 sesja 112 — parse the bundled SVG once, cache the resulting
+    // Drawable as a function-local static, then draw within whatever rect
+    // the caller hands us. SVG mask was baked into ray geometry pre-bundle
+    // so JUCE's SVG parser (which does not honour `<mask>`) renders the
+    // hollow ring correctly out of the box.
+    static const std::unique_ptr<juce::Drawable> drawable =
+        juce::Drawable::createFromImageData (
+            BinaryData::reamixlogo_svg,
+            (std::size_t) BinaryData::reamixlogo_svgSize);
+    if (drawable == nullptr)
+        return;
+    drawable->drawWithin (g, bounds,
+                          juce::RectanglePlacement::centred,
+                          1.0f);
 }
 
 // ── Font blob lookup — binds FaceSlot to BinaryData symbols ──────────
