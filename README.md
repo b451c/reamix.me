@@ -19,44 +19,48 @@ The concept is **Adobe Audition Remix**, re-implemented as a native REAPER exten
 | **Region Remix** | Retarget only the REAPER time-selection; rest of the track untouched. |
 | **Block Assembly** | Manually order sections (Intro → Chorus → Verse → Chorus → Outro); the algorithm optimizes only the splice at each junction. |
 
-## Install via ReaBoot (one-click — Windows + macOS)
+## Install via ReaPack (recommended — all platforms)
 
-[ReaBoot](https://reaboot.com/) is a cross-platform one-click installer for REAPER extensions. It detects your REAPER install (standard or portable), downloads the package, and registers it with ReaPack automatically.
+[ReaPack](https://reapack.com/) is REAPER's package manager. It downloads the correct binary for your OS and architecture, places it where REAPER expects it, and bypasses macOS Gatekeeper / Windows SmartScreen because REAPER itself loads the plugin (not Finder / Explorer).
 
-[**Install reamix.me via ReaBoot →**](https://reaboot.com/?package=https://raw.githubusercontent.com/b451c/reamix.me/main/index.xml)
-
-After ReaBoot finishes, restart REAPER → **Extensions → reamix.me: Show/Hide Window**.
-
-> **Linux users on a system-installed REAPER**: ReaBoot has a [documented limitation](https://github.com/helgoboss/reaboot#supported-os) with this configuration. Use the ReaPack manual import below — it works identically on all platforms.
-
-## Install via ReaPack (works on all platforms)
-
-If you're on Linux with system-installed REAPER, prefer manual control, or already use [ReaPack](https://reapack.com/) (REAPER's package manager):
-
-1. [Install ReaPack](https://reapack.com/) if you don't have it already.
+1. **[Install ReaPack](https://reapack.com/)** if you don't have it already.
 2. In REAPER: **Extensions → ReaPack → Import repositories…** and paste:
    ```
    https://github.com/b451c/reamix.me/raw/main/index.xml
    ```
-3. **Extensions → ReaPack → Browse packages…** → search `reamix` → install.
-4. Restart REAPER. The plugin is now under **Extensions → reamix.me: Show/Hide Window**.
+3. **Extensions → ReaPack → Browse packages…** → search `reamix` → **Install**.
+4. **Restart REAPER**. The plugin opens via **Extensions → reamix.me: Show/Hide Window**.
 
-On first analysis the beat-detection model (~79 MB) downloads to `~/.reamix/models/`. One-time only.
+On first analysis the beat-detection model (~79 MB) downloads automatically to a per-platform application-data directory. One-time only.
 
-## Install manually (direct download)
+### macOS — if REAPER blocks the plugin on first launch
 
-1. Download the binary for your platform from [Releases](https://github.com/b451c/reamix.me/releases/latest).
-2. Place it in REAPER's `UserPlugins/` folder:
+macOS 13+ may quarantine downloaded plugins on first use. If REAPER shows "reaper_reamix.dylib cannot be opened" or fails to list the plugin:
+
+1. Open **System Settings → Privacy & Security** (or **System Preferences → Security & Privacy** on macOS 12).
+2. Scroll to the bottom — there will be a message about `reaper_reamix.dylib` being blocked. Click **Allow Anyway**.
+3. **Restart REAPER**. The plugin loads on the second attempt.
+
+If that doesn't work, run this in Terminal (replace `.dylib` paths if you installed manually):
+```sh
+xattr -d com.apple.quarantine ~/Library/Application\ Support/REAPER/UserPlugins/reaper_reamix.dylib
+xattr -d com.apple.quarantine ~/Library/Application\ Support/REAPER/UserPlugins/libonnxruntime.*.dylib
+```
+
+ReaPack-installed binaries normally bypass this — the steps above only apply to fresh-from-browser downloads.
+
+## Install manually (advanced)
+
+If you can't use ReaPack:
+
+1. Download the binary for your platform from the [Releases page](https://github.com/b451c/reamix.me/releases/latest). You need **two files** per platform: the plugin (`reaper_reamix-*.dylib` / `.dll` / `.so`) **and** the matching ONNX Runtime sidecar.
+2. Place **both files** in REAPER's `UserPlugins/` folder:
    - macOS: `~/Library/Application Support/REAPER/UserPlugins/`
    - Windows: `%APPDATA%\REAPER\UserPlugins\`
    - Linux: `~/.config/REAPER/UserPlugins/`
-3. On macOS, if the dylib was downloaded via a browser, the system marks it quarantined. Clear that flag:
-   ```sh
-   xattr -d com.apple.quarantine ~/Library/Application\ Support/REAPER/UserPlugins/reaper_reamix.dylib
-   ```
-4. Restart REAPER → **Extensions → reamix.me: Show/Hide Window**.
-
-ReaPack-installed binaries bypass the quarantine flag — the manual step is only needed for browser downloads.
+3. On **Linux**, rename the ONNX library from `libonnxruntime.so.1-Linux-<arch>` to `libonnxruntime.so.1` (REAPER's loader expects the soname).
+4. On **macOS**, clear the quarantine flag from both files (see the macOS section above).
+5. Restart REAPER → **Extensions → reamix.me: Show/Hide Window**.
 
 ## Pipeline (how it works)
 

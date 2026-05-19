@@ -27,7 +27,7 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
 \bullet  REAPER 6.0+\line
 \bullet  Internet connection for first-time model download (~79 MB)\line
 \line
-\b Note:\b0  On first analysis, reamix.me downloads the beat-detection neural network to ~/.reamix/models/. This happens once.\line
+\b Note:\b0  On first analysis, reamix.me downloads the beat-detection neural network (~79 MB) to a per-platform application-data directory. This happens once.\line
 }]]></description>
         <link rel="website">https://github.com/b451c/reamix.me</link>
         <link rel="donation">https://ko-fi.com/quickmd</link>
