@@ -5,11 +5,11 @@
 [![Windows](https://img.shields.io/badge/Windows-x64-blue)]()
 [![Linux](https://img.shields.io/badge/Linux-x86__64%20%7C%20aarch64-blue)]()
 
+![reamix.me — Retarget any song to any length; beat-aligned splicing for REAPER across macOS, Windows, Linux. Three modes: Duration, Region Loop, Block Assembly.](assets/screenshots/header.png)
+
 **Retarget any song to any length — without time-stretching.**
 
 A native [REAPER](https://www.reaper.fm/) extension that finds where to splice and stitches a new version of your track at the duration you ask for.
-
-![reamix.me — Duration mode with splice tooltip](assets/screenshots/main-window.png)
 
 The technique is **beat-aligned splicing**, not time-stretching: the algorithm finds pairs of beats where the splice is least likely to be heard as an edit — matched phase, matched chroma, matched energy, matched structural role — and stitches those splices into a path that hits the target duration.
 
