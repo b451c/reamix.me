@@ -315,10 +315,17 @@ MainComponent::MainComponent()
     // Sesja 100 (DEV-018) — load persisted preview volume. Default 1.0 when
     // unset (matches pre-sesja-100 behaviour). Stored as decimal string e.g.
     // "0.85" for 85% gain.
+    //
+    // Sesja 111 v1.0.3 — additionally reject empty string. On a fresh REAPER
+    // profile (e.g. first install on Windows VM), GetExtState returns "" for
+    // unset keys on some platforms instead of nullptr. juce::String::getDoubleValue
+    // on "" yields 0.0 → setVolume(0.0) → silent preview at first launch.
+    // The other ExtState branches in this constructor already guard with
+    // raw[0] == '<expected>'; this one was the one-off miss.
     if (GetExtState)
     {
         const char* raw = GetExtState ("reamix.me", "preview_volume");
-        if (raw != nullptr)
+        if (raw != nullptr && raw[0] != '\0')
         {
             const juce::String s = juce::String::fromUTF8 (raw);
             const double v = juce::jlimit (0.0, 1.0, s.getDoubleValue());
@@ -2272,6 +2279,21 @@ MainComponent::MainComponent()
     // an AlertWindow with "Open Releases" / "Later" buttons. Safe to abort
     // mid-flight via updateCheckAborted_ flag (set in destructor).
     checkForUpdatesAsync();
+
+    // Sesja 111 v1.0.3 — delayed SWS availability probe. SWS loads
+    // alphabetically after reamix, so on plugin init the CF_Preview symbols
+    // aren't yet resolvable. After ~2.5 s every REAPER extension has
+    // finished loading; if SWS is still missing, the user has no SWS install
+    // at all (rather than a load-order timing race). Surface a subtle
+    // status-bar hint so the user knows Preview won't work before clicking
+    // it — premium UX vs the prior "click Preview → cisza → confused"
+    // first-run experience.
+    juce::Timer::callAfterDelay (2500, [this]
+    {
+        if (! reamix::ui::PreviewController::probeSwsAvailable())
+            statusBar_.setText (juce::String::fromUTF8 (
+                "Preview disabled \xe2\x80\x94 install SWS Extension (sws-extension.org)"));
+    });
 
     // DEV-080 sesja 108 — pull user-set defaults from ExtState into host-side
     // mirrors BEFORE any compute path can read currentQualityWeights().
@@ -5563,7 +5585,9 @@ void MainComponent::showWelcomeIfFirstLaunch()
         "  \xe2\x80\xa2 Region \xe2\x80\x94 retarget only the selected time range.\n"
         "  \xe2\x80\xa2 Blocks \xe2\x80\x94 arrange sections manually like a remix DJ.\n\n"
         "First Analyze on each track downloads a one-time 80 MB AI model.\n"
-        "Subsequent analyses on the same track are instant.\n\n");
+        "Subsequent analyses on the same track are instant.\n\n"
+        "Preview playback requires the SWS Extension (sws-extension.org, free).\n"
+        "Analyze and Insert work without SWS \xe2\x80\x94 only preview is disabled.\n\n");
 
    #if JUCE_MAC
     body += juce::String::fromUTF8 (
@@ -5621,7 +5645,7 @@ void MainComponent::checkForUpdatesAsync()
     // StatusBar version_ + a future tag both flow through one comparison.
     // Keep this string in lockstep with StatusBar.h::version_ — see memory
     // feedback_release_tag_bump_ui_version_lockstep.md.
-    constexpr const char* kCurrentVersion = "v1.0.2";
+    constexpr const char* kCurrentVersion = "v1.0.3";
 
     std::thread ([this]
     {
@@ -5666,7 +5690,7 @@ void MainComponent::showUpdateAvailableModal (const juce::String& latestTag)
 
     const juce::String body = juce::String::fromUTF8 (
         "A newer version of reamix.me is available.\n\n"
-        "  Current: v1.0.2\n"
+        "  Current: v1.0.3\n"
         "  Latest:  ") + latestTag + juce::String::fromUTF8 (
         "\n\n"
         "Update via:\n"

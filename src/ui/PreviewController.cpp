@@ -115,6 +115,12 @@ bool PreviewController::isSwsAvailable() const noexcept
     return s_swsAvailable;
 }
 
+bool PreviewController::probeSwsAvailable()
+{
+    ensureSwsResolved();
+    return s_swsAvailable;
+}
+
 PreviewController::PlayResult PreviewController::play (const juce::String& wavPath,
                                                         double startSec,
                                                         double endSec)

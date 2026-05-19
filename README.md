@@ -39,6 +39,7 @@ If a track falls outside the supported scope you may still get usable results, b
 
 - **REAPER** 6.0 or newer
 - **OS**: macOS 13+, Windows 10+, or Linux with X11 + `libcurl4`
+- **[SWS Extension](https://www.sws-extension.org/)** — free, recommended. Required for Preview playback; Analyze and Insert work without it. Install via ReaPack (default repository includes SWS) or download from the SWS site.
 - **Disk space**: ~80 MB for the one-time AI beat-detection model + the plugin binary
 - **Internet**: required for the first analysis only (model download)
 
