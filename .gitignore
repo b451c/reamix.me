@@ -100,6 +100,9 @@ tools/dev/
 # Demo app sandbox (Remotion video render — local only)
 demo/
 
+# Forum drafts (Cockos REAPER forum posts + replies — local working copies)
+forum-posts/
+
 # Internal references (kept locally; not for public repo)
 references/SETUP.md
 references/golden/dev-028/
