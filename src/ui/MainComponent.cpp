@@ -5645,7 +5645,7 @@ void MainComponent::checkForUpdatesAsync()
     // StatusBar version_ + a future tag both flow through one comparison.
     // Keep this string in lockstep with StatusBar.h::version_ — see memory
     // feedback_release_tag_bump_ui_version_lockstep.md.
-    constexpr const char* kCurrentVersion = "v1.0.3";
+    constexpr const char* kCurrentVersion = "v1.0.4";
 
     std::thread ([this]
     {
@@ -5690,7 +5690,7 @@ void MainComponent::showUpdateAvailableModal (const juce::String& latestTag)
 
     const juce::String body = juce::String::fromUTF8 (
         "A newer version of reamix.me is available.\n\n"
-        "  Current: v1.0.3\n"
+        "  Current: v1.0.4\n"
         "  Latest:  ") + latestTag + juce::String::fromUTF8 (
         "\n\n"
         "Update via:\n"

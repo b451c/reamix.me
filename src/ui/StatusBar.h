@@ -59,7 +59,7 @@ private:
     juce::String notice_;              // non-empty → short-lived accent notice
     bool         busy_    { false };
     float        animPhase_ { 0.0f };  // [0..1) drives loading line + spinner rotation
-    juce::String version_ { "v1.0.3" };
+    juce::String version_ { "v1.0.4" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StatusBar)
 };

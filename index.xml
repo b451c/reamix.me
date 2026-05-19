@@ -34,6 +34,22 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <link rel="donation">https://buymeacoffee.com/bsroczynskh</link>
         <link rel="donation">https://www.paypal.com/paypalme/b451c</link>
       </metadata>
+      <version name="1.0.4" author="b451c" time="2026-05-19T15:00:00Z">
+        <changelog><![CDATA[reamix.me 1.0.4 — Linux MP3 decode fix
+
+- Fix: "Unable to decode audio file" on Linux for MP3 inputs. JUCE's registerBasicFormats registers different decoders per platform — macOS uses CoreAudioFormat and Windows uses WindowsMediaAudioFormat (both decode MP3 via system codecs), but Linux has neither. Defined JUCE_USE_MP3AUDIOFORMAT=1 so JUCE's built-in MP3 decoder is registered everywhere; macOS and Windows still prefer their system codec, which remains first in JUCE's registration order — no regression.
+- WAV, FLAC, OGG Vorbis, AIFF continue to work unchanged on all platforms.]]></changelog>
+        <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.4/reaper_reamix-arm64.dylib</source>
+        <source platform="darwin-arm64" file="reamix/libonnxruntime.1.24.4.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.4/libonnxruntime-macOS-arm64.dylib</source>
+        <source platform="darwin64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.4/reaper_reamix-x86_64.dylib</source>
+        <source platform="darwin64" file="reamix/libonnxruntime.1.20.1.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.4/libonnxruntime-macOS-x86_64.dylib</source>
+        <source platform="win64" file="reaper_reamix.dll">https://github.com/b451c/reamix.me/releases/download/v1.0.4/reaper_reamix-x64.dll</source>
+        <source platform="win64" file="reamix/onnxruntime.dll">https://github.com/b451c/reamix.me/releases/download/v1.0.4/onnxruntime.dll</source>
+        <source platform="linux64" file="reaper_reamix.so">https://github.com/b451c/reamix.me/releases/download/v1.0.4/reaper_reamix-x86_64.so</source>
+        <source platform="linux64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.4/libonnxruntime.so.1-Linux-x86_64</source>
+        <source platform="linux-aarch64" file="reaper_reamix.so">https://github.com/b451c/reamix.me/releases/download/v1.0.4/reaper_reamix-aarch64.so</source>
+        <source platform="linux-aarch64" file="reamix/libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.4/libonnxruntime.so.1-Linux-aarch64</source>
+      </version>
       <version name="1.0.3" author="b451c" time="2026-05-19T14:00:00Z">
         <changelog><![CDATA[reamix.me 1.0.3 — Preview UX polish + Windows visual fixes
 
