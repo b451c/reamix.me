@@ -67,14 +67,25 @@ jobs:
         with:
           submodules: true
 
+      # Sesja 111 — cache the ONNX Runtime tarball. Microsoft's release
+      # artifact for a given ORT version never rotates, so a content-key
+      # based on (platform, full URL) is permanent — cache hit avoids
+      # ~80 MB download + ~30s tar/zip extract per job.
+      - name: Cache ONNX Runtime
+        id: cache-ort
+        uses: actions/cache@v4
+        with:
+          path: vendor/onnxruntime
+          key: ort-${{ matrix.platform }}-${{ matrix.ort_url }}
+
       - name: Download ONNX Runtime (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && steps.cache-ort.outputs.cache-hit != 'true'
         run: |
           mkdir -p vendor/onnxruntime
           curl -L ${{ matrix.ort_url }} | ${{ matrix.ort_extract }}
 
       - name: Download ONNX Runtime (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.cache-ort.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "${{ matrix.ort_url }}" -OutFile ort.zip
@@ -92,11 +103,23 @@ jobs:
             libxinerama-dev libasound2-dev libwebkit2gtk-4.0-dev \
             libcurl4-openssl-dev
 
+      # Sesja 111 — ccache caches compiled C++ object files keyed on
+      # compiler + source + flags. JUCE source rarely changes between
+      # commits, so on warm cache hits the Build step drops from
+      # ~10-15 min to ~2-3 min per platform. Cross-platform via
+      # hendrikmuhs/ccache-action (Linux/macOS native ccache; Windows
+      # falls back to sccache automatically).
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ccache-${{ matrix.platform }}
+          max-size: 500M
+
       - name: Configure
         run: |
           mkdir build
           cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_flags }}
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ${{ matrix.cmake_flags }}
 
       - name: Build
         # -j 2 (not -j unbounded) — GitHub-hosted runners have ~7 GB RAM;
