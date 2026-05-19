@@ -5,19 +5,50 @@
 [![Windows](https://img.shields.io/badge/Windows-x64-blue)]()
 [![Linux](https://img.shields.io/badge/Linux-x86__64%20%7C%20aarch64-blue)]()
 
-Music-track retargeting for [REAPER](https://www.reaper.fm/). Pick any song, set a target length, and reamix produces a version at that length that sounds like a natural edit of the song — not a time-stretched version.
+**Retarget any song to any length — without time-stretching.**
 
-The concept is **Adobe Audition Remix**, re-implemented as a native REAPER extension. The technique is **beat-aligned splicing**, not time-stretching: the algorithm finds pairs of beats where splicing from one to the other is perceptually inaudible — matched phase, matched chroma, matched energy, matched structural role — and stitches those splices into a path that hits the target duration.
+A native [REAPER](https://www.reaper.fm/) extension that finds where to splice and stitches a new version of your track at the duration you ask for.
 
-**Quality bar: a listener unaware of the edit cannot tell it happened.**
+![reamix.me — Duration mode with splice tooltip](assets/screenshots/main-window.png)
+
+The technique is **beat-aligned splicing**, not time-stretching: the algorithm finds pairs of beats where the splice is least likely to be heard as an edit — matched phase, matched chroma, matched energy, matched structural role — and stitches those splices into a path that hits the target duration.
+
+**Quality goal: edits that go unnoticed in casual listening.** Results depend on genre and tempo — see [Scope + limitations](#scope--limitations) below for what works well and what doesn't.
 
 ## Three modes
 
-| Mode | What it does |
-|------|--------------|
-| **Target Duration** | Set a duration; the algorithm picks the optimal splice path across the whole track. |
-| **Region Remix** | Retarget only the REAPER time-selection; rest of the track untouched. |
-| **Block Assembly** | Manually order sections (Intro → Chorus → Verse → Chorus → Outro); the algorithm optimizes only the splice at each junction. |
+| Mode | What it does | Status |
+|------|--------------|--------|
+| **Target Duration** | Set a duration; the algorithm picks the optimal splice path across the whole track. | Stable |
+| **Region Remix** | Retarget only the REAPER time-selection; rest of the track untouched. | **Beta** |
+| **Block Assembly** | Manually order sections (Intro → Chorus → Verse → Chorus → Outro); the algorithm optimizes only the splice at each junction. | **Beta** |
+
+## Scope + limitations
+
+reamix.me is tuned for music where beats land on a regular grid and structural sections (verse / chorus / bridge) are well-defined.
+
+**Works best on**: pop, dance, EDM, house, hip-hop, pop-rock, and other beat-driven, predominantly mid-tempo material (~90–145 BPM). Validated against a multi-genre listening corpus.
+
+**Mixed results on**: rock with extended freeform sections, ballads with rubato timing, jazz, classical, acoustic singer-songwriter material with sparse percussion.
+
+**Not currently in scope**: drum'n'bass and other fast-tempo genres above ~150 BPM where the beat rate exceeds the rate of sung syllables — mid-word vocal cuts become architecturally unavoidable. Genre-specific stem-aware paths are on the v1.x roadmap.
+
+If a track falls outside the supported scope you may still get usable results, but expect more audible splices. Feedback on edge cases is welcome — see [About this project](#about-this-project) below.
+
+## System requirements
+
+- **REAPER** 6.0 or newer
+- **OS**: macOS 13+, Windows 10+, or Linux with X11 + `libcurl4`
+- **Disk space**: ~80 MB for the one-time AI beat-detection model + the plugin binary
+- **Internet**: required for the first analysis only (model download)
+
+## Analysis time + cache
+
+A typical 4-minute track analyzes in **under 30 seconds** on first run. Subsequent analyses on the same track are **instant** — the result is cached on disk per source path.
+
+You can inspect cache size and clear it from **Settings (gear icon) → Cache → Clear**, or open the cache folder via **Show in Finder**.
+
+The first-ever analysis on a clean install also downloads the ~80 MB AI model (one-time, ~2 minutes on typical broadband). If you already have **[REABeat](https://github.com/b451c/ReaBeat)** installed, reamix.me reuses its cached model and skips this download entirely.
 
 ## Install via ReaPack (recommended — all platforms)
 
@@ -126,6 +157,14 @@ The `src/dsp/` layer is a bit-exact C++ port of [librosa](https://librosa.org/) 
 
 For contributors, the canonical entry point is **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
+## About this project
+
+reamix.me was originally developed as a commercial product. After completing the C++ port and bringing it to release quality, I chose to release it under MIT instead — in the belief that the GitHub and REAPER communities will help take it further than a single maintainer could alone.
+
+Every contribution is genuinely appreciated: bug reports, edge-case audio samples that surface failure modes, UX feedback from real REAPER workflows, code improvements, and documentation corrections. If you find a rough edge or have an idea that would make the plugin sharper, please open a [GitHub issue](https://github.com/b451c/reamix.me/issues) or submit a pull request.
+
+Donations (see [Support development](#support-development) below) fund ongoing maintenance — CI runners for the 5-platform build matrix, time to triage community reports, and the long tail of polish that turns a v1.0 into a v1.x worth recommending.
+
 ## License
 
 reamix.me's own source code is **MIT** licensed (see [LICENSE](LICENSE)).
@@ -157,7 +196,6 @@ Bundled font licenses are preserved under `assets/fonts/*-LICENSE.txt`.
 
 - **[librosa](https://librosa.org/)** and **[scipy](https://scipy.org/)** — the DSP primitives in `src/dsp/` are a faithful C++ port of librosa + `scipy.signal`. The Python reference is the source of truth for every parity test in `tests/parity/`.
 - **CPJKU** for the [beat-this](https://github.com/CPJKU/beat_this) model (ISMIR 2024) — best published F1 scores for beat + downbeat tracking.
-- **Adobe Audition** for popularizing the Remix workflow that motivated this project.
 - **[REABeat](https://github.com/b451c/ReaBeat)** — sibling REAPER extension by the same author; serves as the architectural template for native C++/JUCE/REAPER integration.
 - **[SneakPeak / EditView](https://github.com/b451c/EditView)** — UI patterns (waveform, minimap, fade handles).
 - The **REAPER community** for [ReaPack](https://reapack.com/) (cfillion), [SWS extension](https://www.sws-extension.org/) (numerous contributors), and the wider plugin ecosystem.
