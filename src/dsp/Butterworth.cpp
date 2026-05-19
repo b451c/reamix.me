@@ -287,7 +287,9 @@ zpk2sosButterworth(const std::vector<cplx>& z,
         const double a1 = -2.0 * p1.real();
         const double a2 = p1.real() * p1.real() + p1.imag() * p1.imag();
 
-        sos[si] = {b0, b1, b2, a0, a1, a2};
+        // Explicit construction: MSVC does not implicitly convert a braced
+        // init-list to std::array for operator=, even though Clang/GCC do.
+        sos[si] = std::array<double, 6>{b0, b1, b2, a0, a1, a2};
     }
 
     // Consolidate gain into first section.
