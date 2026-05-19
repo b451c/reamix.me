@@ -23,6 +23,20 @@ The technique is **beat-aligned splicing**, not time-stretching: the algorithm f
 | **Region Remix** | Retarget only the REAPER time-selection; rest of the track untouched. Two flavors via the **Edit source in place** checkbox in the Region tab:<br>**ON** (default) edits the original clip directly — splice in place, like Adobe Audition Remix.<br>**OFF** inserts the remix as a new item right after the source on the same track; the original stays untouched. Running Insert again updates that appended remix instead of duplicating it. | **Beta** |
 | **Block Assembly** | Manually order sections (Intro → Chorus → Verse → Chorus → Outro); the algorithm optimizes only the splice at each junction. | **Beta** |
 
+## See it in action
+
+### Target Duration
+
+Set a duration, the algorithm picks the optimal splice path across the whole track.
+
+[![Watch the Target Duration demo on YouTube](https://img.youtube.com/vi/wrPsdpbCDlY/maxresdefault.jpg)](https://youtu.be/wrPsdpbCDlY)
+
+### Region Remix
+
+Retarget just the REAPER time-selection; the rest of the track stays untouched.
+
+[![Watch the Region Remix demo on YouTube](https://img.youtube.com/vi/nlJNZnpHgmk/maxresdefault.jpg)](https://youtu.be/nlJNZnpHgmk)
+
 ## Scope + limitations
 
 reamix.me is tuned for music where beats land on a regular grid and structural sections (verse / chorus / bridge) are well-defined.
