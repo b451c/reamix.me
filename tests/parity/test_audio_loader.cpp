@@ -34,6 +34,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -77,7 +78,7 @@ std::vector<float> makeSine(int sampleRate, float durationSec, float freqHz, flo
 {
     int n = static_cast<int>(static_cast<double>(sampleRate) * durationSec);
     std::vector<float> out(static_cast<size_t>(n));
-    const float twoPiFOverSr = 2.0f * static_cast<float>(M_PI) * freqHz
+    const float twoPiFOverSr = 2.0f * std::numbers::pi_v<float> * freqHz
                              / static_cast<float>(sampleRate);
     for (int i = 0; i < n; ++i)
         out[static_cast<size_t>(i)] = amp * std::sin(twoPiFOverSr * static_cast<float>(i));

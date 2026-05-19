@@ -1,10 +1,7 @@
 #include "DevCalibrationStorage.h"
 
-#include <fcntl.h>
-#include <sys/file.h>
-#include <unistd.h>
-
 #include <cmath>
+#include <cstring>
 #include <ctime>
 
 namespace reamix::ui
@@ -163,32 +160,12 @@ bool DevCalibrationStorage::append (const DevCalibrationRecord& rec) const
     // Ensure parent dir exists.
     store_.getParentDirectory().createDirectory();
 
-    // POSIX open with O_APPEND ensures atomic-against-other-O_APPEND writes
-    // up to PIPE_BUF (4096 bytes) on macOS. flock adds belt-and-braces
-    // mutual exclusion against non-O_APPEND readers.
-    const auto path = store_.getFullPathName().toRawUTF8();
-    const int fd = ::open (path, O_WRONLY | O_APPEND | O_CREAT, 0644);
-    if (fd < 0) return false;
-
-    if (::flock (fd, LOCK_EX) != 0)
-    {
-        ::close (fd);
-        return false;
-    }
-
-    bool ok = true;
-    ssize_t written = 0;
-    while (written < (ssize_t) bytes)
-    {
-        const ssize_t n = ::write (fd, utf8 + written, bytes - written);
-        if (n < 0) { ok = false; break; }
-        written += n;
-    }
-
-    if (ok) ::fsync (fd);
-    ::flock (fd, LOCK_UN);
-    ::close (fd);
-    return ok;
+    // Dev calibration JSONL is single-writer (one REAPER instance per user).
+    // juce::File::appendData handles cross-platform append (POSIX O_APPEND on
+    // Unix, OPEN_ALWAYS+FILE_APPEND_DATA on Windows) without us pulling in
+    // sys/file.h or LockFile API. The previous flock-based path was Unix-only
+    // and broke MSVC build (sesja-110 ADR-107 cross-platform CI fix).
+    return store_.appendData (utf8, bytes);
 }
 
 std::vector<DevCalibrationRecord> DevCalibrationStorage::loadAll() const

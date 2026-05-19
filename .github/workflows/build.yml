@@ -115,17 +115,33 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $file = Get-ChildItem -Recurse build -Filter "reaper_reamix.dll" | Select-Object -First 1
-          if ($file) { Copy-Item $file.FullName "build/${{ matrix.artifact }}" }
+          # CMakeLists.txt:202-206 sets OUTPUT_NAME "reaper_reamix-x64" on
+          # Windows, so the produced DLL is already named with the arch suffix.
+          # MSVC places output in build/Release/; copy to build/ for upload.
+          $name = "${{ matrix.artifact }}"
+          $file = Get-ChildItem -Recurse build -Filter $name | Select-Object -First 1
+          if ($file) {
+            Copy-Item $file.FullName "build/$name"
+          } else {
+            Write-Error "Artifact $name not found under build/"
+            exit 1
+          }
 
       - name: Rename artifact (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
+            # CMakeLists.txt:176-180 — macOS OUTPUT_NAME is "reaper_reamix"
+            # (no arch suffix per sesja-49 single-dylib install convention,
+            # memory feedback_one_dylib_install_convention.md). Rename here
+            # for the distributed artifact name.
             mv build/reaper_reamix.dylib build/${{ matrix.artifact }}
           else
-            mv build/reaper_reamix.so build/${{ matrix.artifact }}
+            # CMakeLists.txt:220-223 — Linux OUTPUT_NAME is
+            # "reaper_reamix-${LINUX_ARCH}" so the .so already lives at the
+            # final artifact path. No rename needed; just verify.
+            ls -l build/${{ matrix.artifact }}
           fi
 
       - name: Bundle ONNX Runtime (Unix)
