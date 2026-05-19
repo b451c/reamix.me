@@ -26,9 +26,13 @@ namespace reamix {
 class ModelManager
 {
 public:
-    // Progress callback receives fraction in [0, 1] during download.
-    // Called from the download thread; keep handler lock-free.
-    using ProgressCb = std::function<void(float)>;
+    // Progress callback receives bytes-downloaded and total-bytes-expected
+    // during download (total may be 0 if upstream server omits Content-Length).
+    // Called from the download thread; keep handler lock-free + thread-safe.
+    // UI consumers must hop to the JUCE message thread via
+    // juce::MessageManager::callAsync before touching components.
+    using ProgressCb = std::function<void(juce::int64 downloaded,
+                                          juce::int64 total)>;
 
     // Resolve the per-product model directory. Creates the directory tree if
     // missing. On a hostile filesystem (read-only home) the returned File may

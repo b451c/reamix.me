@@ -66,7 +66,33 @@ bool ModelManager::ensureDownloaded(ProgressCb cb, std::string* outError)
         return true;
 
     auto dest = modelPath();
-    dest.deleteFile(); // clear any partial / corrupt cache
+
+    // Sesja 111 — REABeat coexistence (handover P0 #3).
+    // REABeat caches the exact same beat_this_final0.onnx (same kModelUrl,
+    // same SHA-256) at ~/.reabeat/models/. If a user already has REABeat
+    // installed, copy that file instead of re-downloading 80 MB. JUCE's
+    // userHomeDirectory resolves to /Users/<u>/, /home/<u>/, C:\Users\<u>\
+    // automatically, so a single path works cross-platform.
+    {
+        auto reabeatPath = juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+                               .getChildFile(".reabeat")
+                               .getChildFile("models")
+                               .getChildFile(kModelFilename);
+        if (reabeatPath.existsAsFile()
+            && reabeatPath.getSize() >= kExpectedSizeMin
+            && reabeatPath.getSize() <= kExpectedSizeMax
+            && computeSha256(reabeatPath) == juce::String(kExpectedSha256))
+        {
+            dest.deleteFile();
+            if (reabeatPath.copyFileTo(dest) && isCached())
+                return true;
+            // Copy succeeded structurally but integrity check failed, or copy
+            // itself failed (e.g. permission). Fall through to fresh download.
+            dest.deleteFile();
+        }
+    }
+
+    dest.deleteFile(); // clear any partial / corrupt cache before network fetch
 
     juce::URL url(kModelUrl);
     auto in = url.createInputStream(
@@ -100,8 +126,8 @@ bool ModelManager::ensureDownloaded(ProgressCb cb, std::string* outError)
         out->write(buffer.getData(), static_cast<size_t>(n));
         totalRead += n;
 
-        if (cb && totalLen > 0)
-            cb(static_cast<float>(totalRead) / static_cast<float>(totalLen));
+        if (cb)
+            cb(totalRead, totalLen);
     }
 
     out->flush();

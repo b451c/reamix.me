@@ -34,6 +34,25 @@ The concept is Adobe Audition Remix, re-implemented as a native REAPER extension
         <link rel="donation">https://buymeacoffee.com/bsroczynskh</link>
         <link rel="donation">https://www.paypal.com/paypalme/b451c</link>
       </metadata>
+      <version name="1.0.1" author="b451c" time="2026-05-19T00:00:00Z">
+        <changelog><![CDATA[reamix.me 1.0.1 — Reliability + UX polish
+
+- First-launch welcome modal with platform-specific setup hints (macOS Privacy & Security walkthrough, Linux libcurl install command)
+- Visible progress UI when downloading the AI model (status bar shows "Downloading · X / Y MB" with spinner, then "Loading model" during validation)
+- REABeat coexistence — if REABeat is already installed, reamix.me reuses its cached beat-detection model instead of re-downloading 80 MB
+- Startup error AlertWindow with platform-specific fix instructions on missing dependencies (libcurl, network, macOS Privacy & Security block)
+- ExtState persistence for welcome modal (shown only once per user)]]></changelog>
+        <source platform="darwin-arm64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.1/reaper_reamix-arm64.dylib</source>
+        <source platform="darwin-arm64" file="libonnxruntime.1.24.4.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.1/libonnxruntime-macOS-arm64.dylib</source>
+        <source platform="darwin64" file="reaper_reamix.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.1/reaper_reamix-x86_64.dylib</source>
+        <source platform="darwin64" file="libonnxruntime.1.20.1.dylib">https://github.com/b451c/reamix.me/releases/download/v1.0.1/libonnxruntime-macOS-x86_64.dylib</source>
+        <source platform="win64" file="reaper_reamix.dll">https://github.com/b451c/reamix.me/releases/download/v1.0.1/reaper_reamix-x64.dll</source>
+        <source platform="win64" file="onnxruntime.dll">https://github.com/b451c/reamix.me/releases/download/v1.0.1/onnxruntime.dll</source>
+        <source platform="linux64" file="reaper_reamix.so">https://github.com/b451c/reamix.me/releases/download/v1.0.1/reaper_reamix-x86_64.so</source>
+        <source platform="linux64" file="libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.1/libonnxruntime.so.1-Linux-x86_64</source>
+        <source platform="linux-aarch64" file="reaper_reamix.so">https://github.com/b451c/reamix.me/releases/download/v1.0.1/reaper_reamix-aarch64.so</source>
+        <source platform="linux-aarch64" file="libonnxruntime.so.1">https://github.com/b451c/reamix.me/releases/download/v1.0.1/libonnxruntime.so.1-Linux-aarch64</source>
+      </version>
       <version name="1.0.0" author="b451c" time="2026-05-18T00:00:00Z">
         <changelog><![CDATA[reamix.me 1.0.0 - First OSS release
 

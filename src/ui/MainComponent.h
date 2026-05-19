@@ -182,7 +182,18 @@ private:
     void applyRemixToUi (const reamix::ui::RemixOutput& remix);
 
     // ── Lazy ONNX init ───────────────────────────────────────────────
-    bool ensureBeatDetectorReady (juce::String& outErrorMessage);
+    // Sesja 111 — downloadProgressCb (optional) is invoked from the download
+    // thread with (bytesDownloaded, totalBytes); each caller bridges to the
+    // JUCE message thread before touching components.
+    bool ensureBeatDetectorReady (juce::String& outErrorMessage,
+                                  std::function<void(juce::int64, juce::int64)> downloadProgressCb = nullptr);
+
+    // Sesja 111 (KROK 3+4) — startup-time UX modals. Both guard against
+    // re-show within the same process via the *_Shown_ flags below; the
+    // welcome modal additionally persists "user has seen welcome" in REAPER
+    // ExtState "reamix.me/welcome_shown" so it never re-shows after first run.
+    void showWelcomeIfFirstLaunch();
+    void showStartupErrorWithPlatformHint (const juce::String& err);
 
     // ── Components (unchanged by ADR-047) ────────────────────────────
     reamix::ui::LookAndFeelReamix lookAndFeel_;
@@ -358,6 +369,8 @@ private:
 
     reamix::ui::PreviewController previewController_;
     bool swsModalShown_ { false };
+    bool welcomeShown_       { false };  // Sesja 111 KROK 3
+    bool startupErrorShown_  { false };  // Sesja 111 KROK 4
 
     std::optional<reamix::ui::WaveformView::SelectionRange> selectedRange_;
 

@@ -2214,10 +2214,58 @@ MainComponent::MainComponent()
     preWarmThread_ = std::make_unique<BeatDetectorPreWarmThread> ([this]
     {
         if (preWarmAborted_.load()) return;
+
+        // Sesja 111 — visible download progress while the pre-warm thread
+        // pulls the ~80 MB beat-this ONNX. Without this the plugin window
+        // appears frozen on first launch (no item selected yet, SourcePanel
+        // shows empty state). StatusBar.setBusy already supplies an accent
+        // spinner + 60 Hz loading-line animation — premium feel for free.
+        auto onDownloadProgress = [this] (juce::int64 downloaded, juce::int64 total)
+        {
+            if (preWarmAborted_.load()) return;
+            const auto mbDone  = static_cast<int> ((downloaded + 500'000) / 1'000'000);
+            const auto mbTotal = total > 0 ? static_cast<int> ((total + 500'000) / 1'000'000) : 0;
+            // When the final byte arrives, switch the label to "Loading model" so
+            // the user sees forward motion through the ~1-3 s SHA-256 verify +
+            // ONNX session load that follows. Without this, the bar lingers at
+            // "Downloading · 83 / 83 MB" with a spinning indicator, which reads
+            // as "stuck" rather than "validating".
+            juce::String label;
+            if (total > 0 && downloaded >= total)
+                label = juce::String::fromUTF8 ("Loading AI model\xe2\x80\xa6");
+            else if (mbTotal > 0)
+                label = juce::String::fromUTF8 ("Downloading AI model \xc2\xb7 ")
+                      + juce::String (mbDone) + " / " + juce::String (mbTotal) + " MB";
+            else
+                label = juce::String::fromUTF8 ("Downloading AI model \xc2\xb7 ")
+                      + juce::String (mbDone) + " MB";
+            juce::MessageManager::callAsync ([this, label]
+            {
+                if (preWarmAborted_.load()) return;
+                statusBar_.setBusy (label);
+            });
+        };
+
         juce::String err;
-        ensureBeatDetectorReady (err);
+        const bool ok = ensureBeatDetectorReady (err, onDownloadProgress);
+
+        juce::MessageManager::callAsync ([this, ok, err]
+        {
+            if (preWarmAborted_.load()) return;
+            statusBar_.clearBusy();
+            if (! ok && err.isNotEmpty())
+            {
+                statusBar_.setError (err);
+                showStartupErrorWithPlatformHint (err);
+            }
+        });
     });
     preWarmThread_->startThread();
+
+    // Sesja 111 (KROK 3) — first-launch welcome modal. Deferred via
+    // MessageManager::callAsync so the constructor finishes (and the plugin
+    // window is actually visible) before the modal grabs focus.
+    juce::MessageManager::callAsync ([this] { showWelcomeIfFirstLaunch(); });
 
     // DEV-080 sesja 108 — pull user-set defaults from ExtState into host-side
     // mirrors BEFORE any compute path can read currentQualityWeights().
@@ -2325,7 +2373,8 @@ void MainComponent::reapStoppedWorkers()
         stoppingRemix_.end());
 }
 
-bool MainComponent::ensureBeatDetectorReady (juce::String& outErrorMessage)
+bool MainComponent::ensureBeatDetectorReady (juce::String& outErrorMessage,
+                                              std::function<void(juce::int64, juce::int64)> downloadProgressCb)
 {
     std::lock_guard<std::mutex> lock (beatDetectorLoadMutex_);
 
@@ -2337,7 +2386,7 @@ bool MainComponent::ensureBeatDetectorReady (juce::String& outErrorMessage)
     }
 
     std::string downloadError;
-    if (! reamix::ModelManager::ensureDownloaded (nullptr, &downloadError))
+    if (! reamix::ModelManager::ensureDownloaded (std::move (downloadProgressCb), &downloadError))
     {
         beatDetectorLoadError_ = juce::String ("Model download failed: ")
                                + juce::String (downloadError);
@@ -2387,8 +2436,35 @@ void MainComponent::startAnalyze()
     lastSeekSec_.reset();
     waveformView_.clearSelection();
 
+    // Sesja 111 — if click-Analyze races the pre-warm download, this callback
+    // surfaces progress in SourcePanel (already showing the analyzing layout)
+    // as the "Downloading model · X / Y MB" stage label. Once ensureDownloaded
+    // returns, the analyze pipeline progress callback below takes over.
+    const juce::String downloadingForPath = currentSourcePath_;
+    auto onDownloadProgress = [this, downloadingForPath] (juce::int64 downloaded, juce::int64 total)
+    {
+        const auto mbDone  = static_cast<int> ((downloaded + 500'000) / 1'000'000);
+        const auto mbTotal = total > 0 ? static_cast<int> ((total + 500'000) / 1'000'000) : 0;
+        const double frac  = total > 0 ? static_cast<double> (downloaded) / static_cast<double> (total) : 0.0;
+        juce::String stage;
+        if (total > 0 && downloaded >= total)
+            stage = juce::String::fromUTF8 ("Loading model\xe2\x80\xa6");
+        else if (mbTotal > 0)
+            stage = juce::String::fromUTF8 ("Downloading model \xc2\xb7 ")
+                  + juce::String (mbDone) + " / " + juce::String (mbTotal) + " MB";
+        else
+            stage = juce::String::fromUTF8 ("Downloading model \xc2\xb7 ")
+                  + juce::String (mbDone) + " MB";
+        juce::MessageManager::callAsync ([this, downloadingForPath, frac, stage]
+        {
+            if (currentSourcePath_ != downloadingForPath) return;
+            sourcePanel_.setAnalyzing (true, frac, stage);
+            statusBar_.setText (stage);
+        });
+    };
+
     juce::String err;
-    if (! ensureBeatDetectorReady (err))
+    if (! ensureBeatDetectorReady (err, onDownloadProgress))
     {
         sourcePanel_.setAnalyzing (false, 0.0);
         resized();
@@ -5448,4 +5524,89 @@ void MainComponent::restoreAdvancedWindowOnLaunch()
     // Same code path as user click — lazy-create panel + window, restore
     // persisted bounds, show.
     onAdvancedToggled();
+}
+
+// ── Sesja 111 KROK 3+4 — startup-time UX modals ─────────────────────────
+
+void MainComponent::showWelcomeIfFirstLaunch()
+{
+    if (welcomeShown_) return;
+    welcomeShown_ = true;
+
+    // Skip if user has dismissed before (persisted in REAPER ExtState).
+    if (GetExtState)
+    {
+        const char* raw = GetExtState ("reamix.me", "welcome_shown");
+        if (raw != nullptr && raw[0] == '1')
+            return;
+    }
+
+    // Mark seen immediately so an abrupt REAPER close still suppresses
+    // re-show on the next launch.
+    if (SetExtState)
+        SetExtState ("reamix.me", "welcome_shown", "1", true);
+
+    juce::String body = juce::String::fromUTF8 (
+        "Three remix modes:\n"
+        "  \xe2\x80\xa2 Duration \xe2\x80\x94 retarget any track to any length.\n"
+        "  \xe2\x80\xa2 Region \xe2\x80\x94 retarget only the selected time range.\n"
+        "  \xe2\x80\xa2 Blocks \xe2\x80\x94 arrange sections manually like a remix DJ.\n\n"
+        "First Analyze on each track downloads a one-time 80 MB AI model.\n"
+        "Subsequent analyses on the same track are instant.\n\n");
+
+   #if JUCE_MAC
+    body += juce::String::fromUTF8 (
+        "macOS \xe2\x80\x94 if the plugin is blocked on first load:\n"
+        "  1. Open System Settings \xe2\x86\x92 Privacy & Security.\n"
+        "  2. Scroll to the Security section.\n"
+        "  3. Click \xe2\x80\x9cOpen Anyway\xe2\x80\x9d next to reamix.me.");
+   #elif JUCE_LINUX
+    body += juce::String::fromUTF8 (
+        "Linux \xe2\x80\x94 if model download fails, install:\n"
+        "  sudo apt install libcurl4    (Debian/Ubuntu)\n"
+        "  sudo dnf install libcurl     (Fedora)");
+   #elif JUCE_WINDOWS
+    body += juce::String::fromUTF8 (
+        "Windows \xe2\x80\x94 no additional setup required.\n"
+        "Click Analyze to begin.");
+   #endif
+
+    juce::AlertWindow::showMessageBoxAsync (
+        juce::MessageBoxIconType::InfoIcon,
+        juce::String::fromUTF8 ("Welcome to reamix.me"),
+        body,
+        "OK",
+        this);
+}
+
+void MainComponent::showStartupErrorWithPlatformHint (const juce::String& err)
+{
+    if (startupErrorShown_) return;
+    startupErrorShown_ = true;
+
+    juce::String hint;
+   #if JUCE_MAC
+    hint = juce::String::fromUTF8 (
+        "\n\nCheck:\n"
+        "  \xe2\x80\xa2 Network reachable (model downloaded from GitHub).\n"
+        "  \xe2\x80\xa2 macOS Privacy & Security has not blocked reamix.me\n"
+        "    (System Settings \xe2\x86\x92 Privacy & Security \xe2\x86\x92 \xe2\x80\x9cOpen Anyway\xe2\x80\x9d).");
+   #elif JUCE_LINUX
+    hint = juce::String::fromUTF8 (
+        "\n\nCheck:\n"
+        "  \xe2\x80\xa2 libcurl installed: sudo apt install libcurl4\n"
+        "  \xe2\x80\xa2 Network reachable (model downloaded from GitHub).");
+   #elif JUCE_WINDOWS
+    hint = juce::String::fromUTF8 (
+        "\n\nCheck:\n"
+        "  \xe2\x80\xa2 Network reachable (model downloaded from GitHub).\n"
+        "  \xe2\x80\xa2 Windows Defender / antivirus not blocking REAPER.");
+   #endif
+
+    juce::AlertWindow::showMessageBoxAsync (
+        juce::MessageBoxIconType::WarningIcon,
+        juce::String::fromUTF8 ("reamix.me \xe2\x80\x94 Model setup failed"),
+        err + hint,
+        "OK",
+        this);
 }
