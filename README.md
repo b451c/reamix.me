@@ -5,7 +5,7 @@
 [![Windows](https://img.shields.io/badge/Windows-x64-blue)]()
 [![Linux](https://img.shields.io/badge/Linux-x86__64%20%7C%20aarch64-blue)]()
 
-![reamix.me — Retarget any song to any length; beat-aligned splicing for REAPER across macOS, Windows, Linux. Three modes: Duration, Region Loop, Block Assembly.](assets/screenshots/header.png)
+![reamix.me — Retarget any song to any length; beat-aligned splicing for REAPER across macOS, Windows, Linux. Three modes: Target Duration, Region Remix, Block Assembly.](assets/screenshots/header.png)
 
 **Retarget any song to any length — without time-stretching.**
 
@@ -20,7 +20,7 @@ The technique is **beat-aligned splicing**, not time-stretching: the algorithm f
 | Mode | What it does | Status |
 |------|--------------|--------|
 | **Target Duration** | Set a duration; the algorithm picks the optimal splice path across the whole track. | Stable |
-| **Region Remix** | Retarget only the REAPER time-selection; rest of the track untouched. | **Beta** |
+| **Region Remix** | Retarget only the REAPER time-selection; rest of the track untouched. Two flavors via the **Edit source in place** checkbox in the Region tab:<br>**ON** (default) edits the original clip directly — splice in place, like Adobe Audition Remix.<br>**OFF** inserts the remix as a new item right after the source on the same track; the original stays untouched. Running Insert again updates that appended remix instead of duplicating it. | **Beta** |
 | **Block Assembly** | Manually order sections (Intro → Chorus → Verse → Chorus → Outro); the algorithm optimizes only the splice at each junction. | **Beta** |
 
 ## Scope + limitations
