@@ -1,4 +1,4 @@
-# <img src="assets/logo/reamix-logo.png" alt="" height="44" align="center"> reamix.me
+# <img src="assets/logo/reamix-logo.png" alt="" height="56" align="center"> reamix<span style="color:#E5A065;">.me</span>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-arm64%20%7C%20Intel-blue)]()
