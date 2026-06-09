@@ -230,3 +230,8 @@ Donations fund the donate-funded OSS model for this project - no commercial lice
 - **Bugs and feature requests**: [GitHub Issues](https://github.com/b451c/reamix.me/issues)
 - **Discussion**: [REAPER Forum thread](https://forum.cockos.com/) (coming with v1.0.0 release)
 - **Security**: see [SECURITY.md](SECURITY.md)
+
+
+---
+
+Made by [falami.studio](https://falami.studio/lab/reamix/) — audio production & engineering studio.
