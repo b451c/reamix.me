@@ -94,6 +94,10 @@ struct AnalysisBundle
     // (LoopSpotsBuilder::ensureBeatGrid, rebuilt after a cache hit; also
     // rewrites `beatIsDownbeat` so the UI ticks match the engine, DEV-098).
     std::vector<reamix::remix::LoopSpot> sectionSpans;
+    // Sesja 121 (DEV-098 layer 2): per beat, the best whole-track pool pair
+    // that cuts at this beat (entering: to_beat == b, leaving: from_beat + 1
+    // == b); -1 = no bar-aligned clean cut here. Colours section boundaries.
+    std::vector<float>                   cutQuality;
     std::vector<double>                  gridDownbeats;
     int                                  barBeats  { 4 };
     double                               barSec    { 0.0 };   // measured bar length, 0 = unknown

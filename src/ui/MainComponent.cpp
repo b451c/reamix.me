@@ -5320,6 +5320,21 @@ void MainComponent::updateBlockSuggestions()
         blockSuggestions_.clear();
         std::vector<Chip> chips;
         const double bar = bundle->barSec;
+        // Boundary quality: best whole-track pool pair cutting at the nearest
+        // beat (bundle->cutQuality); no pair = Bad (the Assemble fallback).
+        auto boundaryQuality = [&] (double t) -> reamix::ui::WaveformView::SpliceQuality
+        {
+            const auto& bt = bundle->beatTimes;
+            if (bt.empty() || bundle->cutQuality.size() != bt.size())
+                return reamix::ui::WaveformView::SpliceQuality::Bad;
+            auto it = std::lower_bound (bt.begin(), bt.end(), t);
+            std::size_t b = (std::size_t) std::distance (bt.begin(), it);
+            if (b >= bt.size()) b = bt.size() - 1;
+            if (b > 0 && std::abs (bt[b - 1] - t) < std::abs (bt[b] - t)) --b;
+            const float q = bundle->cutQuality[b];
+            return q < 0.0f ? reamix::ui::WaveformView::SpliceQuality::Bad
+                            : reamix::ui::bucketQuality (q, reamix::ui::kBlocksQualityBands);
+        };
         for (const auto& s : bundle->uiSegments)
         {
             if (overlapsUser (s.startSec, s.endSec)) continue;
@@ -5336,10 +5351,51 @@ void MainComponent::updateBlockSuggestions()
             c.endSec     = s.endSec;
             c.quality    = reamix::ui::WaveformView::SpliceQuality::Good;
             c.kind       = s.kind;
+            c.startQuality = boundaryQuality (s.startSec);
+            c.endQuality   = boundaryQuality (s.endSec);
             const juce::String name = reamix::ui::builtinKindLabel (s.kind).toUpperCase();
             const juce::String bars = juce::String (sp.bars) + (sp.bars == 1 ? " BAR" : " BARS");
             c.label      = name + juce::String::fromUTF8 (" \xc2\xb7 ") + bars;
             c.shortLabel = name;
+            chips.push_back (std::move (c));
+        }
+
+        // Layer 3: hidden clean cuts inside a section (both edges strictly
+        // inside one model section) as minor chips; click = block of exactly
+        // that span with the section's kind.
+        std::vector<reamix::remix::LoopSpot> inner;
+        std::vector<reamix::theme::SegmentKind> innerKinds;
+        for (const auto& sp : bundle->sectionSpans)
+        {
+            if (overlapsUser (sp.start_sec, sp.end_sec)) continue;
+            for (const auto& s : bundle->uiSegments)
+                if (sp.start_sec > s.startSec + kEps && sp.end_sec < s.endSec - kEps)
+                {
+                    inner.push_back (sp);
+                    break;
+                }
+        }
+        reamix::remix::LoopSpotFilter filter;
+        filter.min_quality = reamix::ui::kBlocksQualityBands.medium;
+        filter.min_bars    = 2;
+        filter.max_bars    = 32;
+        filter.max_count   = 8;
+        for (const auto& sp : reamix::remix::suggestLoopSpots (inner, filter))
+        {
+            reamix::theme::SegmentKind kind = reamix::ui::smartKindForPosition (sp.start_sec, currentSourceDurationSec_);
+            for (const auto& s : bundle->uiSegments)
+                if (sp.start_sec >= s.startSec && sp.end_sec <= s.endSec) { kind = s.kind; break; }
+            blockSuggestions_.push_back (sp);
+            blockSuggestionKinds_.push_back (kind);
+            Chip c;
+            c.startSec   = sp.start_sec;
+            c.endSec     = sp.end_sec;
+            c.quality    = reamix::ui::bucketQuality ((float) sp.quality, reamix::ui::kBlocksQualityBands);
+            c.minor      = true;
+            const juce::String bars = juce::String (sp.bars) + (sp.bars == 1 ? " BAR" : " BARS");
+            c.label      = juce::String::fromUTF8 ("+ ") + bars + juce::String::fromUTF8 (" \xc2\xb7 ")
+                         + juce::String (juce::roundToInt (sp.quality * 100.0)) + "%";
+            c.shortLabel = c.label;
             chips.push_back (std::move (c));
         }
         waveformView_.setLoopSpots (std::move (chips));

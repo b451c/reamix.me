@@ -295,13 +295,21 @@ int WaveformView::loopSpotHitTest (juce::Point<int> pos) const
     const auto bar = segBarArea();
     if (! bar.contains (pos)) return -1;
     const double viewEnd = viewStartSec_ + viewDurationSec_;
-    for (std::size_t i = 0; i < loopSpots_.size(); ++i)
+    // Sesja 121: minor (in-section clean cut) chips live in the bottom strip
+    // and win there; the section chips take the rest of the bar.
+    for (int pass = 0; pass < 2; ++pass)
     {
-        const auto& c = loopSpots_[i];
-        if (c.endSec < viewStartSec_ || c.startSec > viewEnd) continue;
-        const int x0 = (int) timeToX (c.startSec, bar.getX(), bar.getWidth());
-        const int x1 = (int) timeToX (c.endSec,   bar.getX(), bar.getWidth());
-        if (pos.x >= x0 && pos.x <= x1) return (int) i;
+        const bool wantMinor = (pass == 0);
+        if (wantMinor && pos.y < bar.getBottom() - kMinorChipStrip) continue;
+        for (std::size_t i = 0; i < loopSpots_.size(); ++i)
+        {
+            const auto& c = loopSpots_[i];
+            if (c.minor != wantMinor) continue;
+            if (c.endSec < viewStartSec_ || c.startSec > viewEnd) continue;
+            const int x0 = (int) timeToX (c.startSec, bar.getX(), bar.getWidth());
+            const int x1 = (int) timeToX (c.endSec,   bar.getX(), bar.getWidth());
+            if (pos.x >= x0 && pos.x <= x1) return (int) i;
+        }
     }
     return -1;
 }
@@ -319,6 +327,7 @@ void WaveformView::paintLoopSpots (juce::Graphics& g, juce::Rectangle<int> bar)
     for (std::size_t i = 0; i < loopSpots_.size(); ++i)
     {
         const auto& c = loopSpots_[i];
+        if (c.minor) continue;                  // painted after the section chips
         if (c.endSec <= viewStartSec_ || c.startSec >= viewEnd) continue;
         const float x0 = timeToX (std::max (c.startSec, viewStartSec_), bar.getX(), bar.getWidth());
         const float x1 = timeToX (std::min (c.endSec,   viewEnd),       bar.getX(), bar.getWidth());
@@ -357,6 +366,54 @@ void WaveformView::paintLoopSpots (juce::Graphics& g, juce::Rectangle<int> bar)
             g.setFont (chipFont);
             g.drawText (text, rect.toNearestInt().reduced (4, 0),
                         juce::Justification::centred, false);
+        }
+
+        // Sesja 121: boundary quality marks - 3 px bars at the chip edges in
+        // the splice-quality colour (green = a clean bar-aligned cut exists
+        // at this downbeat, amber = mediocre, red = none).
+        auto edgeMark = [&] (float x, SpliceQuality q, bool leftEdge)
+        {
+            const juce::Rectangle<float> m (leftEdge ? x + 1.0f : x - 4.0f, rect.getY() + 1.0f,
+                                            3.0f, rect.getHeight() - 2.0f);
+            g.setColour (loopSpotColour (q).withAlpha (0.95f));
+            g.fillRoundedRectangle (m, 1.0f);
+        };
+        if (c.startQuality.has_value() && c.startSec >= viewStartSec_) edgeMark (x0, *c.startQuality, true);
+        if (c.endQuality.has_value()   && c.endSec   <= viewEnd)       edgeMark (x1, *c.endQuality,   false);
+    }
+
+    // Minor chips: hidden clean-cut spans inside a section, a thin strip
+    // along the bottom of the bar (click = block of exactly that span).
+    for (std::size_t i = 0; i < loopSpots_.size(); ++i)
+    {
+        const auto& c = loopSpots_[i];
+        if (! c.minor) continue;
+        if (c.endSec <= viewStartSec_ || c.startSec >= viewEnd) continue;
+        const float x0 = timeToX (std::max (c.startSec, viewStartSec_), bar.getX(), bar.getWidth());
+        const float x1 = timeToX (std::min (c.endSec,   viewEnd),       bar.getX(), bar.getWidth());
+        if (x1 - x0 < 4.0f) continue;
+        const bool hovered = ((int) i == hoveredLoopSpotIdx_);
+        const auto colour  = loopSpotColour (c.quality);
+        const juce::Rectangle<float> strip (x0 + 2.0f, (float) bar.getBottom() - (float) kMinorChipStrip + 1.0f,
+                                            x1 - x0 - 4.0f, (float) kMinorChipStrip - 3.0f);
+        g.setColour (colour.withAlpha (hovered ? 1.0f : 0.85f));
+        g.fillRoundedRectangle (strip, 2.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.drawRoundedRectangle (strip, 2.0f, 1.0f);
+        if (hovered)
+        {
+            // Hover: the span's label rises above the strip so it stays readable.
+            juce::GlyphArrangement arr;
+            arr.addLineOfText (chipFont, c.shortLabel, 0.0f, 0.0f);
+            const float w = arr.getBoundingBox (0, -1, false).getWidth() + 10.0f;
+            juce::Rectangle<float> tag (strip.getCentreX() - w * 0.5f, (float) bar.getY() + 2.0f, w, (float) bar.getHeight() - kMinorChipStrip - 3.0f);
+            g.setColour (Bg0.withAlpha (0.9f));
+            g.fillRoundedRectangle (tag, r::R1);
+            g.setColour (colour);
+            g.drawRoundedRectangle (tag, r::R1, 1.0f);
+            g.setColour (Fg0);
+            g.setFont (chipFont);
+            g.drawText (c.shortLabel, tag.toNearestInt(), juce::Justification::centred, false);
         }
     }
 }

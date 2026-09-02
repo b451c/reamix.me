@@ -143,11 +143,22 @@ void ensureLoopSpots (AnalysisBundle& bundle)
         // Sesja 120 (DEV-097): the same pool as proposed blocks.
         bundle.sectionSpans = reamix::remix::extractSectionSpans (
             pool.candidates, bundle.beatTimes.data(), nBeats, bundle.barBeats);
+        // Sesja 121: boundary colour = best pair cutting at the beat.
+        bundle.cutQuality.assign ((std::size_t) nBeats, -1.0f);
+        for (const auto& kv : pool.candidates)
+        {
+            const auto& c = kv.second;
+            const float q = (float) c.quality_score;
+            const int leave = c.from_beat + 1, enter = c.to_beat;
+            if (leave >= 0 && leave < nBeats) bundle.cutQuality[(std::size_t) leave] = std::max (bundle.cutQuality[(std::size_t) leave], q);
+            if (enter >= 0 && enter < nBeats) bundle.cutQuality[(std::size_t) enter] = std::max (bundle.cutQuality[(std::size_t) enter], q);
+        }
     }
     catch (const std::exception&)
     {
         bundle.loopSpots.clear();          // Region tab then shows no suggestions
         bundle.sectionSpans.clear();
+        bundle.cutQuality.clear();
     }
 }
 

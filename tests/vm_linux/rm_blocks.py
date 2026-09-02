@@ -70,7 +70,10 @@ def chips(png):
     px = im.load()
     best = (SEGBAR_Y, [])
     best_len = 0
-    for y in range(SEGBAR_Y - 10, SEGBAR_Y + 11):
+    # Sesja 121: rows by distance from the bar centre, ties keep the nearer
+    # row - the kind-tinted waveform above the bar (model sections) is as
+    # tinted as the bar itself, and a click there only seeks.
+    for y in sorted(range(SEGBAR_Y - 6, SEGBAR_Y + 7), key=lambda v: abs(v - SEGBAR_Y)):
         if y < 0 or y >= im.size[1]:
             continue
         rs = runs_in_row(px, y, SEGBAR_X0, min(SEGBAR_X1, im.size[0]))

@@ -324,8 +324,14 @@ public:
         juce::String  label;        // "LOOP · 4 BARS · 82%" (wide chip)
         juce::String  shortLabel;   // "4 BARS" (narrow chip)
         // Sesja 121 (DEV-098): a model-section chip paints in its kind
-        // colour instead of the quality colour.
+        // colour instead of the quality colour; its edges carry the splice
+        // quality of the boundary (best clean cut at that downbeat, none =
+        // Bad); `minor` = a hidden clean-cut span inside a section, painted
+        // as a thin quality strip along the bottom of the bar.
         std::optional<reamix::theme::SegmentKind> kind;
+        std::optional<SpliceQuality> startQuality;
+        std::optional<SpliceQuality> endQuality;
+        bool minor { false };
     };
     // Sesja 120 (DEV-097): in Blocks mode the same chips carry proposed
     // blocks (section spans of the whole-track pool); a chip click then
@@ -619,6 +625,7 @@ private:
     // ADR-115 E11 (sesja 117) — loop-spot chips + selection verdict.
     std::vector<LoopSpotChip>           loopSpots_;
     int                                 hoveredLoopSpotIdx_ { -1 };
+    static constexpr int                kMinorChipStrip { 7 };   // sesja 121: bottom strip height of minor chips
     juce::String                        selectionVerdict_;
     std::optional<SpliceQuality>        selectionVerdictQuality_;
     double                              selectionVerdictStart_ { 0.0 };

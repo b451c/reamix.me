@@ -764,8 +764,19 @@ int main (int argc, char** argv)
         {
             const auto& u = bundle->uiSegments[i];
             if (i > 0) s << ", ";
+            auto cutQ = [&] (double t)
+            {
+                const auto& bt = bundle->beatTimes;
+                if (bt.empty() || bundle->cutQuality.size() != bt.size()) return -1.0f;
+                auto it = std::lower_bound (bt.begin(), bt.end(), t);
+                std::size_t b = (std::size_t) std::distance (bt.begin(), it);
+                if (b >= bt.size()) b = bt.size() - 1;
+                if (b > 0 && std::abs (bt[b - 1] - t) < std::abs (bt[b] - t)) --b;
+                return bundle->cutQuality[b];
+            };
             s << "{\"start\": " << juce::String (u.startSec, 4) << ", \"end\": " << juce::String (u.endSec, 4)
-              << ", \"kind\": " << (int) u.kind << "}";
+              << ", \"kind\": " << (int) u.kind << ", \"start_q\": " << juce::String (cutQ (u.startSec), 3)
+              << ", \"end_q\": " << juce::String (cutQ (u.endSec), 3) << "}";
         }
         s << "]\n}\n";
         s.flush();
