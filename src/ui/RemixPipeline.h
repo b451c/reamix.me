@@ -101,28 +101,16 @@ public:
         // (sesja-114 scorer proxy mixed); the calibration harness sets it per run.
         bool v2_scoring = true;   // ADR-115: production default since sesja 115 (harness may pass false)
 
-        // ADR-080 RESCOPE + ADR-083 (sesja 92) + ADR-084 (sesja 93) —
-        // AuditionBar 4-slider params. Defaults bit-exact replicate current
-        // production behavior:
-        //   - harmonic_vs_timbre  = 0.0  → Tone slider OFF → blend bypassed.
-        //   - edit_length_jump_scale = 1.0 → Edit Length neutral (per
-        //     ADR-084 multiplicative scale; supersedes sesja-92 additive).
-        //   - edit_length_slider = 50   → cache-hash slider int [0..100].
-        //   - allow_pm_seconds   = 5.0  → Allow ± slider default.
-        //   - min_cut_beats      = 0    → Min cut OFF → legacy COOLDOWN_BARS × TS.
-        //
-        // SCOPE: same scope semantics as `qualityWeightsOverride`. Block
-        // Assembly + Region modes consume directly from these fields at
-        // REMIX-time. Duration mode: edit_length / allow_pm / min_cut are
-        // RUN-time DP params (no W-matrix re-build needed) — Tone slider
-        // requires W-matrix re-build (Path A sesja 93 re-computes TC
-        // locally in RemixPipeline Duration branch when
-        // qualityWeightsOverride.harmonic_vs_timbre > 0).
-        double harmonic_vs_timbre     = 0.0;
-        double edit_length_jump_scale = 1.0;   // ADR-084: multiplicative on jump cost
-        int    edit_length_slider     = 50;    // [0..100] for cache hash; 50 = bit-exact
-        double allow_pm_seconds       = 5.0;
-        int    min_cut_beats          = 0;     // 0 = legacy compute COOLDOWN_BARS × TS
+        // ADR-115 P3 (sesja 123) — Edit density: minimum run between two cuts
+        // in bars (16 / 8 / 4 / 2 / 1); 0 = the mode's default, which is
+        // bit-exact with the engine defaults (Duration: COOLDOWN_BARS x TS with
+        // the adaptive scaling for aggressive ratios, jump scale 1.0, cap 6;
+        // Region: one measured bar). Mapping per mode in run(). Replaces the
+        // AuditionBar Tone / Edit length / Allow +- / Min cut inputs (the
+        // duration tolerance is fixed at kDurationToleranceSecDefault, the
+        // Tone blend reaches the engine only through qualityWeightsOverride
+        // from dev tooling).
+        int    edit_density_bars      = 0;
 
         // ADR-081 (sesja 96) — β-model candidate-space expansion for Block
         // Assembly junctions. Default flipped to true sesja 96 close per

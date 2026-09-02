@@ -38,7 +38,7 @@ import dev086_mac as base  # noqa: E402  (window / capture / click helpers)
 OUT = REPO / "tests" / "reaproof" / "evidence" / "region-loopspots-mac"
 
 TAB_ROW_Y = 125            # client px: mode tabs row (dev086 BLOCKS_TAB)
-CHIP_BAND = (300, 560)     # client px: rows searched for chips (canvas + section bar, above the sliders)
+CHIP_BAND = (300, 640)     # client px: rows searched for chips (canvas + section bar; the bar sits at ~600 since the one-row Edit density bar, sesja 123)
 SEGBAR_X_MAX = 640         # client px: exclude the orange volume badge on the right
 CANVAS_TOP_BAND = (250, 300)  # client px: verdict pill rows (canvas top + 2 px)
 GOOD = (108, 194, 138)     # theme Good

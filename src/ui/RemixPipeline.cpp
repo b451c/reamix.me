@@ -144,12 +144,9 @@ void RemixPipeline::run()
     out.actualRegionEndSec   = out.regionEndSec;
     out.variation      = in_.variation;
     out.blockedTransitions = in_.blockedTransitions;
-    // ADR-080 RESCOPE + ADR-083 (sesja 92) — echo audition slider hash so
-    // handleRemixComplete inserts under the same cache key kickRemixPipeline
-    // looked up under.
-    out.auditionHash = reamix::ui::hashAuditionParams (
-        in_.harmonic_vs_timbre, in_.edit_length_slider,
-        (int) std::lround (in_.allow_pm_seconds), in_.min_cut_beats == 0 ? 16 : in_.min_cut_beats);
+    // ADR-115 P3 (sesja 123) — echo the Edit density hash so handleRemixComplete
+    // inserts under the same cache key kickRemixPipeline looked up under.
+    out.editDensityHash = reamix::ui::hashEditDensity (in_.edit_density_bars);
 
     if (in_.bundle == nullptr)
     {
@@ -277,7 +274,7 @@ void RemixPipeline::run()
                                                    in_.junctionVariations.empty()
                                                      ? nullptr
                                                      : &in_.junctionVariations,
-                                                   in_.edit_length_jump_scale,   // ADR-084 sesja 93
+                                                   /*edit_length_jump_scale=*/1.0,   // ADR-115 P3: density has no Blocks axis
                                                    /*allow_outside_window=*/in_.block_assembly_beta,
                                                    /*min_keep_beats=*/barBeats);   // DEV-094 sesja 119
             (void) blockedPtr; // assembleBlocks does not consume blocked set
@@ -334,14 +331,30 @@ void RemixPipeline::run()
             //   avg_beat_duration = (last - first) / (n_beats - 1)
             roin.avg_beat_duration =
                 (bt.back() - bt.front()) / (double) (bt.size() - 1);
-            // ADR-083 sesja 92 — Allow ± slider drives duration_tolerance_sec.
-            // Default 5.0 (matches kDurationToleranceSecDefault) → bit-exact.
-            roin.duration_tolerance_sec = in_.allow_pm_seconds;
+            roin.duration_tolerance_sec = reamix::remix::kDurationToleranceSecDefault;
             roin.candidates = &bundle.tc.candidates;
             roin.sample_rate = kAnalysisSampleRate;
-            // ADR-084 sesja 93 — Edit Length multiplicative + Min cut override.
-            roin.edit_length_jump_scale      = in_.edit_length_jump_scale;
-            roin.min_seq_after_jump_override = in_.min_cut_beats;
+            // ADR-115 P3 (sesja 123) — Edit density in Region = the minimum
+            // loop length in bars. Default (0 / 1 bar) = the E8 cooldown of
+            // one measured bar (bit-exact); a longer detent raises the
+            // cooldown, clamped so at least two runs fit the region (a
+            // 16-bar minimum inside an 8-bar region would leave the DP no
+            // path). The jump tax is not scaled here: the E8 band DP is
+            // quality-first and the cooldown is the axis that changes what
+            // the user hears.
+            roin.edit_length_jump_scale      = 1.0;
+            {
+                const int bars = in_.edit_density_bars;
+                int overrideBeats = 0;
+                if (bars > 1)
+                {
+                    const int regionBeats = std::max (1, exit_beat - entry_beat);
+                    overrideBeats = std::min (bars * gridBarBeats,
+                                              std::max (gridBarBeats, regionBeats / 2));
+                    if (overrideBeats <= gridBarBeats) overrideBeats = 0;   // = default
+                }
+                roin.min_seq_after_jump_override = overrideBeats;
+            }
 
             // ADR-057 (sesja 68) — Region boundaries → mechanical match to
             // user-selection edges. splice_flex_beats=0 activates legacy
@@ -561,11 +574,28 @@ void RemixPipeline::run()
             oin.time_signature = gridBarBeats;
             oin.sample_rate    = kAnalysisSampleRate;
 
-            // ADR-083 + ADR-084 sesja 92-93 — AuditionBar slider params
-            // propagated to Duration mode optimizer. Defaults bit-exact baseline.
-            oin.duration_tolerance_sec      = in_.allow_pm_seconds;
-            oin.edit_length_jump_scale      = in_.edit_length_jump_scale;
-            oin.min_seq_after_jump_override = in_.min_cut_beats;
+            // ADR-115 P3 (sesja 123) — Edit density in Duration. The default
+            // (0 / 4 bars = COOLDOWN_BARS) keeps the legacy path bit-exact:
+            // no cooldown override (the adaptive scaling for ratios < 0.5
+            // stays), jump scale 1.0, transition cap 6. Another detent sets
+            // the cooldown to bars x TS (bypassing the adaptive scaling, as
+            // the Min cut override did), scales the jump tax by bars / 4
+            // (16 bars = 4x, 1 bar = 0.25x - the ADR-084 range over the five
+            // detents) and scales the transition cap inversely (16 bars: 2,
+            // 8: 3, 4: 6, 2: 12, 1: 16) so "more cuts" can actually add cuts.
+            oin.duration_tolerance_sec      = reamix::remix::kDurationToleranceSecDefault;
+            {
+                constexpr int kDefaultBars = reamix::remix::COOLDOWN_BARS;
+                const int bars = in_.edit_density_bars > 0 ? in_.edit_density_bars : kDefaultBars;
+                if (bars != kDefaultBars)
+                {
+                    oin.min_seq_after_jump_override = bars * gridBarBeats;
+                    oin.edit_length_jump_scale      = (double) bars / (double) kDefaultBars;
+                    oin.max_transitions             = juce::jlimit (2, 16,
+                        juce::roundToInt ((double) reamix::remix::kMaxTransitionsDefaultOpt
+                                          * (double) kDefaultBars / (double) bars));
+                }
+            }
 
             reamix::remix::CleanOptimizer opt (oin);
 

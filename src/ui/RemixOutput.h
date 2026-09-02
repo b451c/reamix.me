@@ -65,10 +65,10 @@ struct RemixOutput
     // RemixCacheLRU::insert key matches the kickRemixPipeline lookup key).
     std::set<std::pair<int,int>> blockedTransitions;
 
-    // ADR-080 RESCOPE + ADR-083 (sesja 92) — AuditionBar 4-slider hash echoed
-    // from RemixPipeline::Input. handleRemixComplete uses it to match the
-    // kickRemixPipeline lookup key. Default 0 = bit-exact baseline.
-    juce::uint64 auditionHash { 0 };
+    // ADR-115 P3 (sesja 123) — Edit density hash echoed from
+    // RemixPipeline::Input (hashEditDensity). handleRemixComplete uses it to
+    // match the kickRemixPipeline lookup key. 0 = mode default.
+    juce::uint64 editDensityHash { 0 };
     // DEV-101 (sesja 123) — identity of the kick: the UI mode the remix was
     // computed for (ModeTabs::Mode as int, -1 = harness / parity) and the
     // two cache-key hashes taken at kick time. handleRemixComplete stores

@@ -1,5 +1,6 @@
 #include "MainComponent.h"
 #include "ui/UiProfile.h"   // DEV-102 (sesja 123)
+#include "remix/ViterbiDP.h"  // COOLDOWN_BARS (ADR-115 P3, sesja 123)
 #include "BlockCompatWiring.h"   // sesja 120 (DEV-097)
 #include "SpliceQualityBands.h"  // sesja 120 (DEV-099)
 
@@ -218,10 +219,7 @@ MainComponent::MainComponent()
     addAndMakeVisible (durationPanel_);
     addChildComponent (blockAssemblyPanel_); // ADR-051 — visible only in Blocks mode
     addAndMakeVisible (waveformView_);
-    addAndMakeVisible (auditionBar_);    // ADR-080 RESCOPE + ADR-083 sesja 92
-    // ADR-097 sesja 107 — AdvancedWeightsPanel is no longer a child of the
-    // main shell. It is lazy-created inside AdvancedWeightsWindow on user
-    // click of SettingsPopover "Advanced..." button (see onAdvancedToggled).
+    addAndMakeVisible (editTuningBar_);  // ADR-115 P3 (sesja 123)
     addAndMakeVisible (transportBar_);
     addAndMakeVisible (statusBar_);
     addChildComponent (settingsPopover_);
@@ -233,24 +231,15 @@ MainComponent::MainComponent()
     // not Component::findColour). Initial sesja-93 attempt setColour on
     // TooltipWindow instance was no-op.
 
-    // ADR-080 RESCOPE + ADR-083 (sesja 92) — AuditionBar slider callbacks.
-    // On user drag/click: persist params per source path + trigger Viterbi
-    // DP-only re-run via a fresh kickRemixPipeline at current target.
-    // Per-track persistence mirrors `lastModeByPath_` pattern (in-memory map
-    // keyed by ItemKey). Bit-exact baseline preserved when slider untouched
-    // (defaults match current production behavior across all 3 modes).
-    auto kickAuditionRerun = [this]
+    // ADR-115 P3 (sesja 123) — Edit density. On a user gesture: persist per
+    // (item, mode), re-run the remix at the current target (DP-only, the
+    // analysis is untouched). The bar shows the mode's default detent; the
+    // stored value 0 = default keeps the cache key of untouched sessions.
+    editTuningBar_.onBarsChanged = [this] (int bars)
     {
-        // DEV-079 sesja 101 — persist per-(item, mode) so each tab is its
-        // own audition workspace. Mirrors targetByPathMode_ pattern.
-        auditionParamsByPathMode_[currentItemKey()][appMode_] = AuditionParams{
-            auditionBar_.toneValue(),
-            auditionBar_.editLengthValue(),
-            auditionBar_.allowPmSecondsValue(),
-            auditionBar_.minCutBeatsValue()
-        };
-        // Trigger fresh kickRemixPipeline at current target if analysis
-        // bundle is available; otherwise wait for user explicit action.
+        if (currentSourcePath_.isNotEmpty())
+            editDensityByPathMode_[currentItemKey()][appMode_] =
+                bars == defaultDensityBars (appMode_) ? 0 : bars;
         if (analysisState_ != AnalysisState::Complete) return;
         if (currentSourcePath_.isEmpty()) return;
 
@@ -266,111 +255,25 @@ MainComponent::MainComponent()
         op.variation = 0;
         kickRemixPipeline (op);
     };
-    auditionBar_.onToneChanged           = [kickAuditionRerun](double)  { kickAuditionRerun(); };
-    auditionBar_.onEditLengthChanged     = [kickAuditionRerun](int)     { kickAuditionRerun(); };
-    auditionBar_.onAllowPmSecondsChanged = [kickAuditionRerun](int)     { kickAuditionRerun(); };
-    auditionBar_.onMinCutBeatsChanged    = [kickAuditionRerun](int)     { kickAuditionRerun(); };
+    editTuningBar_.setDefaultBars (defaultDensityBars (appMode_));
+    editTuningBar_.setBars (defaultDensityBars (appMode_));
 
-    // Sesja 108 — discrete quick-Advanced icon in AuditionBar top-right.
-    // Routes to the same handler the gear → SettingsPopover → "Advanced..."
-    // path uses; 1 click vs 3.
-    auditionBar_.onAdvancedClicked = [this] { onAdvancedToggled(); };
-
-    // Sesja 108 — AuditionBar collapse/expand. Persist to ExtState +
-    // re-run resized() so WaveformView reservation grows/shrinks.
-    auditionBar_.onCollapseToggled = [this]
+    // Sesja 108 — collapse/expand. Persist to ExtState + re-run resized()
+    // so the WaveformView reservation grows/shrinks (key kept from the
+    // AuditionBar so the user's choice survives the P3 swap).
+    editTuningBar_.onCollapseToggled = [this]
     {
         if (SetExtState)
             SetExtState ("reamix.me", "audition_collapsed",
-                         auditionBar_.isCollapsed() ? "1" : "0", true);
+                         editTuningBar_.isCollapsed() ? "1" : "0", true);
         resized();
     };
-    // Apply persisted state at construction.
     if (GetExtState)
     {
         const char* raw = GetExtState ("reamix.me", "audition_collapsed");
         if (raw != nullptr && raw[0] == '1')
-            auditionBar_.setCollapsed (true);
+            editTuningBar_.setCollapsed (true);
     }
-
-    // ADR-097 sesja 107 — AdvancedWeightsPanel callbacks are wired in
-    // setupAdvancedPanel() once the panel is lazy-created. SettingsPopover
-    // "Advanced..." button routes here.
-    settingsPopover_.onAdvancedToggled = [this] { onAdvancedToggled(); };
-
-    // Sesja 108 — heart icon in HeaderBar opens the support popover.
-    headerBar_.onHeartClicked = [this] { supportPopover_.show(); };
-
-    waveformView_.setPeaksProvider (peaksProvider_.get());
-
-    // ADR-057 (sesja 68) — Splice flexibility removed; ExtState key
-    // "splice_flexibility" deprecated, no migration (any prior value ignored).
-
-#if REAMIX_WITH_REAPER_IO
-    // Sesja 65 — load persisted Snap region (default Off when unset).
-    if (GetExtState)
-    {
-        const char* raw = GetExtState ("reamix.me", "snap_region");
-        const juce::String s = (raw != nullptr) ? juce::String::fromUTF8 (raw) : juce::String();
-        using SnapMode = reamix::ui::WaveformView::SnapMode;
-        if      (s == "beats")     waveformView_.setSnapMode (SnapMode::Beats);
-        else if (s == "downbeats") waveformView_.setSnapMode (SnapMode::Downbeats);
-        // else: leave default (Off)
-    }
-
-    // Sesja 100 (DEV-018) — load persisted preview volume. Default 1.0 when
-    // unset (matches pre-sesja-100 behaviour). Stored as decimal string e.g.
-    // "0.85" for 85% gain.
-    //
-    // Sesja 111 v1.0.3 — additionally reject empty string. On a fresh REAPER
-    // profile (e.g. first install on Windows VM), GetExtState returns "" for
-    // unset keys on some platforms instead of nullptr. juce::String::getDoubleValue
-    // on "" yields 0.0 → setVolume(0.0) → silent preview at first launch.
-    // The other ExtState branches in this constructor already guard with
-    // raw[0] == '<expected>'; this one was the one-off miss.
-    if (GetExtState)
-    {
-        const char* raw = GetExtState ("reamix.me", "preview_volume");
-        if (raw != nullptr && raw[0] != '\0')
-        {
-            const juce::String s = juce::String::fromUTF8 (raw);
-            const double v = juce::jlimit (0.0, 1.0, s.getDoubleValue());
-            previewController_.setVolume (v);
-            waveformView_.setPreviewVolume (v);
-        }
-    }
-
-    // Sesja 100b (DEV-049) — load persisted Insert toggles. Default ON
-    // for both per user smoke choice (feature visible from first Insert
-    // without hunting the Settings popover). Stored as "1" / "0".
-    if (GetExtState)
-    {
-        const char* rawSplice = GetExtState ("reamix.me", "insert_splice_markers");
-        if (rawSplice != nullptr)
-        {
-            const juce::String s = juce::String::fromUTF8 (rawSplice);
-            insertSpliceMarkersEnabled_ = (s == "1");
-        }
-        const char* rawRegion = GetExtState ("reamix.me", "insert_render_region");
-        if (rawRegion != nullptr)
-        {
-            const juce::String s = juce::String::fromUTF8 (rawRegion);
-            insertRenderRegionEnabled_ = (s == "1");
-        }
-        // DEV-081 sesja 112 — load "Replace original item on Insert" toggle.
-        const char* rawReplace = GetExtState ("reamix.me", "insert_replace_original");
-        if (rawReplace != nullptr && rawReplace[0] != '\0')
-        {
-            const juce::String s = juce::String::fromUTF8 (rawReplace);
-            insertReplaceOriginalEnabled_ = (s == "1");
-        }
-        // DEV-111 sesja 123 — load "Section markers: Auto / Off".
-        const char* rawSections = GetExtState ("reamix.me", "section_markers");
-        if (rawSections != nullptr && rawSections[0] != '\0')
-            sectionMarkersAuto_ = (juce::String::fromUTF8 (rawSections) == "1");
-    }
-#endif
-    waveformView_.setShowSections (sectionMarkersAuto_);
 
     // ADR-092 sesja 100c — load custom kind registry from REAPER ExtState.
     // Empty / missing key = empty registry (user has not added any customs
@@ -1252,50 +1155,14 @@ MainComponent::MainComponent()
         regionFromAuto_ = false;
         lastRespectedTimeSelection_ = reamix::reaper::getTimeSelection();
 
-        // DEV-079 sesja 101 — snap AuditionBar UI thumbs to the new mode's
-        // persisted slider positions (or bit-exact defaults if no entry yet).
-        // Setters do NOT fire onChanged callbacks (per AuditionBar.h:54), so
-        // this does not re-trigger kickAuditionRerun. The audition hash that
-        // currentAuditionParams() now returns matches what was stored when
-        // mode m's last remix was computed → tryRestoreModeRemix cache HIT.
+        // ADR-115 P3 (sesja 123) — snap the Edit density bar to the new
+        // mode's default + persisted detent (setters fire no callback, so no
+        // re-run; the hash currentEditDensityBars() returns matches the key
+        // the mode's last remix was stored under -> tryRestoreModeRemix hit).
+        editTuningBar_.setDefaultBars (defaultDensityBars (m));
         {
-            const auto ap = currentAuditionParams();
-            auditionBar_.setTone           (ap.tone);
-            auditionBar_.setEditLength     (ap.editLength);
-            auditionBar_.setAllowPmSeconds (ap.allowPmSeconds);
-            auditionBar_.setMinCutBeats    (ap.minCutBeats);
-        }
-
-        // ADR-097 sesja 107 — sync advanced panel state (when open) on mode
-        // switch. DEV-079 sesja 101: each tab is its own workspace; panel UI
-        // reflects mode's persisted weights or kDefaultQualityWeights.
-        // setRawWeights does NOT fire onAnyChanged (suppress flag inside
-        // panel) so this does not re-trigger kickDevCalibrationRerun.
-        if (advancedPanel_)
-        {
-            advancedPanel_->setRawWeights (currentQualityWeights());
-            bool itemHasOverride = false;
-            if (auto pmIt = qualityWeightsByPathMode_.find (currentItemKey());
-                pmIt != qualityWeightsByPathMode_.end())
-                itemHasOverride = ! pmIt->second.empty();
-            advancedPanel_->setBadgeState (
-                itemHasOverride
-                  ? reamix::ui::AdvancedWeightsPanel::BadgeState::Modified
-                  : reamix::ui::AdvancedWeightsPanel::BadgeState::NoSave);
-
-            // ADR-087 STATUS UPDATE 1 D15 (sesja 98) — mode-aware β-section.
-            switch (m)
-            {
-                case reamix::ui::ModeTabs::Mode::Duration:
-                    advancedPanel_->setAppMode (reamix::ui::AdvancedWeightsPanel::AppMode::Duration);
-                    break;
-                case reamix::ui::ModeTabs::Mode::Region:
-                    advancedPanel_->setAppMode (reamix::ui::AdvancedWeightsPanel::AppMode::Region);
-                    break;
-                case reamix::ui::ModeTabs::Mode::Blocks:
-                    advancedPanel_->setAppMode (reamix::ui::AdvancedWeightsPanel::AppMode::Blocks);
-                    break;
-            }
+            const int bars = currentEditDensityBars();
+            editTuningBar_.setBars (bars > 0 ? bars : defaultDensityBars (m));
         }
 
         // Sesja 65 — record user intent so cross-item attach (test 59)
@@ -2578,45 +2445,12 @@ MainComponent::MainComponent()
             statusBar_.setText (juce::String::fromUTF8 (
                 "Preview disabled \xe2\x80\x94 install SWS Extension (sws-extension.org)"));
     });
-
-    // DEV-080 sesja 108 — pull user-set defaults from ExtState into host-side
-    // mirrors BEFORE any compute path can read currentQualityWeights().
-    // Synchronous on the message thread; cheap (one GetExtState + one JSON
-    // parse on a short single-line record). Pre-fix the read lived inside
-    // setupAdvancedPanel() which only ran on first Advanced open, so the
-    // compute path silently used compile-time defaults until the user opened
-    // the panel — and then still used compile-time defaults until they moved
-    // a slider, because currentQualityWeights() fallback was unchanged.
-    loadAdvancedDefaultsFromExtState();
-
-    // ADR-097 sesja 107 — restore Advanced window if it was open last
-    // REAPER session. Deferred to async so the main window peer is created
-    // first; juce::DocumentWindow::setVisible(true) needs a live message loop.
-    juce::MessageManager::callAsync ([this]
-    {
-        restoreAdvancedWindowOnLaunch();
-    });
 }
 
 MainComponent::~MainComponent()
 {
     stopTimer();
 
-    // ADR-097 sesja 107 — persist Advanced window state + destroy window/panel.
-    // Done before any other teardown so window's onCloseRequested doesn't fire
-    // mid-destruction. Drop LAF references on window + panel before our LAF
-    // member dies (each setLookAndFeel(nullptr) must precede the LAF owner's
-    // destruction to avoid dangling pointer in drawTooltip et al.).
-    if (advancedWindow_)
-    {
-        persistAdvancedWindowState();
-        advancedWindow_->setLookAndFeel (nullptr);
-        advancedWindow_->setVisible (false);
-        advancedWindow_.reset();
-    }
-    if (advancedPanel_)
-        advancedPanel_->setLookAndFeel (nullptr);
-    advancedPanel_.reset();
 
     if (sliderDebounceTimer_) sliderDebounceTimer_->stopTimer();
 
@@ -2963,16 +2797,8 @@ void MainComponent::kickRemixPipeline (const PendingRemixOp& op)
         op.blockedTransitions,
         op.variation);
 
-    // ADR-080 RESCOPE + ADR-083 (sesja 92) — AuditionBar 4-slider identity
-    // hash. Default sliders → hash 0 → cache lookup compatible with
-    // pre-sesja-92 entries. User drag → non-zero → forces fresh remix render
-    // (the actual reason audition slider drags previously did nothing — they
-    // hit cached old WAV under identical pre-sesja-92 cache key).
-    {
-        const auto ap = currentAuditionParams();
-        cacheKey.auditionHash = reamix::ui::hashAuditionParams (
-            ap.tone, ap.editLength, ap.allowPmSeconds, ap.minCutBeats);
-    }
+    // ADR-115 P3 (sesja 123) — Edit density identity (0 at the mode default).
+    cacheKey.editDensityHash = reamix::ui::hashEditDensity (currentEditDensityBars());
 
     // ADR-087 STATUS UPDATE 1 (sesja 98) + ADR-097 sesja 107 — QualityWeights
     // identity hash. Returns 0 when weights == kDefaultQualityWeights so
@@ -3064,44 +2890,14 @@ void MainComponent::kickRemixPipeline (const PendingRemixOp& op)
     in.blockedTransitions  = op.blockedTransitions;
     in.variation           = op.variation;
 
-    // ADR-080 RESCOPE + ADR-083 (sesja 92) — AuditionBar 4-slider params.
-    // Populated from auditionBar_ (always reflects current visible state).
-    // Defaults bit-exact baseline when slider untouched.
+    // ADR-115 P3 (sesja 123) — Edit density (0 = mode default). The engine
+    // weights stay at their calibrated defaults; dev tooling may still pass
+    // a qualityWeightsOverride through the harness.
+    in.edit_density_bars = currentEditDensityBars();
     {
-        const auto ap = currentAuditionParams();
-        // Tone slider — propagated via `qualityWeightsOverride` so the blend
-        // logic in computeQualityScore sees the user value. When tone == 0.0
-        // the override sets harmonic_vs_timbre = 0.0 → blend bypassed →
-        // bit-exact baseline (matches kDefaultQualityWeights).
-        //
-        // Sesja 98 ADR-087 + sesja 107 ADR-097: AdvancedWeightsPanel may tune
-        // the 7-component simplex via per-(item, mode) weights map; merge Tone
-        // slider on top so both can coexist (Tone is a separate blend
-        // coefficient, NOT part of the simplex sum=1.0 invariant).
-        {
-            reamix::remix::QualityWeights w = currentQualityWeights();
-            if (ap.tone > 0.0)
-                w.harmonic_vs_timbre = ap.tone;
-            if (! reamix::ui::qualityWeightsAtDefault (w))
-                in.qualityWeightsOverride = w;
-        }
-        // Edit Length / Allow ± / Min cut — fields on RemixPipeline::Input
-        // forwarded directly to TC/RC/BA Inputs in RemixPipeline::run().
-        in.harmonic_vs_timbre     = ap.tone;
-        // ADR-084 sesja 93 — Edit Length MULTIPLICATIVE jump-cost scale
-        // (supersedes sesja-92 ADR-083 additive penalty). Map slider
-        // [0..100] → 2^((slider-50)/25) ∈ [0.25, 4.0]. Slider=50 → 1.0
-        // bit-exact baseline. Slider value also passed separately for
-        // cache hash (avoids log2 reverse-conversion).
-        in.edit_length_slider     = ap.editLength;
-        in.edit_length_jump_scale = std::pow(2.0,
-                                             ((double) ap.editLength - 50.0) / 25.0);
-        in.allow_pm_seconds       = (double) ap.allowPmSeconds;
-        // ADR-084 sesja 93 — Min cut: always pass user value (no sentinel
-        // remap at default 16). Optimizer uses min_seq_after_jump_user_override
-        // flag to bypass adaptive cooldown. Removes sesja-92 discontinuity
-        // at slider=16 where adaptive scaling re-engaged silently.
-        in.min_cut_beats          = ap.minCutBeats;
+        const reamix::remix::QualityWeights w = currentQualityWeights();
+        if (! reamix::ui::qualityWeightsAtDefault (w))
+            in.qualityWeightsOverride = w;
     }
 
     // ADR-051 — Block Assembly mode bypasses Region/Auto branches when
@@ -3188,7 +2984,7 @@ void MainComponent::handleRemixComplete (reamix::ui::RemixOutput out)
         out.sourcePath, out.itemGuid,           // ADR-056 (sesja 66)
         out.targetSec, out.regionStartSec, out.regionEndSec,
         out.blockedTransitions, out.variation);
-    cacheKey.auditionHash = out.auditionHash;  // ADR-083 sesja 92
+    cacheKey.editDensityHash = out.editDensityHash;   // ADR-115 P3
 
     // DEV-101 (sesja 123) — the storage key is the kick-time key echoed by
     // the job (quality-weights hash + Blocks hash), never the LIVE mode /
@@ -3817,12 +3613,8 @@ bool MainComponent::tryRestoreModeRemix (reamix::ui::ModeTabs::Mode m)
         auto key = reamix::ui::makeRemixCacheKey (
             currentSourcePath_, currentItemGuid_,   // ADR-056 (sesja 66)
             *target, 0.0, 0.0, blocked, variation);
-        {
-            const auto ap = currentAuditionParams();
-            key.auditionHash = reamix::ui::hashAuditionParams (
-                ap.tone, ap.editLength, ap.allowPmSeconds, ap.minCutBeats);
-            key.qualityWeightsHash = reamix::ui::hashQualityWeights (currentQualityWeights());
-        }
+        key.editDensityHash    = reamix::ui::hashEditDensity (currentEditDensityBars());
+        key.qualityWeightsHash = reamix::ui::hashQualityWeights (currentQualityWeights());
         const auto* hit = remixCache_.find (key);
         if (hit == nullptr) return false;
         if (! juce::File (hit->tmpWavPath).existsAsFile()) return false;
@@ -3845,12 +3637,8 @@ bool MainComponent::tryRestoreModeRemix (reamix::ui::ModeTabs::Mode m)
             target,
             rIt->second.region.startSec, rIt->second.region.endSec,
             blocked, variation);
-        {
-            const auto ap = currentAuditionParams();
-            key.auditionHash = reamix::ui::hashAuditionParams (
-                ap.tone, ap.editLength, ap.allowPmSeconds, ap.minCutBeats);
-            key.qualityWeightsHash = reamix::ui::hashQualityWeights (currentQualityWeights());
-        }
+        key.editDensityHash    = reamix::ui::hashEditDensity (currentEditDensityBars());
+        key.qualityWeightsHash = reamix::ui::hashQualityWeights (currentQualityWeights());
         const auto* hit = remixCache_.find (key);
         if (hit == nullptr) return false;
         if (! juce::File (hit->tmpWavPath).existsAsFile()) return false;
@@ -3885,12 +3673,8 @@ bool MainComponent::tryRestoreModeRemix (reamix::ui::ModeTabs::Mode m)
             currentSourcePath_, currentItemGuid_,   // ADR-056 (sesja 66)
             target, 0.0, 0.0, blocked, variation);
         key.blocksHash = blocksHash;
-        {
-            const auto ap = currentAuditionParams();
-            key.auditionHash = reamix::ui::hashAuditionParams (
-                ap.tone, ap.editLength, ap.allowPmSeconds, ap.minCutBeats);
-            key.qualityWeightsHash = reamix::ui::hashQualityWeights (currentQualityWeights());
-        }
+        key.editDensityHash    = reamix::ui::hashEditDensity (currentEditDensityBars());
+        key.qualityWeightsHash = reamix::ui::hashQualityWeights (currentQualityWeights());
         const auto* hit = remixCache_.find (key);
         if (hit == nullptr) return false;
         if (! juce::File (hit->tmpWavPath).existsAsFile()) return false;
@@ -4212,6 +3996,15 @@ void MainComponent::recomputeRegionState()
     modeTabs_.setMode (appMode_);
     modeTabs_.setAutoFlag (appMode_ == Mode::Region && regionFromAuto_);
 
+    // ADR-115 P3 (sesja 123) — the Edit density bar follows every mode
+    // change (tab click, auto-Region flip, item attach): the mode's default
+    // detent + the persisted value for (item, mode). Setters fire no callback.
+    editTuningBar_.setDefaultBars (defaultDensityBars (appMode_));
+    {
+        const int bars = currentEditDensityBars();
+        editTuningBar_.setBars (bars > 0 ? bars : defaultDensityBars (appMode_));
+    }
+
     // DEV-081 sesja 112 — "Replace original item on Insert" checkbox is
     // only meaningful in Region mode (the non-destructive insert path is
     // wired into the Region Insert branch). DurationPanel hides the
@@ -4501,28 +4294,6 @@ void MainComponent::applySelectedItem (const juce::String& name,
     // helper returns the right composite identity for state lookups.
     currentItemPtr_  = itemPtr;
     currentItemGuid_ = effectiveItemGuid;
-
-    // ADR-087 STATUS UPDATE 1 D9 (sesja 98) + ADR-097 sesja 107 — when the
-    // advanced panel window is open, push persisted weights back into its
-    // sliders (suppressCallback so no re-render fires on item-switch). Track
-    // context (path + duration) feeds JSONL Save flow.
-    if (advancedPanel_)
-    {
-        const auto w = currentQualityWeights();
-        advancedPanel_->setRawWeights (w);
-        advancedPanel_->setTrackContext (sourcePath, juce::String(),
-                                          itemDurationSec, 0.0);
-        // DEV-079 sesja 101 — badge "Modified" iff any per-mode override
-        // exists for this item (any one of the 3 modes touched).
-        bool itemHasOverride = false;
-        if (auto pmIt = qualityWeightsByPathMode_.find (currentItemKey());
-            pmIt != qualityWeightsByPathMode_.end())
-            itemHasOverride = ! pmIt->second.empty();
-        advancedPanel_->setBadgeState (
-            itemHasOverride
-              ? reamix::ui::AdvancedWeightsPanel::BadgeState::Modified
-              : reamix::ui::AdvancedWeightsPanel::BadgeState::NoSave);
-    }
 
     // ADR-052 (sesja 63 BUG-17/18) — try the in-memory session cache
     // first (keyed by sourcePath, not item identity). Hit means we are
@@ -5761,12 +5532,10 @@ void MainComponent::refreshBlockJunctionPreview()
     reamix::ui::AnalysisBundlePtr bundle = it->second;
     const std::vector<reamix::ui::UserBlock> blocks = userBlocks_;
     const std::vector<int> queue = userBlocksQueue_;
-    // Same weight override the Assemble kick applies (Tone slider + advanced panel).
+    // Same weight override the Assemble kick applies.
     std::optional<reamix::remix::QualityWeights> weights;
     {
-        reamix::remix::QualityWeights w = currentQualityWeights();
-        const auto ap = currentAuditionParams();
-        if (ap.tone > 0.0) w.harmonic_vs_timbre = ap.tone;
+        const reamix::remix::QualityWeights w = currentQualityWeights();
         if (! reamix::ui::qualityWeightsAtDefault (w)) weights = w;
     }
     juce::Component::SafePointer<MainComponent> self (this);
@@ -6148,22 +5917,12 @@ void MainComponent::resized()
 
     statusBar_    .setBounds (r.removeFromBottom (22));
     transportBar_ .setBounds (r.removeFromBottom (54));
-    // ADR-080 RESCOPE + ADR-083 sesja 92 + ADR-084 sesja 93 — AuditionBar
-    // 4-slider panel. Bumped 124h → 156h (4 × 36h slider rows + 3 × 4h gaps)
-    // for endpoint scale labels under each slider track per sesja 93 UX
-    // pushback ("slidery sa nieintuicyjne, brak miarek"). Sits between
-    // WaveformView (above) and TransportBar (below).
-    // Iter-9.d — audition allocation 210 px (= kBodyHeight 186 + 24 internal
-    // top/bot padding inside AuditionBar).
-    // Sesja 108 — bumped 210 → 226 px to give the quick-Advanced icon (16×16
-    // in the top padding gap) vertical breathing room. Top padding 12 → 28,
-    // bottom stays 12. AuditionBar.resized + paint both removeFromTop(28) /
-    // removeFromBottom(12) so Tone (first row) sits 28 px below top divider.
-    auditionBar_.setBounds (r.removeFromBottom (auditionBar_.getPreferredHeight()));
+    // ADR-115 P3 (sesja 123) — one-row Edit density bar (76 px expanded, 28
+    // collapsed); hidden in Blocks, where the number of cuts is the queue.
+    editTuningBar_.setVisible (! inBlocks);
+    if (! inBlocks)
+        editTuningBar_.setBounds (r.removeFromBottom (editTuningBar_.getPreferredHeight()));
 
-    // ADR-097 sesja 107 — AdvancedWeightsPanel is hosted by
-    // AdvancedWeightsWindow (separate juce::DocumentWindow), not embedded in
-    // the main shell. The shell layout no longer reserves space for it.
 
     waveformView_ .setBounds (r);
 
@@ -6199,303 +5958,27 @@ bool MainComponent::handleAccelKey (int vk, bool /*ctrl*/, bool /*shift*/)
     return false;
 }
 
-// ADR-080 RESCOPE + ADR-083 (sesja 92) + DEV-079 sesja 101 — return persisted
-// AuditionBar params for the (currently-attached item, currently-active mode).
-// Default-constructed AuditionParams (all fields = bit-exact baseline) when no
-// entry exists — preserves current production behavior for first-touch
-// interaction. Per-mode keying (DEV-079) prevents slider movement in mode B
-// from corrupting cache lookups for mode A's previously-computed remix.
-MainComponent::AuditionParams MainComponent::currentAuditionParams() const
+// ADR-115 P3 (sesja 123) — Edit density per mode. The default detent is the
+// engine's own default (bit-exact with the production behaviour): Duration =
+// COOLDOWN_BARS (4 bars, adaptive for aggressive ratios), Region = one
+// measured bar (E8), Blocks = one bar (the bar is hidden there).
+int MainComponent::defaultDensityBars (reamix::ui::ModeTabs::Mode m) noexcept
 {
-    const auto key  = currentItemKey();
-    const auto pmIt = auditionParamsByPathMode_.find (key);
-    if (pmIt == auditionParamsByPathMode_.end()) return AuditionParams{};
+    return m == reamix::ui::ModeTabs::Mode::Duration ? reamix::remix::COOLDOWN_BARS : 1;
+}
+
+int MainComponent::currentEditDensityBars() const
+{
+    const auto pmIt = editDensityByPathMode_.find (currentItemKey());
+    if (pmIt == editDensityByPathMode_.end()) return 0;
     const auto mIt = pmIt->second.find (appMode_);
-    if (mIt == pmIt->second.end()) return AuditionParams{};
+    if (mIt == pmIt->second.end()) return 0;
     return mIt->second;
 }
 
-// ADR-087 STATUS UPDATE 1 D9 (sesja 98) + ADR-097 sesja 107 — return
-// persisted advanced-weight QualityWeights for currently-attached item.
-// DEV-080 sesja 108 — fallback flipped from compile-time kDefaultQualityWeights
-// to host-side currentDefaultWeights_ so the user's "Set as defaults" choice
-// reaches the compute path symmetrically with the panel's tick markers across
-// REAPER restarts. currentDefaultWeights_ is seeded with kDefaultQualityWeights
-// at construction and overwritten by loadAdvancedDefaultsFromExtState() when
-// ExtState "advanced_defaults" carries a persisted record.
 reamix::remix::QualityWeights MainComponent::currentQualityWeights() const
 {
-    // DEV-079 sesja 101 — per-(item, mode) lookup. Mirrors currentAuditionParams().
-    const auto key  = currentItemKey();
-    const auto pmIt = qualityWeightsByPathMode_.find (key);
-    if (pmIt == qualityWeightsByPathMode_.end()) return currentDefaultWeights_;
-    const auto mIt = pmIt->second.find (appMode_);
-    if (mIt == pmIt->second.end()) return currentDefaultWeights_;
-    return mIt->second;
-}
-
-// DEV-080 sesja 108 — read ExtState "reamix.me" / "advanced_defaults" into
-// host-side currentDefaultWeights_ + currentDefaultBeta_. Called once from
-// MainComponent ctor so the compute path (currentQualityWeights() → cache key
-// + kickRemixPipeline) observes user-set defaults from first compute, even
-// when the user never opens the Advanced window in this REAPER session. Pre-
-// fix this read lived inside setupAdvancedPanel() which only ran on first
-// Advanced open — leaving every pre-open compute on compile-time defaults.
-void MainComponent::loadAdvancedDefaultsFromExtState()
-{
-    if (! GetExtState) return;
-    const char* raw = GetExtState ("reamix.me", "advanced_defaults");
-    if (raw == nullptr || raw[0] == '\0') return;
-
-    reamix::ui::DevCalibrationRecord rec;
-    if (! reamix::ui::DevCalibrationStorage::fromJsonLine (
-            juce::String::fromUTF8 (raw), rec)) return;
-
-    currentDefaultWeights_ = rec.weights_raw;
-    currentDefaultBeta_    = rec.block_assembly_beta;
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// ADR-097 sesja 107 — AdvancedWeightsWindow lifecycle.
-// ───────────────────────────────────────────────────────────────────────────
-
-void MainComponent::setupAdvancedPanel()
-{
-    // Wire callbacks ONCE per panel lifetime. Called from the lazy-create
-    // branch of onAdvancedToggled().
-    if (! advancedPanel_) return;
-
-    // ADR-087 STATUS UPDATE 1 (sesja 98) + ADR-097 sesja 107 — panel slider
-    // change kicks a fresh remix at the current target so user hears the new
-    // cost-weight tuning in real time. Mirrors kickAuditionRerun pattern.
-    advancedPanel_->onAnyChanged = [this]
-    {
-        qualityWeightsByPathMode_[currentItemKey()][appMode_] = advancedPanel_->weights();
-        if (analysisState_ != AnalysisState::Complete) return;
-        if (currentSourcePath_.isEmpty()) return;
-
-        PendingRemixOp op;
-        op.targetSec = durationPanel_.getTarget();
-        if (auto bIt = blockedBySource_.find (currentSourcePath_); bIt != blockedBySource_.end())
-            op.blockedTransitions = bIt->second;
-        if (currentRegion_.has_value())
-        {
-            op.regionStartSec = currentRegion_->startSec;
-            op.regionEndSec   = currentRegion_->endSec;
-        }
-        op.variation = 0;
-        kickRemixPipeline (op);
-    };
-
-    advancedPanel_->onRestoreDefault = [this]
-    {
-        // DEV-079 sesja 101 — Restore default applies only to currently-active
-        // mode. Other modes' calibration retained (each tab is its own
-        // workspace). If the (item, mode) entry exists, drop it; if the item
-        // map is now empty, drop the item entry too.
-        auto pmIt = qualityWeightsByPathMode_.find (currentItemKey());
-        if (pmIt != qualityWeightsByPathMode_.end())
-        {
-            pmIt->second.erase (appMode_);
-            if (pmIt->second.empty())
-                qualityWeightsByPathMode_.erase (pmIt);
-        }
-    };
-
-    advancedPanel_->onPreferredHeightChanged = [this]
-    {
-        if (advancedWindow_) advancedWindow_->refitToPanel();
-    };
-
-    advancedPanel_->getCurrentMode = [this] () -> juce::String
-    {
-        switch (appMode_)
-        {
-            case reamix::ui::ModeTabs::Mode::Duration: return "duration";
-            case reamix::ui::ModeTabs::Mode::Region:   return "region";
-            case reamix::ui::ModeTabs::Mode::Blocks:   return "blocks";
-        }
-        return "unknown";
-    };
-
-    // ADR-097 sesja 107 iter-10 — "Set as defaults" persistence. Panel fires
-    // the callback after user confirms; we serialize via the same JSON shape
-    // DevCalibrationStorage uses (weights_raw + block_assembly_beta fields)
-    // and store under ExtState "reamix.me" / "advanced_defaults".
-    // DEV-080 sesja 108 — also mirror into host-side currentDefaultWeights_ +
-    // currentDefaultBeta_ so the compute path picks up the new defaults
-    // immediately (no need to wait for next REAPER restart + ctor reload).
-    advancedPanel_->onSetAsDefaultsConfirmed =
-        [this] (reamix::remix::QualityWeights w, reamix::ui::BlockAssemblyBeta b)
-    {
-        currentDefaultWeights_ = w;
-        currentDefaultBeta_    = b;
-        if (! SetExtState) return;
-        reamix::ui::DevCalibrationRecord rec;
-        rec.weights_raw         = w;
-        rec.block_assembly_beta = b;
-        rec.timestamp           = reamix::ui::DevCalibrationStorage::nowIsoUtc();
-        rec.plugin_version      = REAMIX_VERSION;
-        const auto line = reamix::ui::DevCalibrationStorage::toJsonLine (rec);
-        SetExtState ("reamix.me", "advanced_defaults", line.toRawUTF8(), true);
-    };
-
-    // DEV-080 sesja 108 — push user-set defaults (loaded at ctor via
-    // loadAdvancedDefaultsFromExtState) into the panel so its tick markers,
-    // double-click-return values, and "Restore defaults" target reflect the
-    // user's persisted choice. Pre-fix this read lived inline here and ran
-    // only on first Advanced open; the ctor-time load is now the canonical
-    // source of truth and the panel just mirrors it.
-    advancedPanel_->setDefaultsForTicks (currentDefaultWeights_, currentDefaultBeta_);
-
-    advancedPanel_->setPluginVersion (REAMIX_VERSION);
-}
-
-void MainComponent::syncAdvancedPanelFromState()
-{
-    if (! advancedPanel_) return;
-    advancedPanel_->setRawWeights (currentQualityWeights());
-
-    bool itemHasOverride = false;
-    if (auto pmIt = qualityWeightsByPathMode_.find (currentItemKey());
-        pmIt != qualityWeightsByPathMode_.end())
-        itemHasOverride = ! pmIt->second.empty();
-    advancedPanel_->setBadgeState (
-        itemHasOverride
-          ? reamix::ui::AdvancedWeightsPanel::BadgeState::Modified
-          : reamix::ui::AdvancedWeightsPanel::BadgeState::NoSave);
-
-    switch (appMode_)
-    {
-        case reamix::ui::ModeTabs::Mode::Duration:
-            advancedPanel_->setAppMode (reamix::ui::AdvancedWeightsPanel::AppMode::Duration);
-            break;
-        case reamix::ui::ModeTabs::Mode::Region:
-            advancedPanel_->setAppMode (reamix::ui::AdvancedWeightsPanel::AppMode::Region);
-            break;
-        case reamix::ui::ModeTabs::Mode::Blocks:
-            advancedPanel_->setAppMode (reamix::ui::AdvancedWeightsPanel::AppMode::Blocks);
-            break;
-    }
-
-    advancedPanel_->setTrackContext (currentSourcePath_, juce::String(),
-                                      0.0, 0.0);
-}
-
-void MainComponent::onAdvancedToggled()
-{
-    if (advancedWindow_ && advancedWindow_->isVisible())
-    {
-        // Hide + persist + destroy. Panel state preserved (will be re-shown
-        // with same slider positions if user reopens).
-        persistAdvancedWindowState();
-        advancedWindow_->setLookAndFeel (nullptr);
-        advancedWindow_->setVisible (false);
-        advancedWindow_.reset();
-        return;
-    }
-
-    // Lazy-create panel on first open.
-    if (! advancedPanel_)
-    {
-        advancedPanel_ = std::make_unique<reamix::ui::AdvancedWeightsPanel>();
-        // Inherit the same custom LAF the main shell uses — without this the
-        // panel renders with JUCE's default LAF (sliders without proper track
-        // + default button skin) since the host DocumentWindow lives outside
-        // MainComponent's child hierarchy.
-        advancedPanel_->setLookAndFeel (&lookAndFeel_);
-        setupAdvancedPanel();
-    }
-    syncAdvancedPanelFromState();
-
-    // Create window hosting the panel.
-    advancedWindow_ = std::make_unique<reamix::ui::AdvancedWeightsWindow> (advancedPanel_.get());
-    // Iter-5 — apply reamix LAF to the window itself so its child
-    // TransparentTooltipWindow inherits our drawTooltip override (with the
-    // alpha-blended Bg1). Without this the tooltip resolves LAF via
-    // DocumentWindow's default-V4 chain and renders opaque.
-    advancedWindow_->setLookAndFeel (&lookAndFeel_);
-    advancedWindow_->onCloseRequested = [this]
-    {
-        // User closed via X / Esc. Persist state, hide, destroy. Defer the
-        // destruction one cycle so we don't unwind from inside DocumentWindow's
-        // own close handler.
-        juce::MessageManager::callAsync ([this]
-        {
-            if (! advancedWindow_) return;
-            persistAdvancedWindowState();
-            advancedWindow_->setLookAndFeel (nullptr);
-            advancedWindow_->setVisible (false);
-            advancedWindow_.reset();
-        });
-    };
-
-    // Sesja 108 — Advanced window position FOLLOWS the main reamix.me window
-    // on every open. User feedback: "okno advanced powinno wiedziec gdzie
-    // jest okno main, niezaleznie czy jest na innym ekranie czy floating
-    // musi sie otwierac tuz obok main okna by nie zaslaniac waveform."
-    //
-    // Strategy: pick side (right / left of main) with more room on the same
-    // display main currently lives on; align top with main. Persisted size
-    // is unused because AdvancedWeightsWindow setResizable(false) keeps
-    // dimensions constant (default width + panel preferred height).
-    const auto mainScreen   = getScreenBounds();
-    const auto& displays    = juce::Desktop::getInstance().getDisplays();
-    const auto* display     = displays.getDisplayForRect (mainScreen);
-    const auto displayArea  = display != nullptr
-                              ? display->userArea
-                              : displays.getPrimaryDisplay()->userArea;
-
-    const int aw  = advancedWindow_->getWidth();
-    const int ah  = advancedWindow_->getHeight();
-    const int gap = 10;
-
-    const int xRight = mainScreen.getRight() + gap;
-    const int xLeft  = mainScreen.getX() - gap - aw;
-
-    int finalX;
-    if (xRight + aw <= displayArea.getRight())
-        finalX = xRight;                                  // room on right
-    else if (xLeft >= displayArea.getX())
-        finalX = xLeft;                                   // room on left
-    else                                                  // neither side fits — clamp
-        finalX = juce::jmax (displayArea.getX(),
-                             displayArea.getRight() - aw);
-
-    int finalY = mainScreen.getY();
-    finalY = juce::jmax (displayArea.getY(),
-                         juce::jmin (finalY, displayArea.getBottom() - ah));
-
-    advancedWindow_->setBounds (finalX, finalY, aw, ah);
-
-    advancedWindow_->setVisible (true);
-    advancedWindow_->toFront (true);
-
-    if (SetExtState)
-        SetExtState ("reamix.me", "advanced_open", "1", true);
-}
-
-void MainComponent::persistAdvancedWindowState()
-{
-    if (! SetExtState) return;
-    // Sesja 108 — position is no longer persisted because the Advanced window
-    // re-computes placement relative to main on every open (follows main
-    // across displays / floating / docked). Only the open/closed flag is
-    // persisted so restoreAdvancedWindowOnLaunch picks up the state across
-    // REAPER restart.
-    SetExtState ("reamix.me", "advanced_open", "0", true);
-}
-
-void MainComponent::restoreAdvancedWindowOnLaunch()
-{
-    if (! GetExtState) return;
-    const char* raw = GetExtState ("reamix.me", "advanced_open");
-    if (raw == nullptr) return;
-    if (juce::String::fromUTF8 (raw) != "1") return;
-
-    // Same code path as user click — lazy-create panel + window, restore
-    // persisted bounds, show.
-    onAdvancedToggled();
+    return reamix::remix::kDefaultQualityWeights;
 }
 
 // ── Sesja 111 KROK 3+4 — startup-time UX modals ─────────────────────────

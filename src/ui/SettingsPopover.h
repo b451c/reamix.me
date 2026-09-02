@@ -12,6 +12,8 @@
 // Sections (top → bottom):
 //   DISPLAY  (ADR-045)  — single "Show beats" toggle, default ON.
 //   WINDOW   (ADR-043)  — single dock-toggle button (REABeat parity).
+//            ADR-115 P3 (sesja 123): the "Advanced..." weights window is
+//            gone from the product (weights are calibrated by the panels).
 //
 // Both sections expose their state via setters called from MainComponent at
 // show() time, so the popover does not maintain its own truth — it reflects
@@ -80,12 +82,6 @@ public:
     // does not run while a modal child component is live.
     std::function<void()> onDockToggled;
 
-    // ADR-097 (sesja 107) — Advanced weights window. Popover hides itself
-    // first, then invokes the callback so the host can open / toggle the
-    // separate juce::DocumentWindow without modal interference. Default
-    // hidden — only power users opening this window see the 8 raw weight
-    // sliders + 4 β-controls.
-    std::function<void()> onAdvancedToggled;
 
     // ADR-045 — fired on "Show beats" toggle click. Popover stays open so
     // the user can see the immediate effect on the waveform; one tap can
@@ -157,9 +153,6 @@ private:
     bool insertRegionRowPressed_      = false;
 
     juce::Rectangle<int> dockBtnRect_;
-    juce::Rectangle<int> advancedBtnRect_;     // ADR-097 sesja 107
-    bool                 advancedBtnHover_   = false;
-    bool                 advancedBtnPressed_ = false;
     juce::Rectangle<int> beatsRowRect_;
     juce::Rectangle<int> snapRowRect_;
     juce::Rectangle<int> sectionRowRect_;       // DEV-111

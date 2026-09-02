@@ -46,13 +46,13 @@ struct RemixCacheKey
     // boundaries + kinds + junctionVariations + spliceFlexBeats). Zero in
     // non-Blocks mode (auto / Region cache continues to work unchanged).
     juce::uint64 blocksHash    { 0 };
-    // ADR-080 RESCOPE + ADR-083 (sesja 92) — AuditionBar 4-slider identity
+    // ADR-115 P3 (sesja 123) — Edit density identity (was the AuditionBar hash)
     // hash (tone + edit_length + allow_pm_seconds + min_cut_beats). Zero
     // when all four sliders at default (bit-exact baseline) — preserves
     // pre-sesja-92 cache entries lookup compatibility. Non-zero invalidates
     // old cache hits when user drags any slider off default → forces fresh
     // remix render.
-    juce::uint64 auditionHash  { 0 };
+    juce::uint64 editDensityHash  { 0 };
 
     // ADR-087 STATUS UPDATE 1 (sesja 98) + ADR-097 sesja 107 — advanced
     // weights QualityWeights identity hash. Zero when weights ==
@@ -72,7 +72,7 @@ struct RemixCacheKey
         if (blockedHash    != o.blockedHash)    return blockedHash    < o.blockedHash;
         if (variation      != o.variation)      return variation      < o.variation;
         if (blocksHash     != o.blocksHash)     return blocksHash     < o.blocksHash;
-        if (auditionHash   != o.auditionHash)   return auditionHash   < o.auditionHash;
+        if (editDensityHash   != o.editDensityHash)   return editDensityHash   < o.editDensityHash;
         return qualityWeightsHash < o.qualityWeightsHash;
     }
 
@@ -86,7 +86,7 @@ struct RemixCacheKey
             && blockedHash == o.blockedHash
             && variation == o.variation
             && blocksHash == o.blocksHash
-            && auditionHash == o.auditionHash
+            && editDensityHash == o.editDensityHash
             && qualityWeightsHash == o.qualityWeightsHash;
     }
 };
@@ -104,29 +104,15 @@ inline juce::uint64 hashBlockedTransitions (const std::set<std::pair<int,int>>& 
     return h;
 }
 
-// ADR-080 RESCOPE + ADR-083 (sesja 92) — hash of AuditionBar 4-slider state.
-// Returns 0 when all 4 sliders at bit-exact baseline defaults (tone=0.0,
-// editLength=50, allowPm=5, minCut=16) so cache entries created pre-sesja-92
-// or with sliders untouched compare equal in cache lookups → preserves
-// existing remix outputs across plugin upgrade. Non-zero hash invalidates
-// stale cache hits the moment user drags any slider off default.
-inline juce::uint64 hashAuditionParams (double tone, int editLength,
-                                        int allowPmSeconds, int minCutBeats)
+// ADR-115 P3 (sesja 123) — hash of the Edit density control. 0 when the
+// control sits on the mode's default (bars == 0 = "mode default"), so cache
+// entries made before the control existed and entries at the default
+// compare equal; any other detent is a distinct key.
+inline juce::uint64 hashEditDensity (int bars)
 {
-    const bool atDefault = (tone == 0.0)
-                        && (editLength     == 50)
-                        && (allowPmSeconds == 5)
-                        && (minCutBeats    == 16);
-    if (atDefault) return 0;
-
+    if (bars <= 0) return 0;
     juce::uint64 h = 1469598103934665603ull; // FNV-1a 64-bit offset basis
-    h ^= (juce::uint64) std::lround (tone * 10000.0);
-    h *= 1099511628211ull;
-    h ^= (juce::uint64) editLength;
-    h *= 1099511628211ull;
-    h ^= (juce::uint64) allowPmSeconds;
-    h *= 1099511628211ull;
-    h ^= (juce::uint64) minCutBeats;
+    h ^= (juce::uint64) bars;
     h *= 1099511628211ull;
     return h;
 }
@@ -218,7 +204,7 @@ inline juce::String tmpWavPathFor (const RemixCacheKey& k)
     h ^= k.blockedHash;
     h ^= ((juce::uint64) k.variation) * 0xD1B54A32D192ED03ull;
     h ^= k.blocksHash * 0xC2B2AE3D27D4EB4Full;
-    h ^= k.auditionHash * 0x14057B7EF767814Full;  // ADR-083 sesja 92
+    h ^= k.editDensityHash * 0x14057B7EF767814Full;  // ADR-083 sesja 92
     juce::String name = "reamix_" + juce::String::toHexString ((juce::int64) h) + ".wav";
     return juce::File::getSpecialLocation (juce::File::tempDirectory)
                 .getChildFile (name).getFullPathName();

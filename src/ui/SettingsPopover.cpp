@@ -99,8 +99,6 @@ void SettingsPopover::hideMe()
     setVisible (false);
     dockBtnHover_           = false;
     dockBtnPressed_         = false;
-    advancedBtnHover_       = false;
-    advancedBtnPressed_     = false;
     beatsRowHover_          = false;
     beatsRowPressed_        = false;
     snapRowHover_           = false;
@@ -131,7 +129,7 @@ int SettingsPopover::computeBodyHeight()
 {
     // DISPLAY section: Show beats + Snap region + Section markers (DEV-111).
     // INSERT section (sesja 100b DEV-049): Splice markers + Render region.
-    // WINDOW section: Dock toggle + Advanced... (ADR-097 sesja 107).
+    // WINDOW section: Dock toggle (the Advanced... button left with ADR-115 P3).
     // CACHE section (ADR-053): Stats row + Clear/Reveal button row.
     return kPadding
          + (kTitleH + kTitleMargB)
@@ -139,7 +137,7 @@ int SettingsPopover::computeBodyHeight()
          + kSectionGap
          + (kTitleH + kTitleMargB) + kInsertRowH + kRowGap + kInsertRowH
          + kSectionGap
-         + (kTitleH + kTitleMargB) + kBtnH + kRowGap + kBtnH
+         + (kTitleH + kTitleMargB) + kBtnH
          + kSectionGap
          + (kTitleH + kTitleMargB) + kCacheStatsH + kRowGap + kCacheBtnH
          + kPadding;
@@ -176,8 +174,6 @@ void SettingsPopover::layOutHitRegions()
     // ── WINDOW section ──
     inner.removeFromTop (kTitleH + kTitleMargB);
     dockBtnRect_     = inner.removeFromTop (kBtnH);
-    inner.removeFromTop (kRowGap);
-    advancedBtnRect_ = inner.removeFromTop (kBtnH);
 
     inner.removeFromTop (kSectionGap);
 
@@ -448,12 +444,6 @@ void SettingsPopover::paint (juce::Graphics& g)
         drawWindowBtn (dockBtnRect_, dockLabel,
                        dockBtnHover_, dockBtnPressed_);
     }
-    inner.removeFromTop (kRowGap);
-    {
-        inner.removeFromTop (kBtnH);
-        drawWindowBtn (advancedBtnRect_, "Advanced...",
-                       advancedBtnHover_, advancedBtnPressed_);
-    }
 
     inner.removeFromTop (kSectionGap);
 
@@ -537,12 +527,6 @@ void SettingsPopover::mouseDown (const juce::MouseEvent& e)
     {
         dockBtnPressed_ = true;
         repaint (dockBtnRect_);
-        return;
-    }
-    if (advancedBtnRect_.contains (p))
-    {
-        advancedBtnPressed_ = true;
-        repaint (advancedBtnRect_);
         return;
     }
     if (cacheClearRect_.contains (p))
@@ -679,21 +663,6 @@ void SettingsPopover::mouseUp (const juce::MouseEvent& e)
         return;
     }
 
-    if (advancedBtnPressed_)
-    {
-        const bool fire = advancedBtnRect_.contains (p);
-        advancedBtnPressed_ = false;
-        repaint (advancedBtnRect_);
-        if (fire)
-        {
-            // Hide FIRST so modal state exits before the host opens / focuses
-            // the AdvancedWeightsWindow. Same rationale as the dock-toggle
-            // sequencing below.
-            hideMe();
-            if (onAdvancedToggled) onAdvancedToggled();
-        }
-        return;
-    }
 
     const bool fireDock = dockBtnPressed_ && dockBtnRect_.contains (p);
     dockBtnPressed_ = false;
@@ -757,13 +726,6 @@ void SettingsPopover::mouseMove (const juce::MouseEvent& e)
         repaint (dockBtnRect_);
     }
 
-    const bool overAdvanced = advancedBtnRect_.contains (p);
-    if (overAdvanced != advancedBtnHover_)
-    {
-        advancedBtnHover_ = overAdvanced;
-        repaint (advancedBtnRect_);
-    }
-
     const bool overClear = cacheClearRect_.contains (p);
     if (overClear != cacheClearHover_)
     {
@@ -778,7 +740,7 @@ void SettingsPopover::mouseMove (const juce::MouseEvent& e)
         repaint (cacheRevealRect_);
     }
 
-    setMouseCursor ((overBeats || overSnap || overSection || overDock || overAdvanced
+    setMouseCursor ((overBeats || overSnap || overSection || overDock
                        || overClear || overReveal)
                         ? juce::MouseCursor::PointingHandCursor
                         : juce::MouseCursor::NormalCursor);
@@ -792,13 +754,6 @@ void SettingsPopover::mouseExit (const juce::MouseEvent&)
         dockBtnHover_   = false;
         dockBtnPressed_ = false;
         repaint (dockBtnRect_);
-        dirty = true;
-    }
-    if (advancedBtnHover_ || advancedBtnPressed_)
-    {
-        advancedBtnHover_   = false;
-        advancedBtnPressed_ = false;
-        repaint (advancedBtnRect_);
         dirty = true;
     }
     if (beatsRowHover_ || beatsRowPressed_)

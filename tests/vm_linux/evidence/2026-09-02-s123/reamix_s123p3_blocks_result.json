@@ -1,0 +1,49 @@
+[
+ {
+  "tag": "reamix_s123p3_blocks_run1",
+  "media_len": 220.05551020408163,
+  "chips1": [
+   [
+    146,
+    262
+   ],
+   [
+    266,
+    308
+   ],
+   [
+    364,
+    507
+   ],
+   [
+    606,
+    699
+   ]
+  ],
+  "chips2": [
+   [
+    146,
+    262
+   ],
+   [
+    266,
+    308
+   ],
+   [
+    364,
+    507
+   ],
+   [
+    606,
+    699
+   ]
+  ],
+  "pext1": null,
+  "pext2": null,
+  "chip_wait_s": 24.8,
+  "pext1_raw": "",
+  "pext2_raw": "",
+  "reaper_alive_after": false,
+  "green": false
+ }
+]

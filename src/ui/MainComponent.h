@@ -24,10 +24,8 @@
 #include "PreviewController.h"
 #include "RemixCache.h"
 #include "RemixOutput.h"
-#include "AuditionBar.h"
+#include "EditTuningBar.h"
 
-#include "AdvancedWeightsPanel.h"
-#include "AdvancedWeightsWindow.h"
 #include "RemixPipeline.h"
 #include "SettingsPopover.h"
 #include "SupportPopover.h"
@@ -363,14 +361,7 @@ private:
     reamix::ui::ModeTabs            modeTabs_;
     reamix::ui::DurationPanel       durationPanel_;
     reamix::ui::BlockAssemblyPanel  blockAssemblyPanel_;
-    reamix::ui::AuditionBar         auditionBar_;       // ADR-080 RESCOPE + ADR-083 sesja 92
-    // ADR-097 sesja 107 — advanced weights panel + window are lazy-created
-    // on first SettingsPopover "Advanced..." click. Panel is NOT a child of
-    // MainComponent; AdvancedWeightsWindow hosts it as setContentNonOwned
-    // content. Panel outlives window across open/close cycles so slider
-    // state persists in-session even when window is hidden.
-    std::unique_ptr<reamix::ui::AdvancedWeightsPanel>  advancedPanel_;
-    std::unique_ptr<reamix::ui::AdvancedWeightsWindow> advancedWindow_;
+    reamix::ui::EditTuningBar       editTuningBar_;     // ADR-115 P3 (sesja 123)
     reamix::ui::TransportBar        transportBar_;
     reamix::ui::StatusBar           statusBar_;
 
@@ -660,84 +651,19 @@ private:
     std::map<ItemKey, std::map<reamix::ui::ModeTabs::Mode, double>>
         targetByPathMode_;
 
-    // ADR-080 RESCOPE + ADR-083 (sesja 92) — per-(item, mode) AuditionBar
-    // 4-slider params snapshot. DEV-079 sesja 101: keyed by (ItemKey, Mode)
-    // so each tab is its own workspace (each mode does something different,
-    // sliders in Duration mustn't bleed into Region/Blocks cache key).
-    // Populated on user slider drag for the currently-active mode; restored
-    // by snapping AuditionBar UI on tab switch. Defaults bit-exact baseline
-    // (tone=0.0, editLength=50, allowPm=5, minCut=16).
-    struct AuditionParams {
-        double tone           = 0.0;
-        int    editLength     = 50;
-        int    allowPmSeconds = 5;
-        int    minCutBeats    = 16;
-    };
-    std::map<ItemKey, std::map<reamix::ui::ModeTabs::Mode, AuditionParams>>
-        auditionParamsByPathMode_;
+    // ADR-115 P3 (sesja 123) — Edit density per (item, mode): the minimum
+    // run between two cuts in bars (16 / 8 / 4 / 2 / 1); no entry = the
+    // mode's default (defaultDensityBars). Each tab is its own workspace,
+    // like targetByPathMode_.
+    std::map<ItemKey, std::map<reamix::ui::ModeTabs::Mode, int>> editDensityByPathMode_;
+    static int defaultDensityBars (reamix::ui::ModeTabs::Mode) noexcept;
+    // 0 = the mode's default (hashEditDensity 0, pipeline default path).
+    int currentEditDensityBars() const;
 
-    // Helper accessor — returns persisted params for (currentItemKey(), appMode_)
-    // or default-constructed AuditionParams (= bit-exact baseline) when no
-    // entry exists. Used by kickRemixPipeline to populate RemixPipeline::Input
-    // and by tryRestoreModeRemix to compute the same auditionHash that was
-    // stored under at the mode-specific compute time.
-    AuditionParams currentAuditionParams() const;
-
-    // ADR-087 STATUS UPDATE 1 D9 (sesja 98) + DEV-079 sesja 101 + ADR-097
-    // sesja 107 — per-(item, mode) advanced weights QualityWeights snapshot.
-    // Mirrors auditionParamsByPathMode_ per-mode pattern so each tab is its
-    // own workspace (slider movement in mode B does not corrupt cache lookup
-    // for mode A's compute). Schema_version=2 JSON Save format records
-    // `mode_evaluated` per ADR-087 + ADR-098. Defaults bit-exact baseline
-    // (kDefaultQualityWeights). Per ADR-097 (sesja 107), the panel + map ship
-    // in the production dylib as opt-in opened from gear → Advanced... button.
-    std::map<ItemKey, std::map<reamix::ui::ModeTabs::Mode, reamix::remix::QualityWeights>>
-        qualityWeightsByPathMode_;
-
-    // DEV-080 sesja 108 — host-side mirror of the user-set defaults that the
-    // Advanced panel persists via ExtState "reamix.me" / "advanced_defaults"
-    // (iter-10 "Set as defaults"). Loaded once at ctor via
-    // loadAdvancedDefaultsFromExtState(); fall-back source for
-    // currentQualityWeights() when no per-(item, mode) override exists. Pre-
-    // fix this slot read compile-time reamix::remix::kDefaultQualityWeights,
-    // which decoupled tick markers (panel's currentDefaultRaw_, restored from
-    // ExtState on lazy-create) from slider thumbs (which followed the host's
-    // compile-time fallback) on every REAPER restart.
-    reamix::remix::QualityWeights currentDefaultWeights_ {
-        reamix::remix::kDefaultQualityWeights };
-    reamix::ui::BlockAssemblyBeta currentDefaultBeta_    {};
-
-    // Helper accessor — returns persisted weights for (currentItemKey(),
-    // appMode_) or currentDefaultWeights_ when no entry exists (DEV-080).
+    // Quality weights reaching the engine. The Advanced window is gone from
+    // the product (ADR-115 P3): production = kDefaultQualityWeights; a dev
+    // calibration build may re-introduce a hidden JSON here (ADR-087).
     reamix::remix::QualityWeights currentQualityWeights() const;
-
-    // DEV-080 sesja 108 — read ExtState "reamix.me" / "advanced_defaults"
-    // into currentDefaultWeights_ + currentDefaultBeta_. Called once from
-    // MainComponent ctor (NOT lazy on first Advanced open) so the user-set
-    // defaults reach the compute path even when the user never opens the
-    // Advanced window.
-    void loadAdvancedDefaultsFromExtState();
-
-    // ADR-097 sesja 107 — SettingsPopover "Advanced..." callback. Lazy-creates
-    // panel + window on first invocation, toggles visibility on subsequent
-    // clicks. Persists open/closed state + window position via ExtState.
-    void onAdvancedToggled();
-
-    // Helper — wires AdvancedWeightsPanel callbacks (slider change, restore,
-    // Save/Load) the first time the panel is created. Called from
-    // onAdvancedToggled() lazy-create branch.
-    void setupAdvancedPanel();
-
-    // Helper — pushes current per-(item, mode) raw weights + track context
-    // into the advanced panel. Called when the panel is created/opened or
-    // when the item/mode changes. No-op when panel is null.
-    void syncAdvancedPanelFromState();
-
-    // Persist/restore Advanced window state via ExtState (section "reamix.me",
-    // keys "advanced_open" + "advanced_pos"). Called on window close + plugin
-    // launch respectively.
-    void persistAdvancedWindowState();
-    void restoreAdvancedWindowOnLaunch();
 
     // Sesja 65 — sources where user explicitly dismissed the assembled
     // Blocks remix view via "↺ Edit arrangement". Symmetric to Region's
