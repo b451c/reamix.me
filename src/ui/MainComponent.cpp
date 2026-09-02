@@ -5918,9 +5918,13 @@ void MainComponent::resized()
     statusBar_    .setBounds (r.removeFromBottom (22));
     transportBar_ .setBounds (r.removeFromBottom (54));
     // ADR-115 P3 (sesja 123) — one-row Edit density bar (76 px expanded, 28
-    // collapsed); hidden in Blocks, where the number of cuts is the queue.
-    editTuningBar_.setVisible (! inBlocks);
-    if (! inBlocks)
+    // collapsed). Shown in Region only: in Blocks the queue fixes the number
+    // of cuts, and in Duration the control is inert until the DP gets a
+    // maximum-run state (DEV-112, user decision sesja 123: hide rather than
+    // show a control that changes nothing).
+    const bool showTuning = (appMode_ == reamix::ui::ModeTabs::Mode::Region);
+    editTuningBar_.setVisible (showTuning);
+    if (showTuning)
         editTuningBar_.setBounds (r.removeFromBottom (editTuningBar_.getPreferredHeight()));
 
 
