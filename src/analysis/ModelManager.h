@@ -84,18 +84,28 @@ public:
         "552dfc2b0d705e8eba77f75d8e4635de121d1884bf8bb6f1e4ad6c882ff5e384";
 
     // ── Section classifier (LinkSeg 9-class ONNX, sesja 121 / DEV-098) ──
-    // Local DGL-free export of the upstream checkpoint
-    // (tools/dev/section_eval/export_onnx.py --classes 9, 1'574'304 B). No
-    // download URL yet: for the in-plugin test the file is copied into
-    // modelDir() by hand. Absent or corrupt file = Blocks tab without model
-    // sections (never an error). Hosting + download wiring = ADR-115 P6.
+    // DGL-free export of the upstream checkpoint (tools/dev/section_eval/
+    // export_onnx.py --classes 9, 1'574'304 B), served from our own GitHub
+    // release (tag deliberately outside the CI "v*" pattern). Downloaded on
+    // first analyze next to the beat model; a failed download or a corrupt
+    // file = Blocks tab without model sections (never a hard error).
     static constexpr const char* kSectionModelFilename = "linkseg_9c.onnx";
+    static constexpr const char* kSectionModelUrl =
+        "https://github.com/b451c/reamix.me/releases/download/model-linkseg-9c-2026-09-02/linkseg_9c.onnx";
     static constexpr juce::int64 kSectionSizeMin = 1'000'000;
     static constexpr juce::int64 kSectionSizeMax = 3'000'000;
     static constexpr const char* kSectionSha256 =
         "994d4583ac3cdf501e57564c5a22d77313761579453f8793cbac6de0b2dd4047";
     static juce::File sectionModelPath();
     static bool isSectionModelCached();
+    // Same contract as ensureDownloaded for the section model (size + SHA
+    // verified after the fetch; the file is deleted on any failure).
+    static bool ensureSectionModelDownloaded(ProgressCb cb = nullptr,
+                                             std::string* outError = nullptr);
+
+private:
+    static bool downloadTo(const char* url, const juce::File& dest, ProgressCb cb,
+                           std::string* outError);
 };
 
 } // namespace reamix

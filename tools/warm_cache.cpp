@@ -208,12 +208,14 @@ int main (int argc, char** argv)
                   reamix::ModelManager::modelPath().getFullPathName().toRawUTF8());
     // Sesja 121 (DEV-098): optional section model (same rule as the plugin).
     reamix::analysis::SectionClassifier sections;
-    if (reamix::ModelManager::isSectionModelCached()
+    std::string sectionErr;
+    if (reamix::ModelManager::ensureSectionModelDownloaded (nullptr, &sectionErr)
         && sections.loadModel (reamix::ModelManager::sectionModelPath().getFullPathName().toStdString()))
         std::fprintf (stderr, "  OK section model ready (%s)\n",
                       reamix::ModelManager::sectionModelPath().getFullPathName().toRawUTF8());
     else
-        std::fprintf (stderr, "  section model absent - bundles cached without sections\n");
+        std::fprintf (stderr, "  section model unavailable (%s) - bundles cached without sections\n",
+                      sectionErr.c_str());
 
     // Build full audio path list.
     std::vector<juce::String> audioPaths = args.audioPaths;

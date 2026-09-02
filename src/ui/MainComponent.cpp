@@ -2642,11 +2642,17 @@ bool MainComponent::ensureBeatDetectorReady (juce::String& outErrorMessage,
         return false;
     }
 
-    // Sesja 121 (DEV-098): optional section model next to the beat model;
-    // absent file = Blocks tab keeps the clean-cut chips only.
-    if (reamix::ModelManager::isSectionModelCached())
-        sectionClassifier_.loadModel (
-            reamix::ModelManager::sectionModelPath().getFullPathName().toStdString());
+    // Sesja 121 (DEV-098): section model next to the beat model, fetched on
+    // first use (1.5 MB). Download or load failure is not an error: the
+    // Blocks tab then keeps the clean-cut chips only; retried next analyze.
+    {
+        std::string sectionErr;
+        if (reamix::ModelManager::ensureSectionModelDownloaded (nullptr, &sectionErr))
+            sectionClassifier_.loadModel (
+                reamix::ModelManager::sectionModelPath().getFullPathName().toStdString());
+        else
+            DBG ("reamix: section model unavailable: " << sectionErr);
+    }
 
     beatDetectorLoaded_ = true;
     return true;

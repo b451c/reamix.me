@@ -108,9 +108,43 @@ bool ModelManager::ensureDownloaded(ProgressCb cb, std::string* outError)
         }
     }
 
+    if (!downloadTo(kModelUrl, dest, std::move(cb), outError))
+        return false;
+
+    if (!isCached())
+    {
+        dest.deleteFile();
+        setErr("Downloaded model failed size or SHA-256 integrity check");
+        return false;
+    }
+    return true;
+}
+
+bool ModelManager::ensureSectionModelDownloaded(ProgressCb cb, std::string* outError)
+{
+    if (isSectionModelCached())
+        return true;
+    auto dest = sectionModelPath();
+    if (!downloadTo(kSectionModelUrl, dest, std::move(cb), outError))
+        return false;
+    if (!isSectionModelCached())
+    {
+        dest.deleteFile();
+        if (outError) *outError = "Downloaded section model failed size or SHA-256 integrity check";
+        return false;
+    }
+    return true;
+}
+
+bool ModelManager::downloadTo(const char* urlStr, const juce::File& dest, ProgressCb cb,
+                              std::string* outError)
+{
+    auto setErr = [outError](const char* msg) {
+        if (outError) *outError = msg;
+    };
     dest.deleteFile(); // clear any partial / corrupt cache before network fetch
 
-    juce::URL url(kModelUrl);
+    juce::URL url(urlStr);
     auto in = url.createInputStream(
         juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
             .withConnectionTimeoutMs(30000));
@@ -148,14 +182,6 @@ bool ModelManager::ensureDownloaded(ProgressCb cb, std::string* outError)
 
     out->flush();
     out.reset();
-
-    if (!isCached())
-    {
-        dest.deleteFile();
-        setErr("Downloaded model failed size or SHA-256 integrity check");
-        return false;
-    }
-
     return true;
 }
 
