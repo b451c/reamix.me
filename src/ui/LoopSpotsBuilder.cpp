@@ -6,17 +6,89 @@
 #include "remix/RegionCost.h"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
+#include <string>
 
 namespace reamix::ui
 {
+
+namespace
+{
+    reamix::theme::SegmentKind mapLabel (const std::string& label)
+    {
+        // LinkSeg 9-class labels (SectionClassifier::labelName). Unknown
+        // tokens map to Verse so the section bar renders without a hole.
+        using K = reamix::theme::SegmentKind;
+        if (label == "intro")       return K::Intro;
+        if (label == "outro")       return K::Outro;
+        if (label == "chorus")      return K::Chorus;
+        if (label == "verse")       return K::Verse;
+        if (label == "bridge")      return K::Bridge;
+        if (label == "inst")        return K::Instrumental;
+        if (label == "pre-chorus")  return K::PreChorus;
+        if (label == "post-chorus") return K::PostChorus;
+        return K::Verse;
+    }
+
+    // Sesja 121 (DEV-098): model sections -> UI sections on the cleaned grid.
+    // Mirrors tools/dev/section_eval/corpus.py snap_to_downbeats + relabel.
+    void buildUiSegments (AnalysisBundle& b)
+    {
+        b.uiSegments.clear();
+        const auto& segs = b.structure.segments;
+        if (segs.empty()) return;
+        const double duration = segs.back().end;
+        const double bar      = std::max (0.0, b.barSec);
+        const auto&  db       = b.gridDownbeats;
+
+        std::vector<double> times { 0.0 };
+        for (std::size_t i = 1; i < segs.size(); ++i)
+        {
+            double t = segs[i].start;
+            if (! db.empty())
+            {
+                auto it = std::lower_bound (db.begin(), db.end(), t);
+                double best = (it != db.end()) ? *it : db.back();
+                if (it != db.begin() && std::abs (*(it - 1) - t) < std::abs (best - t)) best = *(it - 1);
+                t = best;
+            }
+            if (t - times.back() >= bar - 1e-3 && duration - t >= bar - 1e-3) times.push_back (t);
+        }
+        times.push_back (duration);
+
+        struct Raw { double s, e; std::string label; };
+        std::vector<Raw> out;
+        for (std::size_t i = 0; i + 1 < times.size(); ++i)
+        {
+            const double m = 0.5 * (times[i] + times[i + 1]);
+            const reamix::analysis::Segment* raw = &segs.back();
+            for (const auto& s : segs)
+                if (m >= s.start && m < s.end) { raw = &s; break; }
+            out.push_back ({ times[i], times[i + 1], raw->label });
+        }
+        // Silence has no block kind: hand its span to the following section
+        // (leading silence) or the previous one (trailing / inner).
+        for (std::size_t i = 0; i < out.size();)
+        {
+            if (out[i].label != "silence") { ++i; continue; }
+            if (i + 1 < out.size())      out[i + 1].s = out[i].s;
+            else if (i > 0)              out[i - 1].e = out[i].e;
+            else { ++i; continue; }
+            out.erase (out.begin() + (long) i);
+        }
+        b.uiSegments.reserve (out.size());
+        for (const auto& r : out)
+            b.uiSegments.push_back ({ r.s, r.e, mapLabel (r.label) });
+    }
+} // namespace
 
 void ensureBeatGrid (AnalysisBundle& bundle)
 {
     if (bundle.gridBuilt) return;
     bundle.gridBuilt = true;
     const int nBeats = (int) bundle.beatTimes.size();
-    if (nBeats < 2) return;
+    if (nBeats < 2) { buildUiSegments (bundle); return; }
 
     // ADR-115 E5 — same cleaned grid the Region / Blocks remix uses
     // (RemixPipeline, v2 path).
@@ -41,6 +113,7 @@ void ensureBeatGrid (AnalysisBundle& bundle)
         for (int idx : grid.downbeat_idx)
             if (idx >= 0 && idx < nBeats) bundle.beatIsDownbeat[(std::size_t) idx] = true;
     }
+    buildUiSegments (bundle);
 }
 
 void ensureLoopSpots (AnalysisBundle& bundle)

@@ -4,6 +4,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include "analysis/BeatDetector.h"
+#include "analysis/SectionClassifier.h"
 #include "analysis/FeatureExtractor.h"
 #include "analysis/StructureResult.h"
 #include "remix/BeatGrid.h"   // ADR-115 E5 (sesja 115)
@@ -27,19 +28,6 @@ namespace
     constexpr double kPBeatDetect   = 0.45;
     constexpr double kPFeatures     = 0.70;
     constexpr double kPTransitions  = 1.00;
-
-    reamix::theme::SegmentKind mapLabel (const std::string& label)
-    {
-        // CBMSegmenter labels: intro / outro / chorus / verse / bridge.
-        // NoveltySegmenter may emit different tokens (cluster_N) — unknowns
-        // map to Verse so the waveform renders without a hole.
-        if (label == "intro")  return reamix::theme::SegmentKind::Intro;
-        if (label == "outro")  return reamix::theme::SegmentKind::Outro;
-        if (label == "chorus") return reamix::theme::SegmentKind::Chorus;
-        if (label == "verse")  return reamix::theme::SegmentKind::Verse;
-        if (label == "bridge") return reamix::theme::SegmentKind::Bridge;
-        return reamix::theme::SegmentKind::Verse;
-    }
 
     std::vector<double> toDoubles (const std::vector<float>& v)
     {
@@ -72,10 +60,12 @@ namespace
 AnalyzePipeline::AnalyzePipeline (Input                 in,
                                   reamix::BeatDetector& beatDetector,
                                   ProgressCb            onProgress,
-                                  CompleteCb            onComplete)
+                                  CompleteCb            onComplete,
+                                  reamix::analysis::SectionClassifier* sections)
     : juce::Thread ("reamix.analyze"),
       in_ (std::move (in)),
       beatDetector_ (beatDetector),
+      sections_ (sections),
       onProgress_ (std::move (onProgress)),
       onComplete_ (std::move (onComplete)),
       alive_ (std::make_shared<std::atomic<bool>> (true))
@@ -232,6 +222,36 @@ void AnalyzePipeline::run()
     bundle->downbeatTimes = toDoubles (det.downbeats);
     bundle->beatIsDownbeat = computeDownbeatMask (bundle->beatTimes, bundle->downbeatTimes);
 
+    // ── Stage 2b — SectionClassifier (sesja 121, DEV-098) ──────────
+    // LinkSeg sections from the full mix + the beat grid, raw model times
+    // and labels into bundle.structure (cached on disk, format 7);
+    // LoopSpotsBuilder::ensureBeatGrid snaps them to the cleaned grid for
+    // the UI. ~1 s CPU for a 5-minute track. Failure = no sections.
+    bundle->structure = {};
+    if (sections_ != nullptr && sections_->isLoaded())
+    {
+        postProgress ("Finding sections", kPBeatDetect);
+        std::string sectionErr;
+        const auto modelOut = sections_->run (audio.mono22050.data(), audio.mono22050.size(),
+                                              bundle->beatTimes, &sectionErr);
+        if (! modelOut.beatTimes.empty())
+        {
+            const double durationSec = (double) audio.mono22050.size() / kAnalysisSampleRate;
+            for (const auto& s : reamix::analysis::SectionClassifier::decode (modelOut, durationSec))
+            {
+                reamix::analysis::Segment seg;
+                seg.start      = s.start;
+                seg.end        = s.end;
+                seg.confidence = s.confidence;
+                seg.cluster_id = s.cls;
+                seg.label      = s.label;
+                bundle->structure.segments.push_back (std::move (seg));
+                bundle->structure.boundaries.push_back (s.start);
+            }
+        }
+    }
+    if (threadShouldExit()) return;
+
     // ── Stage 3 — FeatureExtractor (phase-2) ───────────────────────
     postProgress ("Extracting features", kPBeatDetect);
     try
@@ -260,9 +280,8 @@ void AnalyzePipeline::run()
     audio.mono22050.shrink_to_fit();
 
     // ── Stage 4 — StructureAnalyzer (phase-3) ──────────────────────
-    // ADR-044: SKIPPED on auto path. Block Assembly mode (step 8) will
-    // populate user labels here in a later session.
-    bundle->structure = {};
+    // ADR-044: the old CBM / novelty stack stays SKIPPED; bundle.structure
+    // now carries the stage-2b model sections (sesja 121).
     if (threadShouldExit()) return;
 
     // ── Stage 5 — TransitionCost (phase-4 first half) ──────────────
@@ -347,12 +366,8 @@ void AnalyzePipeline::run()
     ensureLoopSpots (*bundle);
     if (threadShouldExit()) return;
 
-    // ── UI segments view ───────────────────────────────────────────
-    bundle->uiSegments.reserve (bundle->structure.segments.size());
-    for (const auto& s : bundle->structure.segments)
-    {
-        bundle->uiSegments.push_back ({ s.start, s.end, mapLabel (s.label) });
-    }
+    // uiSegments (model sections snapped to the cleaned grid) are built by
+    // ensureBeatGrid inside ensureLoopSpots above (sesja 121).
 
     postProgress ("Done", kPTransitions);
     postCompletion (std::move (bundle), {});

@@ -34,6 +34,9 @@
 namespace reamix {
     class BeatDetector;
 }
+namespace reamix::analysis {
+    class SectionClassifier;
+}
 
 namespace reamix::ui
 {
@@ -49,10 +52,14 @@ public:
     using ProgressCb = std::function<void (juce::String label, double p01)>;
     using CompleteCb = std::function<void (AnalysisBundlePtr bundle, juce::String error)>;
 
+    // `sections` (optional, sesja 121 / DEV-098): loaded LinkSeg classifier;
+    // stage 2b fills bundle.structure.segments with the model's sections.
+    // nullptr or not loaded = no sections (Blocks tab shows clean-cut chips).
     AnalyzePipeline (Input                in,
                      reamix::BeatDetector& beatDetector,
                      ProgressCb           onProgress,
-                     CompleteCb           onComplete);
+                     CompleteCb           onComplete,
+                     reamix::analysis::SectionClassifier* sections = nullptr);
 
     ~AnalyzePipeline() override;
 
@@ -80,6 +87,7 @@ private:
 
     Input                  in_;
     reamix::BeatDetector&  beatDetector_;
+    reamix::analysis::SectionClassifier* sections_ { nullptr };
     ProgressCb             onProgress_;
     CompleteCb             onComplete_;
     std::shared_ptr<std::atomic<bool>> alive_;

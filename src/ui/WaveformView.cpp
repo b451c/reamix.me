@@ -325,12 +325,15 @@ void WaveformView::paintLoopSpots (juce::Graphics& g, juce::Rectangle<int> bar)
         if (x1 - x0 < 2.0f) continue;
 
         const bool  hovered = ((int) i == hoveredLoopSpotIdx_);
-        const auto  colour  = loopSpotColour (c.quality);
+        const auto  colour  = c.kind.has_value() ? segmentColour (*c.kind) : loopSpotColour (c.quality);
         const juce::Rectangle<float> rect (x0 + 0.5f, (float) bar.getY() + 3.0f,
                                            x1 - x0 - 1.0f, (float) bar.getHeight() - 5.0f);
         g.setColour (colour.withAlpha (hovered ? 0.42f : 0.18f));
         g.fillRoundedRectangle (rect, r::R1);
-        g.setColour (colour.withAlpha (hovered ? 1.0f : 0.8f));
+        // Kind chips: a dark inset border separates the chip from its cell
+        // (same hue underneath); quality chips keep the coloured border.
+        g.setColour (c.kind.has_value() ? juce::Colours::black.withAlpha (hovered ? 0.7f : 0.45f)
+                                        : colour.withAlpha (hovered ? 1.0f : 0.8f));
         g.drawRoundedRectangle (rect, r::R1, 1.0f);
 
         juce::GlyphArrangement arr;
@@ -348,7 +351,9 @@ void WaveformView::paintLoopSpots (juce::Graphics& g, juce::Rectangle<int> bar)
         }
         if (text.isNotEmpty())
         {
-            g.setColour (hovered ? Fg0 : colour);
+            // Sesja 121: a kind chip sits on a cell of the same colour, so its
+            // label uses the cell's white text, not the chip colour.
+            g.setColour ((hovered || c.kind.has_value()) ? Fg0 : colour);
             g.setFont (chipFont);
             g.drawText (text, rect.toNearestInt().reduced (4, 0),
                         juce::Justification::centred, false);
@@ -1001,7 +1006,8 @@ void WaveformView::paintSegBar (juce::Graphics& g)
         }
 
         // plugin.css:359 — label only when cell is wide enough to read.
-        if (cellW > 40)
+        // Sesja 121: in Blocks mode the section chips carry the label.
+        if (cellW > 40 && ! (blockMarkingEnabled_ && ! loopSpots_.empty()))
         {
             // Normalize "pre-chorus" → "PRE CHORUS" like primitives.jsx:184.
             juce::String label;

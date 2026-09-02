@@ -56,6 +56,22 @@ bool ModelManager::isCached()
     return digest == juce::String(kExpectedSha256);
 }
 
+juce::File ModelManager::sectionModelPath()
+{
+    return modelDir().getChildFile(kSectionModelFilename);
+}
+
+bool ModelManager::isSectionModelCached()
+{
+    auto path = sectionModelPath();
+    if (!path.existsAsFile())
+        return false;
+    const auto size = path.getSize();
+    if (size < kSectionSizeMin || size > kSectionSizeMax)
+        return false;
+    return computeSha256(path) == juce::String(kSectionSha256);
+}
+
 bool ModelManager::ensureDownloaded(ProgressCb cb, std::string* outError)
 {
     auto setErr = [outError](const char* msg) {

@@ -22,7 +22,10 @@ void ensureLoopSpots (AnalysisBundle& bundle);
 // Sesja 120 (DEV-098): cleaned beat grid (ADR-115 E5) stored on the bundle -
 // on-grid downbeats, measured bar in beats and seconds - and `beatIsDownbeat`
 // rebuilt from it so the section-bar ticks, block snapping and the bar labels
-// agree with the engine. Idempotent; called by ensureLoopSpots.
+// agree with the engine. Idempotent; called by ensureLoopSpots. Sesja 121
+// (DEV-098): also rebuilds `uiSegments` from the model sections in
+// `structure.segments` - interior boundaries snapped to the nearest cleaned
+// downbeat, at least one bar per section, silence merged into its neighbour.
 void ensureBeatGrid (AnalysisBundle& bundle);
 
 } // namespace reamix::ui

@@ -31,6 +31,7 @@
 #include "ui/AnalysisDiskCache.h"
 #include "analysis/BeatDetector.h"
 #include "analysis/ModelManager.h"
+#include "analysis/SectionClassifier.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_core/juce_core.h>
@@ -115,6 +116,7 @@ std::vector<juce::String> findAudio (const juce::File& dir)
 // 50 ms slices so progress + completion callbacks fire predictably.
 bool runPipeline (const juce::String&             sourcePath,
                   reamix::BeatDetector&           beatDetector,
+                  reamix::analysis::SectionClassifier* sections,
                   reamix::ui::AnalysisBundlePtr&  outBundle,
                   juce::String&                   outError)
 {
@@ -149,7 +151,7 @@ bool runPipeline (const juce::String&             sourcePath,
     };
 
     auto pipeline = std::make_unique<reamix::ui::AnalyzePipeline> (
-        std::move (in), beatDetector, std::move (progressCb), std::move (completeCb));
+        std::move (in), beatDetector, std::move (progressCb), std::move (completeCb), sections);
     pipeline->startThread();
 
     while (! done.load (std::memory_order_acquire))
@@ -204,6 +206,14 @@ int main (int argc, char** argv)
     }
     std::fprintf (stderr, "  OK model ready (%s)\n",
                   reamix::ModelManager::modelPath().getFullPathName().toRawUTF8());
+    // Sesja 121 (DEV-098): optional section model (same rule as the plugin).
+    reamix::analysis::SectionClassifier sections;
+    if (reamix::ModelManager::isSectionModelCached()
+        && sections.loadModel (reamix::ModelManager::sectionModelPath().getFullPathName().toStdString()))
+        std::fprintf (stderr, "  OK section model ready (%s)\n",
+                      reamix::ModelManager::sectionModelPath().getFullPathName().toRawUTF8());
+    else
+        std::fprintf (stderr, "  section model absent - bundles cached without sections\n");
 
     // Build full audio path list.
     std::vector<juce::String> audioPaths = args.audioPaths;
@@ -251,7 +261,7 @@ int main (int argc, char** argv)
         const auto t0 = std::chrono::steady_clock::now();
         reamix::ui::AnalysisBundlePtr bundle;
         juce::String                  err;
-        if (! runPipeline (path, beatDetector, bundle, err))
+        if (! runPipeline (path, beatDetector, &sections, bundle, err))
         {
             std::fprintf (stderr, "    FAIL: %s\n", err.toRawUTF8());
             ++nFailed;

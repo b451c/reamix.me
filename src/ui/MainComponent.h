@@ -41,6 +41,7 @@
 #include "WaveformView.h"
 
 #include "analysis/BeatDetector.h"
+#include "analysis/SectionClassifier.h"
 #include "reaper/ReaperBridge.h"
 
 // MainComponent — phase-6 root panel.
@@ -241,6 +242,7 @@ private:
     reamix::ui::SourcePanel       sourcePanel_;
 
     reamix::BeatDetector          beatDetector_;
+    reamix::analysis::SectionClassifier sectionClassifier_;   // sesja 121 (DEV-098), optional model
     std::mutex                    beatDetectorLoadMutex_;
     bool                          beatDetectorLoaded_ { false };
     juce::String                  beatDetectorLoadError_;
@@ -510,6 +512,7 @@ private:
     // vector index, chronological), change key, preview generation and the
     // current minimum block length (one measured bar once the grid is known).
     std::vector<reamix::remix::LoopSpot> blockSuggestions_;
+    std::vector<std::optional<reamix::theme::SegmentKind>> blockSuggestionKinds_;   // sesja 121: model kind per chip
     juce::String                         lastBlockSuggestKey_;
     std::atomic<int>                     blockPreviewGen_ { 0 };
     double                               minBlockSec_     { 0.5 };

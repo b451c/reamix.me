@@ -2033,6 +2033,23 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_loop_spots
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_section_classifier — sesja 121 (DEV-098) self-validation of the
+  # LinkSeg front-end + decoder (no ORT: beat requantisation, mel window
+  # geometry + tone placement, peak-pick / majority-vote decoding invariants).
+  add_executable(test_section_classifier
+    tests/parity/test_section_classifier.cpp
+    src/analysis/SectionClassifier.cpp
+  )
+  target_include_directories(test_section_classifier PRIVATE src ${POCKETFFT_DIR})
+  if(MSVC)
+    target_compile_options(test_section_classifier PRIVATE /W3)
+  else()
+    target_compile_options(test_section_classifier PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  endif()
+  add_test(NAME section_classifier
+           COMMAND test_section_classifier
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_region_optimizer_k_best — sesja 100 (DEV-032, ADR-091) self-validation.
   # Validates RegionOptimizer K-best variations (Region mirror of ADR-048
   # Duration K-best per CleanOptimizer::remix_k_best). Exposes new public

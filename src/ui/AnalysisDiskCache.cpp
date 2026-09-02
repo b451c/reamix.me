@@ -25,7 +25,9 @@ namespace
     //       beat grid); layout unchanged, but a version-5 bundle carries a
     //       legacy transition matrix that Duration remix would keep using.
     constexpr char        kMagic[4]       = { 'R', 'X', 'B', 'C' };
-    constexpr juce::uint32 kFormatVersion = 6;
+    // 7 (sesja 121): bundle.structure carries the LinkSeg model sections;
+    // format-6 entries (empty structure) would never get them, so they miss.
+    constexpr juce::uint32 kFormatVersion = 7;
 
     juce::String hashOf (const juce::String& s)
     {

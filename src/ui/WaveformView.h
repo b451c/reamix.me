@@ -323,6 +323,9 @@ public:
         SpliceQuality quality;
         juce::String  label;        // "LOOP · 4 BARS · 82%" (wide chip)
         juce::String  shortLabel;   // "4 BARS" (narrow chip)
+        // Sesja 121 (DEV-098): a model-section chip paints in its kind
+        // colour instead of the quality colour.
+        std::optional<reamix::theme::SegmentKind> kind;
     };
     // Sesja 120 (DEV-097): in Blocks mode the same chips carry proposed
     // blocks (section spans of the whole-track pool); a chip click then

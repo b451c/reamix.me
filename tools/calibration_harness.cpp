@@ -56,6 +56,9 @@
 #include "remix/BeatGrid.h"          // ADR-115 E5 (sesja 115)
 #include "remix/RegionCost.h"        // sesja 119 --dump-region-pool
 #include "ui/RegionCostWiring.h"      // sesja 119 --dump-region-pool
+#include "analysis/SectionClassifier.h" // sesja 121 --dump-sections
+#include "analysis/ModelManager.h"
+#include "io/AudioLoader.h"
 #include "calibration_harness_parse_weights.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -84,6 +87,7 @@ struct Args
     bool         dumpV2 { false };    // sesja 115 - dump under ADR-115 v2 scoring
     bool         dumpLoopSpots { false };   // sesja 117 - ADR-115 E11 loop-spot map, exits after dump
     juce::String dumpRegionPool;            // sesja 119 - "start:end" seconds, prints the v2 Region pool at full precision
+    juce::String dumpSectionsJson;          // sesja 121 - LinkSeg section model run on the bundle audio, exits after dump
 };
 
 int printUsage (const char* argv0)
@@ -92,8 +96,9 @@ int printUsage (const char* argv0)
         "usage: %s --source <abs/audio> --batch <abs/jsonl>\n"
         "       %s --source <abs/audio> --dump-beats <out.json>           (sesja 74 helper)\n"
         "       %s --source <abs/audio> --dump-components <out.csv> [--v2] (sesja 80 D1 helper; --v2 = ADR-115 scoring)\n"
-        "       %s --source <abs/audio> --dump-loop-spots                  (sesja 117 ADR-115 E11 loop-spot map)\n",
-        argv0, argv0, argv0, argv0);
+        "       %s --source <abs/audio> --dump-loop-spots                  (sesja 117 ADR-115 E11 loop-spot map)\n"
+        "       %s --source <abs/audio> --dump-sections <out.json>        (sesja 121 DEV-098 LinkSeg section model)\n",
+        argv0, argv0, argv0, argv0, argv0);
     return 2;
 }
 
@@ -109,6 +114,7 @@ bool parseArgs (int argc, char** argv, Args& out)
         else if (a == "--v2")                              out.dumpV2              = true;
         else if (a == "--dump-loop-spots")                 out.dumpLoopSpots       = true;
         else if (a == "--dump-region-pool" && i + 1 < argc) out.dumpRegionPool     = juce::String (argv[++i]);
+        else if (a == "--dump-sections"   && i + 1 < argc) out.dumpSectionsJson    = juce::String (argv[++i]);
         else
         {
             std::fprintf (stderr, "unknown arg: %s\n", a.c_str());
@@ -120,7 +126,8 @@ bool parseArgs (int argc, char** argv, Args& out)
         || out.dumpBeatsJson.isNotEmpty()
         || out.dumpComponentsCsv.isNotEmpty()
         || out.dumpLoopSpots
-        || out.dumpRegionPool.isNotEmpty();
+        || out.dumpRegionPool.isNotEmpty()
+        || out.dumpSectionsJson.isNotEmpty();
 }
 
 // parseWeights — extracted to tools/calibration_harness_parse_weights.h
@@ -672,6 +679,99 @@ int main (int argc, char** argv)
                          c.quality_score, c.waveform_similarity, c.successor_similarity,
                          c.edge_splice_similarity, c.chroma_distance, c.energy_diff_db, c.total_cost);
         }
+        return 0;
+    }
+
+    // sesja 121 helper (DEV-098): --dump-sections runs the LinkSeg section
+    // model from ModelManager::sectionModelPath() on the bundle's audio and
+    // writes the raw activations + decoded segments + the grid-snapped UI
+    // sections to JSON (parity check vs tools/dev/section_eval).
+    if (args.dumpSectionsJson.isNotEmpty())
+    {
+        reamix::analysis::SectionClassifier clf;
+        if (! reamix::ModelManager::isSectionModelCached()
+            || ! clf.loadModel (reamix::ModelManager::sectionModelPath().getFullPathName().toStdString()))
+        {
+            std::fprintf (stderr, "  ERROR: section model missing or invalid at %s\n",
+                          reamix::ModelManager::sectionModelPath().getFullPathName().toRawUTF8());
+            return 1;
+        }
+        // Same downmix + resample as AnalyzePipeline stage 1.
+        const int nCh = std::max (1, bundle->nChannels);
+        const std::size_t n = bundle->nativeSamples;
+        std::vector<float> mono (n, 0.0f);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            float acc = 0.0f;
+            for (int c = 0; c < nCh; ++c) acc += bundle->stereoNative[(std::size_t) c * n + i];
+            mono[i] = acc / (float) nCh;
+        }
+        const auto mono22k = reamix::AudioLoader::resample (mono, bundle->nativeSr, 22050);
+        std::string serr;
+        const auto t0 = std::chrono::steady_clock::now();
+        const auto mo = clf.run (mono22k.data(), mono22k.size(), bundle->beatTimes, &serr);
+        {   // raw mel windows next to the JSON (float32, N x 64 x 64) for front-end parity checks
+            const auto mel = reamix::analysis::SectionClassifier::melWindows (
+                mono22k.data(), mono22k.size(), mo.beatTimes);
+            juce::File monof (args.dumpSectionsJson + ".mono22k.f32");
+            monof.deleteFile();
+            juce::FileOutputStream mos (monof);
+            if (mos.openedOk()) mos.write (mono22k.data(), mono22k.size() * sizeof (float));
+            juce::File melf (args.dumpSectionsJson + ".mel.f32");
+            melf.deleteFile();
+            juce::FileOutputStream ms (melf);
+            if (ms.openedOk()) ms.write (mel.data(), mel.size() * sizeof (float));
+        }
+        const double dt = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+        if (mo.beatTimes.empty()) { std::fprintf (stderr, "  ERROR: %s\n", serr.c_str()); return 1; }
+        const double duration = (double) mono22k.size() / 22050.0;
+        const auto segs = reamix::analysis::SectionClassifier::decode (mo, duration);
+        reamix::ui::ensureLoopSpots (*bundle);     // cleaned grid for the snapped view
+        bundle->structure = {};
+        for (const auto& s : segs)
+        {
+            reamix::analysis::Segment seg;
+            seg.start = s.start; seg.end = s.end; seg.confidence = s.confidence; seg.cluster_id = s.cls; seg.label = s.label;
+            bundle->structure.segments.push_back (seg);
+        }
+        bundle->gridBuilt = false;
+        reamix::ui::ensureBeatGrid (*bundle);
+
+        juce::File outf (args.dumpSectionsJson);
+        outf.getParentDirectory().createDirectory();
+        juce::FileOutputStream s (outf);
+        if (! s.openedOk()) { std::fprintf (stderr, "  ERROR: cannot open %s\n", args.dumpSectionsJson.toRawUTF8()); return 1; }
+        s.setNewLineString ("\n"); s.setPosition (0); s.truncate();
+        auto writeArr = [&s] (const char* key, const auto& v, int digits)
+        {
+            s << "  \"" << key << "\": [";
+            for (std::size_t i = 0; i < v.size(); ++i) { if (i > 0) s << ", "; s << juce::String ((double) v[i], digits); }
+            s << "],\n";
+        };
+        s << "{\n  \"n_classes\": " << mo.nClasses << ",\n  \"infer_s\": " << juce::String (dt, 3) << ",\n";
+        writeArr ("beat_times", mo.beatTimes, 6);
+        writeArr ("bound", mo.bound, 7);
+        writeArr ("label_logits", mo.labelLogits, 5);
+        s << "  \"segments\": [";
+        for (std::size_t i = 0; i < segs.size(); ++i)
+        {
+            if (i > 0) s << ", ";
+            s << "{\"start\": " << juce::String (segs[i].start, 4) << ", \"end\": " << juce::String (segs[i].end, 4)
+              << ", \"label\": \"" << segs[i].label.c_str() << "\", \"confidence\": " << juce::String (segs[i].confidence, 3) << "}";
+        }
+        s << "],\n  \"ui_segments\": [";
+        for (std::size_t i = 0; i < bundle->uiSegments.size(); ++i)
+        {
+            const auto& u = bundle->uiSegments[i];
+            if (i > 0) s << ", ";
+            s << "{\"start\": " << juce::String (u.startSec, 4) << ", \"end\": " << juce::String (u.endSec, 4)
+              << ", \"kind\": " << (int) u.kind << "}";
+        }
+        s << "]\n}\n";
+        s.flush();
+        std::fprintf (stderr, "[harness] wrote %s (%d model beats, %d segments, %d ui sections, %.2f s)\n",
+                      args.dumpSectionsJson.toRawUTF8(), (int) mo.beatTimes.size(), (int) segs.size(),
+                      (int) bundle->uiSegments.size(), dt);
         return 0;
     }
 

@@ -82,6 +82,20 @@ public:
     // via `shasum -a 256`; size 83'077'779 B).
     static constexpr const char* kExpectedSha256 =
         "552dfc2b0d705e8eba77f75d8e4635de121d1884bf8bb6f1e4ad6c882ff5e384";
+
+    // ── Section classifier (LinkSeg 9-class ONNX, sesja 121 / DEV-098) ──
+    // Local DGL-free export of the upstream checkpoint
+    // (tools/dev/section_eval/export_onnx.py --classes 9, 1'574'304 B). No
+    // download URL yet: for the in-plugin test the file is copied into
+    // modelDir() by hand. Absent or corrupt file = Blocks tab without model
+    // sections (never an error). Hosting + download wiring = ADR-115 P6.
+    static constexpr const char* kSectionModelFilename = "linkseg_9c.onnx";
+    static constexpr juce::int64 kSectionSizeMin = 1'000'000;
+    static constexpr juce::int64 kSectionSizeMax = 3'000'000;
+    static constexpr const char* kSectionSha256 =
+        "994d4583ac3cdf501e57564c5a22d77313761579453f8793cbac6de0b2dd4047";
+    static juce::File sectionModelPath();
+    static bool isSectionModelCached();
 };
 
 } // namespace reamix

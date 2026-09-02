@@ -2642,6 +2642,12 @@ bool MainComponent::ensureBeatDetectorReady (juce::String& outErrorMessage,
         return false;
     }
 
+    // Sesja 121 (DEV-098): optional section model next to the beat model;
+    // absent file = Blocks tab keeps the clean-cut chips only.
+    if (reamix::ModelManager::isSectionModelCached())
+        sectionClassifier_.loadModel (
+            reamix::ModelManager::sectionModelPath().getFullPathName().toStdString());
+
     beatDetectorLoaded_ = true;
     return true;
 }
@@ -2747,7 +2753,8 @@ void MainComponent::startAnalyze()
     };
 
     analyzePipeline_ = std::make_unique<reamix::ui::AnalyzePipeline> (
-        std::move (in), beatDetector_, std::move (progressCb), std::move (completeCb));
+        std::move (in), beatDetector_, std::move (progressCb), std::move (completeCb),
+        &sectionClassifier_);
     analyzePipeline_->startThread();
 }
 
@@ -5297,15 +5304,52 @@ void MainComponent::updateBlockSuggestions()
     // Spans that do not overlap a user block (already-marked material is
     // not proposed again).
     constexpr double kEps = 1e-3;
+    auto overlapsUser = [this, kEps] (double s, double e)
+    {
+        for (const auto& ub : userBlocks_)
+            if (s < ub.endSec - kEps && ub.startSec < e - kEps) return true;
+        return false;
+    };
+    blockSuggestionKinds_.clear();
+
+    // Sesja 121 (DEV-098): model sections are the base layer - every section
+    // is a proposed block with its own kind, one click = block. The clean-cut
+    // spans stay the fallback when no section model ran.
+    if (! bundle->uiSegments.empty())
+    {
+        blockSuggestions_.clear();
+        std::vector<Chip> chips;
+        const double bar = bundle->barSec;
+        for (const auto& s : bundle->uiSegments)
+        {
+            if (overlapsUser (s.startSec, s.endSec)) continue;
+            reamix::remix::LoopSpot sp;
+            sp.start_sec = s.startSec;
+            sp.end_sec   = s.endSec;
+            sp.quality   = 1.0;
+            sp.bars      = bar > 0.0 ? std::max (1, juce::roundToInt ((s.endSec - s.startSec) / bar)) : 0;
+            blockSuggestions_.push_back (sp);
+            blockSuggestionKinds_.push_back (s.kind);
+
+            Chip c;
+            c.startSec   = s.startSec;
+            c.endSec     = s.endSec;
+            c.quality    = reamix::ui::WaveformView::SpliceQuality::Good;
+            c.kind       = s.kind;
+            const juce::String name = reamix::ui::builtinKindLabel (s.kind).toUpperCase();
+            const juce::String bars = juce::String (sp.bars) + (sp.bars == 1 ? " BAR" : " BARS");
+            c.label      = name + juce::String::fromUTF8 (" \xc2\xb7 ") + bars;
+            c.shortLabel = name;
+            chips.push_back (std::move (c));
+        }
+        waveformView_.setLoopSpots (std::move (chips));
+        return;
+    }
+
     std::vector<reamix::remix::LoopSpot> free;
     free.reserve (bundle->sectionSpans.size());
     for (const auto& sp : bundle->sectionSpans)
-    {
-        bool overlaps = false;
-        for (const auto& ub : userBlocks_)
-            if (sp.start_sec < ub.endSec - kEps && ub.startSec < sp.end_sec - kEps) { overlaps = true; break; }
-        if (! overlaps) free.push_back (sp);
-    }
+        if (! overlapsUser (sp.start_sec, sp.end_sec)) free.push_back (sp);
 
     reamix::remix::LoopSpotFilter filter;
     filter.min_quality = reamix::ui::kBlocksQualityBands.medium;   // amber or better
@@ -5349,6 +5393,8 @@ void MainComponent::addBlockFromSuggestion (int idx)
     b.startSec = sp.start_sec;
     b.endSec   = sp.end_sec;
     b.kind     = reamix::ui::smartKindForPosition (sp.start_sec, currentSourceDurationSec_);
+    if (idx < (int) blockSuggestionKinds_.size() && blockSuggestionKinds_[(std::size_t) idx].has_value())
+        b.kind = *blockSuggestionKinds_[(std::size_t) idx];   // sesja 121: the model's kind
     appendUserBlock (b, /*queueIt=*/true);
     statusBar_.setText (juce::String::fromUTF8 ("Block added and queued \xe2\x80\x94 ")
         + juce::String (sp.bars) + (sp.bars == 1 ? " bar" : " bars")
