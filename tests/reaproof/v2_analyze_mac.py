@@ -86,7 +86,16 @@ return reaper.GetMediaItemInfo_Value(it, "D_LENGTH")''', timeout=120, hang_timeo
             while time.time() - t0 < 240:
                 time.sleep(2.0)
                 cur = OUT / f"{rtag}_poll.png"
+                # the window id can change (re-created peer); re-find it by pid
+                w2 = next((w for w in base.windows_of(pid) if w["name"] == "reamix.me"), None)
+                if w2 is None:
+                    r["window_lost_at"] = round(time.time() - t0, 1)
+                    break
+                win = w2
                 base.shot(win["id"], cur)
+                if not cur.exists():
+                    stable = 0
+                    continue
                 present = base.waveform_present(cur, scale, *wave_band) > 400
                 same = prev is not None and base.compare(prev, cur) == 0
                 if present and same:
@@ -100,9 +109,11 @@ return reaper.GetMediaItemInfo_Value(it, "D_LENGTH")''', timeout=120, hang_timeo
                 prev = prev_path
             r["analyze_seconds"] = round(time.time() - t0, 1)
             final = OUT / f"{rtag}_final.png"
-            base.shot(win["id"], final)
-            r["waveform_present"] = base.waveform_present(final, scale, *wave_band) > 400
             r["window_alive"] = any(w["name"] == "reamix.me" for w in base.windows_of(pid))
+            if r["window_alive"]:
+                win = next(w for w in base.windows_of(pid) if w["name"] == "reamix.me")
+                base.shot(win["id"], final)
+            r["waveform_present"] = final.exists() and base.waveform_present(final, scale, *wave_band) > 400
             r["reaper_alive"] = s.eval('return 1') == 1
             r["ok"] = bool(r["waveform_present"] and r["window_alive"] and r["reaper_alive"])
             results.append(r)
