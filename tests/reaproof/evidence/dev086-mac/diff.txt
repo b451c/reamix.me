@@ -1,0 +1,1 @@
+before/after picker diff: 0 px > 8 of 163584 (0.00%); fixed = build/reaper_reamix.dylib (6d1da81 + ADR-115 P1 WIP), baseline = 1d3d406 MainComponent.cpp

@@ -108,5 +108,7 @@ references/SETUP.md
 references/golden/dev-028/
 
 # Local-only test harness copy (ReaProof, per user directive) + sibling-project review folder (GPL study material, never ship)
-reaproof/
-rondo_loop_detection_review/
+/reaproof/
+/rondo_loop_detection_review/
+# warm_cache peak sidecars next to the golden corpus
+references/golden/phase-2/peaks/

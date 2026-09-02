@@ -361,6 +361,13 @@ struct TransitionCostInputs
     // non-default `QualityWeights*` to sweep weight space.
     const QualityWeights* quality_weights = nullptr;
 
+    // ADR-115 (sesja 114) — v2 scoring: sequential-baseline normalised side
+    // channels (SignalNorm.h), geometric composite with kV2QualityWeights
+    // unless quality_weights is set, bar alignment enforced as a candidate
+    // constraint (pre-downbeat source -> downbeat target) with the top-k
+    // chosen among allowed targets only. false = legacy Python-parity path.
+    bool v2_scoring = false;
+
     // ---- Reserved 11th cost-component slot, DEV-028 sesja 74 ----------
     // Optional flat (n_beats × n_beats) row-major double matrix indexed
     // [i*n + j]. nullptr → no extra1 contribution (production default).

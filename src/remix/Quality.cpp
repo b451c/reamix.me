@@ -32,8 +32,11 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
     // instead of the arithmetic weighted mean. We accumulate `harmonic_inv_sum`
     // in parallel only when the flag is set — for the legacy path this stays
     // 0.0 and is never read, so bit-exact arithmetic parity is preserved.
-    const bool   harmonic        = weights.use_harmonic_mean;
+    const bool   geometric       = weights.use_geometric_mean;   // ADR-115 E2
+    const bool   harmonic        = weights.use_harmonic_mean && ! geometric;
     double       harmonic_inv_sum = 0.0;
+    double       log_sum          = 0.0;
+    const double gfloor           = std::max(weights.geometric_floor, 1e-6);
 
     // Sesja 71b — fix-in-port (ADR-060, see dev-028-lessons.md): every
     // contribution gates on `weights.X > 0.0` so calibration weight vectors
@@ -55,6 +58,7 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
             available_weight += weights.waveform;
             weighted_sum     += weights.waveform * q;
             if (harmonic) harmonic_inv_sum += weights.waveform / std::max(q, kHarmonicMeanEpsilon);
+            if (geometric) log_sum += weights.waveform * std::log(std::max(q, gfloor));
         }
     } else {
         missing_weight   += weights.waveform;
@@ -66,6 +70,7 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
             available_weight += weights.edge_splice;
             weighted_sum     += weights.edge_splice * q;
             if (harmonic) harmonic_inv_sum += weights.edge_splice / std::max(q, kHarmonicMeanEpsilon);
+            if (geometric) log_sum += weights.edge_splice * std::log(std::max(q, gfloor));
         }
     } else {
         missing_weight   += weights.edge_splice;
@@ -77,48 +82,56 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
         available_weight += weights.successor;
         weighted_sum     += weights.successor * inputs.successor_sim;
         if (harmonic) harmonic_inv_sum += weights.successor / std::max(inputs.successor_sim, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.successor * std::log(std::max(inputs.successor_sim, gfloor));
     }
     // (W_CONTEXT, context_sim),
     if (weights.context > 0.0) {
         available_weight += weights.context;
         weighted_sum     += weights.context * inputs.context_sim;
         if (harmonic) harmonic_inv_sum += weights.context / std::max(inputs.context_sim, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.context * std::log(std::max(inputs.context_sim, gfloor));
     }
     // (W_LABEL, label_match),
     if (weights.label > 0.0) {
         available_weight += weights.label;
         weighted_sum     += weights.label * inputs.label_match;
         if (harmonic) harmonic_inv_sum += weights.label / std::max(inputs.label_match, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.label * std::log(std::max(inputs.label_match, gfloor));
     }
     // (W_SECTION, section_sim),
     if (weights.section > 0.0) {
         available_weight += weights.section;
         weighted_sum     += weights.section * inputs.section_sim;
         if (harmonic) harmonic_inv_sum += weights.section / std::max(inputs.section_sim, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.section * std::log(std::max(inputs.section_sim, gfloor));
     }
     // (W_BAR_ALIGN, bar_aligned),
     if (weights.bar_align > 0.0) {
         available_weight += weights.bar_align;
         weighted_sum     += weights.bar_align * inputs.bar_aligned;
         if (harmonic) harmonic_inv_sum += weights.bar_align / std::max(inputs.bar_aligned, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.bar_align * std::log(std::max(inputs.bar_aligned, gfloor));
     }
     // (W_ENERGY, energy_match),
     if (weights.energy > 0.0) {
         available_weight += weights.energy;
         weighted_sum     += weights.energy * inputs.energy_match;
         if (harmonic) harmonic_inv_sum += weights.energy / std::max(inputs.energy_match, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.energy * std::log(std::max(inputs.energy_match, gfloor));
     }
     // (W_EDGE_ENERGY, edge_energy_match),
     if (weights.edge_energy > 0.0) {
         available_weight += weights.edge_energy;
         weighted_sum     += weights.edge_energy * inputs.edge_energy_match;
         if (harmonic) harmonic_inv_sum += weights.edge_energy / std::max(inputs.edge_energy_match, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.edge_energy * std::log(std::max(inputs.edge_energy_match, gfloor));
     }
     // (W_CENTROID, centroid_match),
     if (weights.centroid > 0.0) {
         available_weight += weights.centroid;
         weighted_sum     += weights.centroid * inputs.centroid_match;
         if (harmonic) harmonic_inv_sum += weights.centroid / std::max(inputs.centroid_match, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.centroid * std::log(std::max(inputs.centroid_match, gfloor));
     }
 
     // ---- 11th slot — transient continuity (sesja 75 ADR-064) ----------
@@ -134,6 +147,7 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
             available_weight += weights.transient_continuity;
             weighted_sum     += weights.transient_continuity * q;
             if (harmonic) harmonic_inv_sum += weights.transient_continuity / std::max(q, kHarmonicMeanEpsilon);
+            if (geometric) log_sum += weights.transient_continuity * std::log(std::max(q, gfloor));
         }
     } else {
         missing_weight   += weights.transient_continuity;
@@ -148,6 +162,7 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
             available_weight += weights.mfcc_continuity;
             weighted_sum     += weights.mfcc_continuity * q;
             if (harmonic) harmonic_inv_sum += weights.mfcc_continuity / std::max(q, kHarmonicMeanEpsilon);
+            if (geometric) log_sum += weights.mfcc_continuity * std::log(std::max(q, gfloor));
         }
     } else {
         missing_weight   += weights.mfcc_continuity;
@@ -162,6 +177,7 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
             available_weight += weights.extra1;
             weighted_sum     += weights.extra1 * q;
             if (harmonic) harmonic_inv_sum += weights.extra1 / std::max(q, kHarmonicMeanEpsilon);
+            if (geometric) log_sum += weights.extra1 * std::log(std::max(q, gfloor));
         }
     } else {
         missing_weight   += weights.extra1;
@@ -177,6 +193,7 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
             available_weight += weights.vocal_continuity;
             weighted_sum     += weights.vocal_continuity * q;
             if (harmonic) harmonic_inv_sum += weights.vocal_continuity / std::max(q, kHarmonicMeanEpsilon);
+            if (geometric) log_sum += weights.vocal_continuity * std::log(std::max(q, gfloor));
         }
     } else {
         missing_weight   += weights.vocal_continuity;
@@ -217,6 +234,7 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
         available_weight += weights.sequential_continuity;
         weighted_sum     += weights.sequential_continuity * seq;
         if (harmonic) harmonic_inv_sum += weights.sequential_continuity / std::max(seq, kHarmonicMeanEpsilon);
+        if (geometric) log_sum += weights.sequential_continuity * std::log(std::max(seq, gfloor));
     }
 
     // --- Compute timbre block score -------------------------------------
@@ -233,7 +251,13 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
     // excludes missing signals' weights). harmonic_inv_sum == 0 (all
     // weights zero or all present q ≥ ε saturated) returns 0.0 to mirror
     // arithmetic edge case.
-    if (harmonic) {
+    //
+    // ADR-115 E2 geometric branch (sesja 114):
+    //   Q = exp( Σᵢ wᵢ · ln(max(qᵢ, floor)) / available_weight )
+    if (geometric) {
+        timbre_score = (available_weight > 0.0) ? std::exp(log_sum / available_weight) : 0.0;
+    }
+    else if (harmonic) {
         if (harmonic_inv_sum > 0.0) {
             timbre_score = available_weight / harmonic_inv_sum;
         } else {

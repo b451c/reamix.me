@@ -212,6 +212,14 @@ struct QualityWeights
     // ADR-083 (sesja 92). Self-validated by
     // `tests/parity/test_harmonic_vs_timbre_blend.cpp`.
     double harmonic_vs_timbre = 0.0;
+
+    // ADR-115 E2 (sesja 114) — weighted geometric mean with a per-signal
+    // floor: Q = exp(sum(w_k * ln(max(q_k, floor))) / sum(w_k)). Keeps the
+    // "weakest link dominates" property of the harmonic mean without the
+    // cliff at q -> 0 (a zero signal multiplies Q by floor^w instead of
+    // killing the candidate). Takes precedence over use_harmonic_mean.
+    bool   use_geometric_mean = false;
+    double geometric_floor    = 0.10;
 };
 
 // Harmonic-mean denominator floor — guards `wᵢ / qᵢ` against q≈0 producing
@@ -285,6 +293,39 @@ inline constexpr double kDefaultQualityWeightsSum =
 static_assert(kDefaultQualityWeightsSum > 1.0 - 1e-12 &&
               kDefaultQualityWeightsSum < 1.0 + 1e-12,
               "kDefaultQualityWeights fields must sum to 1.0.");
+
+// ADR-115 (sesja 114) — v2.0 production simplex. bar_align is a candidate
+// constraint (not a cost) in v2; energy / edge_energy / centroid / transient
+// inputs are sequential-baseline percentiles (SignalNorm.h) so their weights
+// are comparable across tracks. Geometric composite with floor 0.10.
+inline constexpr QualityWeights kV2QualityWeights{
+    /* waveform              */ 0.45,
+    /* successor             */ 0.0,
+    /* edge_splice           */ 0.0,
+    /* context               */ 0.0,
+    /* label                 */ 0.0,
+    /* bar_align             */ 0.0,
+    /* section               */ 0.0,
+    /* energy                */ 0.08,
+    /* edge_energy           */ 0.05,
+    /* centroid              */ 0.05,
+    /* transient_continuity  */ 0.12,
+    /* mfcc_continuity       */ 0.0,
+    /* extra1                */ 0.0,
+    /* vocal_continuity      */ 0.0,
+    /* sequential_continuity */ 0.25,
+    /* use_harmonic_mean     */ false,
+    /* harmonic_vs_timbre    */ 0.0,
+    /* use_geometric_mean    */ true,
+    /* geometric_floor       */ 0.10
+};
+inline constexpr double kV2QualityWeightsSum =
+    kV2QualityWeights.waveform + kV2QualityWeights.energy
+    + kV2QualityWeights.edge_energy + kV2QualityWeights.centroid
+    + kV2QualityWeights.transient_continuity
+    + kV2QualityWeights.sequential_continuity;
+static_assert(kV2QualityWeightsSum > 1.0 - 1e-12 && kV2QualityWeightsSum < 1.0 + 1e-12,
+              "kV2QualityWeights fields must sum to 1.0.");
 
 // ---------------------------------------------------------------------------
 // Legacy 10-component Python-bit-exact simplex (sesja 81, ADR-068).

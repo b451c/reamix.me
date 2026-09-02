@@ -90,6 +90,13 @@ public:
         // entry) for full context.
         std::optional<reamix::remix::QualityWeights> qualityWeightsOverride;
 
+        // ADR-115 (sesja 114) — v2 scoring (SignalNorm baselines + geometric
+        // composite + bar-alignment candidate constraint) for the remix-time
+        // cost paths (Region / Blocks / Path-A TransitionCost recompute).
+        // Production default FALSE until the ADR-115 P1 listening gate passes
+        // (sesja-114 scorer proxy mixed); the calibration harness sets it per run.
+        bool v2_scoring = false;
+
         // ADR-080 RESCOPE + ADR-083 (sesja 92) + ADR-084 (sesja 93) —
         // AuditionBar 4-slider params. Defaults bit-exact replicate current
         // production behavior:

@@ -15,6 +15,7 @@
 
 #include "dsp/WaveformXcorr.h"
 #include "remix/Quality.h"
+#include "remix/SignalNorm.h"  // ADR-115 v2 scoring
 #include "remix/TransitionCost.h"  // chromaRange + EDGE_ENERGY_SATURATION_DB + N_CHROMA_DIMS
 
 namespace reamix::remix {
@@ -109,6 +110,9 @@ struct JunctionContext
     // ADR-088 sesja 98 — vocal phrase boundary signals. Null = parity path.
     const double*  edge_vocal_onset_start;
     const double*  edge_vocal_release_end;
+    // ADR-115 (sesja 114) — v2 scoring: baselines + default weight set
+    const SignalBaselines* baselines = nullptr;
+    bool           v2 = false;
     // QualityWeights override (sesja 71, ADR-058). Null = default.
     const QualityWeights* quality_weights;
     const std::set<int>* db_set;
@@ -288,6 +292,14 @@ double scoreJunction(int bi, int bj,
             1.0 - std::abs(ctx.spectral_centroid[bi] - ctx.spectral_centroid[bj])
                   * BLOCK_CENTROID_DIFF_SCALE);
     }
+    if (ctx.v2 && ctx.baselines != nullptr) {   // ADR-115 E1
+        if (ctx.rms_energy != nullptr)
+            energy_match = energyQualityV2(*ctx.baselines, ctx.rms_energy[bi], ctx.rms_energy[bj], energy_match);
+        if (ctx.has_edge_db)
+            edge_energy_match = edgeEnergyQualityV2(*ctx.baselines, energy_diff, edge_energy_match);
+        if (ctx.spectral_centroid != nullptr)
+            centroid_match = centroidQualityV2(*ctx.baselines, ctx.spectral_centroid[bi], ctx.spectral_centroid[bj], centroid_match);
+    }
 
     // PARITY: block_assembly.py:374-385 — compute_quality_score composition.
     QualityInputs qi{};
@@ -307,6 +319,10 @@ double scoreJunction(int bi, int bj,
         qi.transient_continuity =
             1.0 - std::abs(ctx.onset_norm[(std::size_t) bi]
                          - ctx.onset_norm[(std::size_t) bj]);
+        if (ctx.v2 && ctx.baselines != nullptr && ctx.onset_strength != nullptr)
+            qi.transient_continuity = onsetQualityV2(
+                *ctx.baselines, ctx.onset_strength[bi], ctx.onset_strength[bj],
+                *qi.transient_continuity);
     }
     // ADR-066 sesja 77 — MFCC continuity from pre-computed n×n matrix.
     if (ctx.mfcc_continuity_matrix != nullptr
@@ -353,7 +369,8 @@ double scoreJunction(int bi, int bj,
 
     double quality = computeQualityScore(
         qi,
-        ctx.quality_weights != nullptr ? *ctx.quality_weights : kDefaultQualityWeights);
+        ctx.quality_weights != nullptr ? *ctx.quality_weights
+                                       : (ctx.v2 ? kV2QualityWeights : kDefaultQualityWeights));
 
     // PARITY: block_assembly.py:387-392 — additive penalties, then clamp ≥ 0.
     // energy_penalty first, then vocal penalty (order matters for f64 sums).
@@ -607,6 +624,14 @@ computeBlockCompatibility(const BlockCompatInputs& in)
     ctx.quality_weights     = in.quality_weights;  // ADR-058 calibration override
     ctx.db_set              = &db_set;
     ctx.pre_db_set          = &pre_db_set;
+    // ADR-115 E1 (sesja 114) — v2 sequential baselines over the whole track.
+    const SignalBaselines v2_baselines = in.v2_scoring
+        ? buildSignalBaselines(in.rms_energy, in.spectral_centroid, in.onset_strength,
+                               has_edge_db ? edge_db_end_vec.data()   : nullptr,
+                               has_edge_db ? edge_db_start_vec.data() : nullptr, n_beats)
+        : SignalBaselines{};
+    ctx.baselines           = in.v2_scoring ? &v2_baselines : nullptr;
+    ctx.v2                  = in.v2_scoring;
 
     // ADR-051 — runtime-configurable window radius (UI Splice flexibility
     // slider). Falls back to the hardcoded constant when caller didn't set

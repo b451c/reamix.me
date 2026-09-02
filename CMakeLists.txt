@@ -1260,6 +1260,7 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_quality
     tests/parity/test_quality.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
   )
   target_include_directories(test_quality PRIVATE
     src
@@ -1491,6 +1492,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/TransitionCost.cpp
     src/remix/SegmentData.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
     src/dsp/SosFilt.cpp
     src/dsp/WaveformXcorr.cpp
   )
@@ -1657,6 +1659,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/RegionCost.cpp
     src/remix/TransitionCost.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
     src/remix/SegmentData.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
@@ -1719,6 +1722,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/BlockAssembly.cpp
     src/remix/TransitionCost.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
     src/remix/SegmentData.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
@@ -1748,6 +1752,7 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_transient_continuity
     tests/parity/test_transient_continuity.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
   )
   target_include_directories(test_transient_continuity PRIVATE
     src
@@ -1764,6 +1769,29 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_transient_continuity
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_signal_norm — sesja 114 (ADR-115) self-validation of the v2 scoring
+  # primitives: DistanceBaseline percentile, sequential baselines, geometric
+  # composite. Hand-computed expectations, NO Python reference (ADR-065).
+  add_executable(test_signal_norm
+    tests/parity/test_signal_norm.cpp
+    src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
+  )
+  target_include_directories(test_signal_norm PRIVATE
+    src
+  )
+  if(MSVC)
+    target_compile_options(test_signal_norm PRIVATE /W3)
+  else()
+    target_compile_options(test_signal_norm PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME signal_norm_parity
+           COMMAND test_signal_norm
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_mfcc_continuity — sesja 77 (DEV-028 ADR-066) self-validation.
   # Validates `computeMfccContinuityMatrix` against hand-computed expected
   # values + mathematical invariants. NO Python reference (C++-canonical
@@ -1771,6 +1799,7 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_mfcc_continuity
     tests/parity/test_mfcc_continuity.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
   )
   target_include_directories(test_mfcc_continuity PRIVATE
     src
@@ -1794,6 +1823,7 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_sequential_continuity
     tests/parity/test_sequential_continuity.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
   )
   target_include_directories(test_sequential_continuity PRIVATE
     src
@@ -1817,6 +1847,7 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_harmonic_vs_timbre_blend
     tests/parity/test_harmonic_vs_timbre_blend.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
   )
   target_include_directories(test_harmonic_vs_timbre_blend PRIVATE
     src
@@ -1870,6 +1901,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/RegionOptimizer.cpp
     src/remix/SegmentData.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
@@ -1903,6 +1935,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/RegionOptimizer.cpp
     src/remix/SegmentData.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
@@ -1934,6 +1967,7 @@ if(REAMIX_BUILD_TESTS)
     tests/parity/test_block_assembly_beta.cpp
     src/remix/BlockAssembly.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
     src/remix/SegmentData.cpp
     src/dsp/WaveformXcorr.cpp
@@ -1966,6 +2000,7 @@ if(REAMIX_BUILD_TESTS)
     tests/parity/test_dev_calibration_persistence.cpp
     src/ui/DevCalibrationStorage.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
   )
   target_include_directories(test_dev_calibration_persistence PRIVATE
     src
@@ -1999,6 +2034,7 @@ if(REAMIX_BUILD_TESTS)
     add_executable(test_vocal_continuity
       tests/parity/test_vocal_continuity.cpp
       src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
     )
     target_include_directories(test_vocal_continuity PRIVATE
       src
@@ -2162,6 +2198,7 @@ if(ORT_FOUND)
     ${WARM_CACHE_DSP_SOURCES}
     src/io/AudioLoader.cpp
     src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
     src/remix/SegmentData.cpp
     src/remix/TransitionCost.cpp
     src/ui/AnalyzePipeline.cpp

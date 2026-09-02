@@ -408,6 +408,7 @@ struct Run
     // QUALITY_HARD_FLOOR (= 0.20 post-D3-flip). For "before" listening A/B
     // pass `LEGACY_QUALITY_HARD_FLOOR = 0.45` explicitly via JSONL.
     std::optional<double> qualityFloor;
+    bool         v2             { false };   // ADR-115 "v2_scoring" (default: legacy path)
 };
 
 Run parseRun (const juce::var& v)
@@ -421,6 +422,7 @@ Run parseRun (const juce::var& v)
 
     r.weights = reamix::cal::parseWeights (v.getProperty ("weights", juce::var()));
     r.targetSec = (double) v.getProperty ("target_duration_sec", 0.0);
+    r.v2 = (bool) v.getProperty ("v2_scoring", false);   // ADR-115
     if (v.hasProperty ("quality_floor"))
         r.qualityFloor = (double) v.getProperty ("quality_floor", 0.0);
 
@@ -488,6 +490,7 @@ reamix::ui::RemixOutput driveRemixPipeline (
     pin.userBlocksQueue    = run.userBlocksQueue;
     if (useOverride)
         pin.qualityWeightsOverride = run.weights;
+    pin.v2_scoring = run.v2;   // ADR-115
 
     std::atomic<bool>          done { false };
     reamix::ui::RemixOutput    result;
@@ -747,6 +750,7 @@ int main (int argc, char** argv)
             {
                 auto tcin = buildTcInputs (*bundle);
                 tcin.quality_weights = &run.weights;
+                tcin.v2_scoring      = run.v2;   // ADR-115
                 if (run.qualityFloor.has_value())
                     tcin.quality_floor = *run.qualityFloor;
                 if (extra1 != nullptr && extra1->n == bundle->feat.nBeats)

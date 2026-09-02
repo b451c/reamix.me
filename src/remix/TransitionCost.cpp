@@ -1,6 +1,7 @@
 #include "remix/TransitionCost.h"
 
 #include "remix/Quality.h"
+#include "remix/SignalNorm.h"  // ADR-115 v2 scoring
 #include "remix/SegmentData.h"
 #include "dsp/WaveformXcorr.h"
 
@@ -534,6 +535,17 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
     const std::vector<double> onset_norm =
         computeOnsetNorm(in.onset_strength, n);
 
+    // ADR-115 E1/E3 (sesja 114) — v2 scoring state.
+    const bool v2 = in.v2_scoring;
+    const SignalBaselines baselines = v2
+        ? buildSignalBaselines(in.rms_energy, in.spectral_centroid, in.onset_strength,
+                               edge_db.available ? edge_db.end_dB.data()   : nullptr,
+                               edge_db.available ? edge_db.start_dB.data() : nullptr, n)
+        : SignalBaselines{};
+    const bool v2_bar_constraint =
+        v2 && ! db_idx.pre_db_set.empty() && ! db_idx.db_set.empty();
+    const QualityWeights& v2_default_weights = v2 ? kV2QualityWeights : kDefaultQualityWeights;
+
     // ADR-066 (sesja 77): pre-compute MFCC + delta-MFCC L2 similarity matrix
     // once for per-pair `mfcc_continuity` composition inside the inner
     // scoring loop. Empty when features were not provided → qi.mfcc_
@@ -635,6 +647,9 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
     // --- Main loop over source beats --------------------------------------
     for (int i = 0; i < n - 1; ++i) {
         const int source_boundary = i + 1;
+        // v2: only pre-downbeat sources can jump (the DP enforces the same),
+        // so the candidate budget is not spent on rows the DP discards.
+        if (v2_bar_constraint && db_idx.pre_db_set.count(i) == 0) continue;
 
         // Copy chroma row, block micro-skip region with INF.
         std::vector<double> chroma_row(static_cast<std::size_t>(n));
@@ -644,6 +659,11 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
         const int block_lo = std::max(0, i - micro_skip + 1);
         const int block_hi = std::min(n, i + micro_skip);
         for (int k = block_lo; k < block_hi; ++k) chroma_row[k] = INF;
+        // v2: top-k among downbeat targets only (bar alignment as constraint).
+        if (v2_bar_constraint) {
+            for (int k = 0; k < n; ++k)
+                if (db_idx.db_set.count(k) == 0) chroma_row[k] = INF;
+        }
 
         // Top-k by chroma (UNSORTED — matches np.argpartition).
         std::vector<int> top_indices = argPartitionTopK(chroma_row, k_target);
@@ -792,6 +812,14 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
                     std::abs(in.spectral_centroid[i] - in.spectral_centroid[j]);
                 centroid_match = std::max(0.0, 1.0 - c_diff * CENTROID_DIFF_SCALE);
             }
+            if (v2) {   // ADR-115 E1 — per-track sequential-baseline percentiles
+                if (in.rms_energy != nullptr)
+                    energy_match = energyQualityV2(baselines, in.rms_energy[i], in.rms_energy[j], energy_match);
+                if (edge_db.available)
+                    edge_energy_match = edgeEnergyQualityV2(baselines, energy_diff, edge_energy_match);
+                if (in.spectral_centroid != nullptr)
+                    centroid_match = centroidQualityV2(baselines, in.spectral_centroid[i], in.spectral_centroid[j], centroid_match);
+            }
 
             // --- Composite quality (Quality::computeQualityScore) ------
             QualityInputs qi{};
@@ -812,6 +840,10 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
                 qi.transient_continuity =
                     1.0 - std::abs(onset_norm[(std::size_t) i]
                                  - onset_norm[(std::size_t) j]);
+                if (v2 && in.onset_strength != nullptr)
+                    qi.transient_continuity = onsetQualityV2(
+                        baselines, in.onset_strength[i], in.onset_strength[j],
+                        *qi.transient_continuity);
             }
             // ADR-066 sesja 77 — MFCC continuity per-pair similarity from
             // pre-computed matrix; nullopt when features were not provided.
@@ -873,7 +905,7 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
 
             double quality        = computeQualityScore(
                 qi,
-                in.quality_weights != nullptr ? *in.quality_weights : kDefaultQualityWeights);
+                in.quality_weights != nullptr ? *in.quality_weights : v2_default_weights);
 
             // Span penalty (additive, negative contribution).
             // ADR-044: skipped in no-structure mode (label_match=0 would

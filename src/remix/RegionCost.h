@@ -178,6 +178,14 @@ struct RegionCostInputs
     // already included via TransitionCost.h.
     const QualityWeights* quality_weights = nullptr;
 
+    // ADR-115 (sesja 114) — v2 scoring: sequential-baseline normalised side
+    // channels (SignalNorm.h), geometric composite with kV2QualityWeights
+    // unless quality_weights is set, bar alignment enforced as a candidate
+    // constraint (pre-downbeat source -> downbeat target) with the top-k
+    // chosen among allowed targets only. false = legacy Python-parity path.
+    bool v2_scoring = false;
+
+
 };
 
 // Outputs bundle.

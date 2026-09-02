@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>      // sesja 94 diagnostic log (region_beta path)
 #include <cstdlib>
 #include <map>
 #include <numeric>
@@ -281,72 +280,6 @@ RemixPath RegionOptimizer::remix(double                                         
     // Build neighbor lists — region_optimizer.py:106-107.
     buildRegionNeighbors(n_region);
 
-    // ADR-081 STATUS UPDATE 1 sesja 94 — extended diagnostic dump (Path B
-    // iteration 2). Logs candidate-space telemetry BEFORE DP runs so we can
-    // diagnose whether fallback hits are due to (a) cost-function bias
-    // (β-model intent) or (b) candidate-space exhaustion (hard gates rejected
-    // all viable backward candidates → β-model has nothing to choose from).
-    // sesja-94-only debug aid; removed at handover.
-    if (region_beta_) {
-        const char* home = std::getenv("HOME");
-        if (home != nullptr) {
-            std::string log_path = std::string(home) + "/Desktop/reamix_diag.log";
-            std::FILE* f = std::fopen(log_path.c_str(), "a");
-            if (f != nullptr) {
-                int n_backward_viable = 0;
-                int n_forward_skip_viable = 0;  // forward jumps (rj > ri+1)
-                std::vector<std::tuple<double, int, int>> backward_cells;
-                backward_cells.reserve(static_cast<std::size_t>(n_region) * n_region);
-
-                for (int ri = 0; ri < n_region; ++ri) {
-                    for (int rj = 0; rj < n_region; ++rj) {
-                        if (rj == ri || rj == ri + 1) continue;
-                        const double v = rW_[static_cast<std::size_t>(ri) * n_region + rj];
-                        if (v >= INF) continue;
-                        if (rj < ri) {
-                            ++n_backward_viable;
-                            backward_cells.emplace_back(v, ri, rj);
-                        } else {
-                            ++n_forward_skip_viable;
-                        }
-                    }
-                }
-
-                std::sort(backward_cells.begin(), backward_cells.end());
-
-                int n_neighbors_total = static_cast<int>(nb_indices_.size());
-                int n_rows_with_extra_neighbor = 0;
-                for (int ri = 0; ri < n_region; ++ri) {
-                    int row_count = static_cast<int>(
-                        nb_offsets_[static_cast<std::size_t>(ri + 1)]
-                        - nb_offsets_[static_cast<std::size_t>(ri)]);
-                    // > 1 means more than just sequential ri+1 in neighbor list.
-                    if (row_count > 1) ++n_rows_with_extra_neighbor;
-                }
-
-                std::fprintf(f, "REGION_BETA_RW_DUMP region_start_sec=%.3f region_end_sec=%.3f "
-                             "n_region=%d n_backward_viable=%d n_forward_skip_viable=%d "
-                             "n_neighbors_total=%d n_rows_with_extra_neighbor=%d "
-                             "top_backward=[",
-                             region_start_sec, region_end_sec, n_region,
-                             n_backward_viable, n_forward_skip_viable,
-                             n_neighbors_total, n_rows_with_extra_neighbor);
-                int n_dump = std::min<int>(10, static_cast<int>(backward_cells.size()));
-                for (int k = 0; k < n_dump; ++k) {
-                    double v = std::get<0>(backward_cells[(std::size_t) k]);
-                    int ri = std::get<1>(backward_cells[(std::size_t) k]);
-                    int rj = std::get<2>(backward_cells[(std::size_t) k]);
-                    int abs_i = entry_beat_ + ri;
-                    int abs_j = entry_beat_ + rj;
-                    std::fprintf(f, "(%d->%d,raw_w=%.4f)%s",
-                                 abs_i, abs_j, v,
-                                 (k + 1 < n_dump) ? "," : "");
-                }
-                std::fprintf(f, "]\n");
-                std::fclose(f);
-            }
-        }
-    }
 
     // ADR-081 STATUS UPDATE 2 sesja 94 — Region β-model loop synthesizer.
     // When region_beta_ AND is_extending_, try explicit (i, j, N) synthesis
@@ -424,27 +357,6 @@ RemixPath RegionOptimizer::remix(double                                         
 
     // Check failure — region_optimizer.py:115-119.
     if (dp_res.best_cost >= INF) {
-        // ADR-081 STATUS UPDATE 1 sesja 94 — diagnostic log for fallback
-        // path (sesja-94-only debug aid; matches success-path log below).
-        if (region_beta_) {
-            const char* home = std::getenv("HOME");
-            if (home != nullptr) {
-                std::string log_path = std::string(home) + "/Desktop/reamix_diag.log";
-                std::FILE* f = std::fopen(log_path.c_str(), "a");
-                if (f != nullptr) {
-                    std::fprintf(f, "REGION_BETA_FALLBACK region_start_sec=%.3f "
-                                 "region_end_sec=%.3f entry_beat=%d exit_beat=%d "
-                                 "n_region=%d target_beats=%d min_target=%d "
-                                 "max_target=%d is_extending=%d region_beta=%d "
-                                 "fallback=tile_whole_region\n",
-                                 region_start_sec, region_end_sec,
-                                 entry_beat, exit_beat, exit_beat - entry_beat,
-                                 target_beats_, min_target_, max_target_,
-                                 is_extending_ ? 1 : 0, region_beta_ ? 1 : 0);
-                    std::fclose(f);
-                }
-            }
-        }
         return regionFallback(entry_beat, exit_beat, target_beats_,
                               target_duration, region_duration_);
     }
@@ -469,53 +381,6 @@ RemixPath RegionOptimizer::remix(double                                         
     out.transitions        = std::move(transitions);
     out.transition_metadata = std::move(metadata);
 
-    // ADR-081 STATUS UPDATE 1 sesja 94 — diagnostic log for inner-loop β-model.
-    // Append-only telemetry per Region remix() call. REMOVE at sesja-94
-    // handover (sesja-94-only debug aid; same pattern as sesja-93 ADR-084
-    // Optimizer.cpp diag log). Logs only when region_beta_ flag is set so
-    // baseline parity tests are not polluted.
-    if (region_beta_) {
-        const char* home = std::getenv("HOME");
-        if (home != nullptr) {
-            std::string log_path = std::string(home) + "/Desktop/reamix_diag.log";
-            std::FILE* f = std::fopen(log_path.c_str(), "a");
-            if (f != nullptr) {
-                std::fprintf(f, "REGION_BETA region_start_sec=%.3f region_end_sec=%.3f "
-                             "entry_beat=%d exit_beat=%d n_region=%d "
-                             "target_beats=%d min_target=%d max_target=%d "
-                             "is_extending=%d region_beta=%d "
-                             "n_transitions=%d total_cost=%.6f path_len=%d ",
-                             region_start_sec, region_end_sec,
-                             entry_beat_, exit_beat_, exit_beat_ - entry_beat_,
-                             target_beats_, min_target_, max_target_,
-                             is_extending_ ? 1 : 0, region_beta_ ? 1 : 0,
-                             static_cast<int>(out.transitions.size()),
-                             out.total_cost, out.duration_beats);
-                // Log up to first 5 transitions: (from_beat, to_beat, raw_w
-                // sourced from region_W as (ri,rj)-relative cells).
-                int limit = std::min(5, static_cast<int>(out.transitions.size()));
-                std::fprintf(f, "transitions=[");
-                for (int t = 0; t < limit; ++t) {
-                    int from_abs = out.transitions[t].first;
-                    int to_abs   = out.transitions[t].second;
-                    int from_rel = from_abs - entry_beat_;
-                    int to_rel   = to_abs - entry_beat_;
-                    double raw_w = INF;
-                    if (from_rel >= 0 && from_rel < (exit_beat_ - entry_beat_)
-                        && to_rel >= 0 && to_rel < (exit_beat_ - entry_beat_)) {
-                        raw_w = rW_[static_cast<std::size_t>(from_rel)
-                                    * (exit_beat_ - entry_beat_)
-                                    + static_cast<std::size_t>(to_rel)];
-                    }
-                    std::fprintf(f, "(%d,%d,raw_w=%.4f)%s",
-                                 from_abs, to_abs, raw_w,
-                                 (t + 1 < limit) ? "," : "");
-                }
-                std::fprintf(f, "]\n");
-                std::fclose(f);
-            }
-        }
-    }
 
     return out;
 }
@@ -962,39 +827,6 @@ RegionOptimizer::regionLoopSynthesize(int    n_region,
     best.chosen_j = j;
     best.chosen_N = N;
 
-    // Diagnostic log — sesja-94-only debug aid (removed at handover).
-    if (region_beta_) {
-        const char* home = std::getenv("HOME");
-        if (home != nullptr) {
-            std::string log_path = std::string(home) + "/Desktop/reamix_diag.log";
-            std::FILE* f = std::fopen(log_path.c_str(), "a");
-            if (f != nullptr) {
-                const double final_raw_w =
-                    rW_[static_cast<std::size_t>(i) * n_region + j];
-                const double per_jump_cost_logged = final_raw_w
-                    + edit_length_jump_scale_
-                    * effective_jump_base
-                    * std::min(effective_jump_cap,
-                               final_raw_w * REGION_JUMP_COST_SCALE);
-                std::fprintf(f, "REGION_BETA_LOOPSYNTH n_region=%d target_beats=%d "
-                             "min_target=%d max_target=%d "
-                             "candidates_evaluated=%d "
-                             "chosen_i=%d chosen_j=%d chosen_N=%d "
-                             "loop_length_beats=%d t_actual=%d "
-                             "raw_w=%.4f per_jump_cost=%.4f total_cost=%.4f "
-                             "edit_length_scale=%.3f effective_cooldown=%d "
-                             "abs_jump=%d->%d\n",
-                             n_region, target_beats, min_target, max_target,
-                             candidates_evaluated,
-                             i, j, N, i - j, n_region + N * (i - j + 1),
-                             final_raw_w,
-                             per_jump_cost_logged, best.total_cost,
-                             edit_length_jump_scale_, effective_cooldown,
-                             entry_beat + i, entry_beat + j);
-                std::fclose(f);
-            }
-        }
-    }
 
     return best;
 }

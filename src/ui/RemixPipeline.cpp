@@ -250,6 +250,7 @@ void RemixPipeline::run()
             // Build BlockCompatInputs — mirror RegionCost wiring for shared
             // signals (boundary waveforms, edge features, etc).
             reamix::remix::BlockCompatInputs bin{};
+            bin.v2_scoring = in_.v2_scoring;   // ADR-115 v2 scoring
             bin.blocks    = infos.data();
             bin.n_blocks  = (int) infos.size();
             bin.beat_times = bt.data();
@@ -371,6 +372,7 @@ void RemixPipeline::run()
 
             // ── Build RegionCostInputs (mirror AnalyzePipeline TransitionCost wiring) ──
             reamix::remix::RegionCostInputs rcin{};
+            rcin.v2_scoring = in_.v2_scoring;   // ADR-115 v2 scoring
             rcin.entry_beat = entry_beat;
             rcin.exit_beat  = exit_beat;
             rcin.features   = bundle.feat.features.data();
@@ -603,6 +605,7 @@ void RemixPipeline::run()
             if (overrideRequiresPathA)
             {
                 reamix::remix::TransitionCostInputs tcin{};
+                tcin.v2_scoring  = in_.v2_scoring;   // ADR-115 v2 scoring
                 tcin.features    = bundle.feat.features.data();
                 tcin.n_beats     = bundle.feat.nBeats;
                 tcin.n_features  = bundle.feat.nFeat;

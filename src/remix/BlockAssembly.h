@@ -242,6 +242,14 @@ struct BlockCompatInputs
     // PARAMETERS -----------------------------------------------------------
     int time_signature = 4;
 
+    // ADR-115 (sesja 114) — v2 scoring: sequential-baseline normalised side
+    // channels (SignalNorm.h), geometric composite with kV2QualityWeights
+    // unless quality_weights is set, bar alignment enforced as a candidate
+    // constraint (pre-downbeat source -> downbeat target) with the top-k
+    // chosen among allowed targets only. false = legacy Python-parity path.
+    bool v2_scoring = false;
+
+
     // ADR-051 (sesja 61) — junction search-window radius (beats either side
     // of the user-authored boundary). Default = BLOCK_SEARCH_WINDOW_BEATS to
     // preserve Python parity for legacy callers. Block Assembly UI overrides

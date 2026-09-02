@@ -1,6 +1,7 @@
 #include "remix/RegionCost.h"
 
 #include "remix/Quality.h"
+#include "remix/SignalNorm.h"  // ADR-115 v2 scoring
 #include "dsp/WaveformXcorr.h"
 
 #include <algorithm>
@@ -361,6 +362,18 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
     std::set<int> pre_db_set;
     for (int db : db_set) if (db > 0) pre_db_set.insert(db - 1);
 
+    // ADR-115 E1/E3 (sesja 114) — v2 scoring state (baselines over the whole
+    // track's consecutive beats; region-local edge dB pairs).
+    const bool v2 = in.v2_scoring;
+    const SignalBaselines baselines = v2
+        ? buildSignalBaselines(in.rms_energy, in.spectral_centroid, in.onset_strength,
+                               edge_db_end.empty()   ? nullptr : edge_db_end.data(),
+                               edge_db_start.empty() ? nullptr : edge_db_start.data(),
+                               edge_db_end.empty() ? 0 : n_region)
+        : SignalBaselines{};
+    const bool v2_bar_constraint = v2 && db_set.size() >= 2 && ! pre_db_set.empty();
+    const QualityWeights& v2_default_weights = v2 ? kV2QualityWeights : kDefaultQualityWeights;
+
     // Track-level vocal detection. region_cost.py:98-102.
     bool track_has_vocals = false;
     if (in.vocal_activity != nullptr && n_total > 0) {
@@ -433,6 +446,8 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
         for (int rj = 0; rj < n_region; ++rj) {
             if (rj == ri || rj == ri + 1) continue;
             if (std::abs(rj - ri) < REGION_MICRO_SKIP_BEATS) continue;  // C1
+            // v2: bar alignment as a candidate constraint (ADR-115 E3)
+            if (v2_bar_constraint && ! (pre_db_set.count(ri) > 0 && db_set.count(rj) > 0)) continue;
             const double cd = chroma_D[static_cast<std::size_t>(ri) * n_region + rj];
             if (cd > REGION_CHROMA_PREFILTER) continue;  // C2
 
@@ -532,6 +547,14 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
                 const double c_diff = std::abs(in.spectral_centroid[abs_i] - in.spectral_centroid[abs_j]);
                 centroid_match = std::max(0.0, 1.0 - c_diff * 5.0);  // UNJUSTIFIED (C16)
             }
+            if (v2) {   // ADR-115 E1 — per-track sequential-baseline percentiles
+                if (in.rms_energy != nullptr)
+                    energy_match = energyQualityV2(baselines, in.rms_energy[abs_i], in.rms_energy[abs_j], energy_match);
+                if (have_edge_db)
+                    edge_energy_match = edgeEnergyQualityV2(baselines, energy_diff, edge_energy_match);
+                if (in.spectral_centroid != nullptr)
+                    centroid_match = centroidQualityV2(baselines, in.spectral_centroid[abs_i], in.spectral_centroid[abs_j], centroid_match);
+            }
 
             // Section sim — region_cost.py:368. ADR-044: 0 in no-structure
             // mode (otherwise label_match=0 would still leave the BIAS=0.1 floor).
@@ -556,6 +579,10 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
                 q.transient_continuity =
                     1.0 - std::abs(onset_norm[(std::size_t) abs_i]
                                  - onset_norm[(std::size_t) abs_j]);
+                if (v2 && in.onset_strength != nullptr)
+                    q.transient_continuity = onsetQualityV2(
+                        baselines, in.onset_strength[abs_i], in.onset_strength[abs_j],
+                        *q.transient_continuity);
             }
             // ADR-066 sesja 77 — MFCC continuity (absolute indices).
             if (! mfcc_continuity_matrix.empty()
@@ -603,7 +630,7 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
 
             double quality = computeQualityScore(
                 q,
-                in.quality_weights != nullptr ? *in.quality_weights : kDefaultQualityWeights);
+                in.quality_weights != nullptr ? *in.quality_weights : v2_default_weights);
 
             // Span penalty — region_cost.py:384-387.
             // ADR-044: skipped in no-structure mode (label_match=0 would

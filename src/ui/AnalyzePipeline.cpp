@@ -267,6 +267,10 @@ void AnalyzePipeline::run()
     postProgress ("Computing transitions", kPFeatures);
 
     reamix::remix::TransitionCostInputs tcin{};
+    // ADR-115 v2 scoring. Kept OFF in production until the P1 listening gate
+    // passes (sesja-114 scorer proxy was mixed: 1 of 3 tracks improved);
+    // the calibration harness renders v2 via the batch "v2_scoring" field.
+    tcin.v2_scoring  = false;
     tcin.features    = bundle->feat.features.data();
     tcin.n_beats     = bundle->feat.nBeats;
     tcin.n_features  = bundle->feat.nFeat;

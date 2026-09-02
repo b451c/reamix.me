@@ -1,0 +1,38 @@
+[
+ {
+  "tag": "before_run1",
+  "picker": {
+   "id": 6129,
+   "name": "",
+   "x": 106,
+   "y": 762,
+   "w": 568,
+   "h": 288,
+   "layer": 101
+  },
+  "item_len": 293.82666666666665,
+  "window": {
+   "id": 6125,
+   "name": "reamix.me",
+   "x": 130,
+   "y": 320,
+   "w": 720,
+   "h": 760,
+   "layer": 1
+  },
+  "client_origin": [
+   130,
+   348.0,
+   1.0
+  ],
+  "cache_hit": true,
+  "analyzed": true,
+  "blocks_click": true,
+  "segbar_hint": [
+   444.0,
+   5
+  ],
+  "drag_attempts": 1,
+  "picker_png": "/Volumes/@Basic/Projekty/reamix.me_native/tests/reaproof/evidence/dev086-mac/before_run1_picker.png"
+ }
+]
