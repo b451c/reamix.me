@@ -35,7 +35,7 @@ OUT = Path.home() / "reamix_vm"
 BLOCKS_TAB = (210, 125)
 DURATION_TAB = (45, 125)
 ANALYZE_BTN = (672, 74)      # source panel "Analyze" button (analysis does not auto-start)
-SEGBAR_Y = 646
+SEGBAR_Y = 674               # sesja 123: the Edit tuning bar is hidden in Blocks (ADR-115 P3), the section bar sits 28 px lower than with the collapsed bar (646)
 SEGBAR_X0, SEGBAR_X1 = 40, 700
 CHIP_WAIT_S = 240          # cold analysis of a 3-4 min song on the aarch64 VM
 
@@ -169,12 +169,20 @@ def one_run(media, tag):
         result["reaper_alive_after"] = rm_open.alive()
         return result
 
-    # Click the first chip -> block + queue [0] in P_EXT.
+    # Click the first chip -> block + queue [0] in P_EXT. Sesja 123: right
+    # after the chips appear the auto-remix worker keeps the 3-core VM busy
+    # and a click can be dropped (rm_tab_latency: +0.5-1.6 s), so the click
+    # is repeated once a second until P_EXT carries a block (6 s cap).
     c1 = rs[0]
     cx1 = (c1[0] + c1[1]) // 2
-    xtools.click(x0 + cx1, y0 + y_row)
-    time.sleep(1.5)
-    raw1 = read_pext(b)
+    raw1 = ""
+    for _attempt in range(6):
+        xtools.click(x0 + cx1, y0 + y_row)
+        time.sleep(1.0)
+        raw1 = read_pext(b)
+        if isinstance(raw1, str) and raw1.strip():
+            break
+    time.sleep(0.5)
     result["pext1_raw"] = raw1[:300] if isinstance(raw1, str) else raw1
     st1 = parse_state(raw1 if isinstance(raw1, str) else "")
     result["pext1"] = st1
