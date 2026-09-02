@@ -1,0 +1,178 @@
+[
+ {
+  "tag": "reamix_before_run1",
+  "picker": {
+   "w": 568,
+   "h": 288,
+   "x": 0,
+   "y": 713
+  },
+  "drag_attempts": 1,
+  "oracle": {
+   "png": "/home/basic/reamix_vm/reamix_before_run1_picker.png",
+   "size": [
+    568,
+    288
+   ],
+   "frame_px": 11520,
+   "distinct_colours": 275,
+   "top3": [
+    [
+     [
+      19,
+      18,
+      16
+     ],
+     852
+    ],
+    [
+     [
+      0,
+      19,
+      18
+     ],
+     796
+    ],
+    [
+     [
+      18,
+      16,
+      0
+     ],
+     770
+    ]
+   ],
+   "dominant_share_pct": 7.4,
+   "expect_rgb_share_pct": 0.0,
+   "green": false
+  },
+  "modal_oracle": {
+   "png": "/home/basic/reamix_vm/reamix_before_run1_modal.png",
+   "size": [
+    350,
+    250
+   ],
+   "frame_px": 7424,
+   "distinct_colours": 16,
+   "top3": [
+    [
+     [
+      38,
+      50,
+      56
+     ],
+     6438
+    ],
+    [
+     [
+      142,
+      152,
+      155
+     ],
+     773
+    ],
+    [
+     [
+      140,
+      150,
+      153
+     ],
+     182
+    ]
+   ],
+   "dominant_share_pct": 86.72,
+   "expect_rgb_share_pct": 0.0,
+   "green": true,
+   "name": ""
+  },
+  "reaper_alive_after": false
+ },
+ {
+  "tag": "reamix_before_run2",
+  "picker": {
+   "w": 568,
+   "h": 288,
+   "x": 408,
+   "y": 535
+  },
+  "drag_attempts": 1,
+  "oracle": {
+   "png": "/home/basic/reamix_vm/reamix_before_run2_picker.png",
+   "size": [
+    568,
+    288
+   ],
+   "frame_px": 11520,
+   "distinct_colours": 266,
+   "top3": [
+    [
+     [
+      19,
+      18,
+      16
+     ],
+     842
+    ],
+    [
+     [
+      0,
+      19,
+      18
+     ],
+     784
+    ],
+    [
+     [
+      18,
+      16,
+      0
+     ],
+     770
+    ]
+   ],
+   "dominant_share_pct": 7.31,
+   "expect_rgb_share_pct": 0.0,
+   "green": false
+  },
+  "modal_oracle": {
+   "png": "/home/basic/reamix_vm/reamix_before_run2_modal.png",
+   "size": [
+    350,
+    250
+   ],
+   "frame_px": 7424,
+   "distinct_colours": 16,
+   "top3": [
+    [
+     [
+      38,
+      50,
+      56
+     ],
+     6438
+    ],
+    [
+     [
+      142,
+      152,
+      155
+     ],
+     773
+    ],
+    [
+     [
+      140,
+      150,
+      153
+     ],
+     182
+    ]
+   ],
+   "dominant_share_pct": 86.72,
+   "expect_rgb_share_pct": 0.0,
+   "green": true,
+   "name": ""
+  },
+  "reaper_alive_after": false
+ }
+]

@@ -106,3 +106,7 @@ forum-posts/
 # Internal references (kept locally; not for public repo)
 references/SETUP.md
 references/golden/dev-028/
+
+# Local-only test harness copy (ReaProof, per user directive) + sibling-project review folder (GPL study material, never ship)
+reaproof/
+rondo_loop_detection_review/

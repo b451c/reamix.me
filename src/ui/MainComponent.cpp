@@ -1785,7 +1785,11 @@ MainComponent::MainComponent()
         // anchor is a 4×4 rect at the mouseUp screen position so the popover
         // points back to where the user finished marking.
         const juce::Rectangle<int> anchor { screenPos.x - 2, screenPos.y - 2, 4, 4 };
-        juce::CallOutBox::launchAsynchronously (std::move (picker), anchor, nullptr);
+        // DEV-086: the CallOutBox is a top-level desktop window with no parent
+        // Component, so it never inherits our LookAndFeel — set it explicitly
+        // (Component::getLookAndFeel walks self → parents → global default).
+        auto& box = juce::CallOutBox::launchAsynchronously (std::move (picker), anchor, nullptr);
+        box.setLookAndFeel (&lookAndFeel_);
     };
 
     // Sesja 100 iter 3 (DEV-018) — Preview volume changed via inline floating
@@ -2006,7 +2010,8 @@ MainComponent::MainComponent()
         const auto screenAnchor = juce::Desktop::getInstance().getMainMouseSource().getScreenPosition();
         const juce::Rectangle<int> anchorRect {
             (int) screenAnchor.x - 2, (int) screenAnchor.y - 2, 4, 4 };
-        juce::CallOutBox::launchAsynchronously (std::move (popover), anchorRect, nullptr);
+        auto& box = juce::CallOutBox::launchAsynchronously (std::move (popover), anchorRect, nullptr);
+        box.setLookAndFeel (&lookAndFeel_); // DEV-086: top-level peer, see drag-mark picker
         juce::ignoreUnused (anchor);
     };
 
@@ -5165,7 +5170,8 @@ void MainComponent::showChangeKindMiniPicker (int blockIdx, juce::Point<int> scr
         };
 
     const juce::Rectangle<int> anchor { screenPos.x, screenPos.y, 1, 1 };
-    juce::CallOutBox::launchAsynchronously (std::move (popover), anchor, nullptr);
+    auto& box = juce::CallOutBox::launchAsynchronously (std::move (popover), anchor, nullptr);
+    box.setLookAndFeel (&lookAndFeel_); // DEV-086: top-level peer, see drag-mark picker
 }
 
 // DEV-058 (a) — Delete block. Confirm dialog + cascade queue. References
@@ -5284,7 +5290,8 @@ void MainComponent::showChangeKindBatchPicker (std::vector<int> blockIndices,
         };
 
     const juce::Rectangle<int> anchor { screenPos.x, screenPos.y, 1, 1 };
-    juce::CallOutBox::launchAsynchronously (std::move (popover), anchor, nullptr);
+    auto& box = juce::CallOutBox::launchAsynchronously (std::move (popover), anchor, nullptr);
+    box.setLookAndFeel (&lookAndFeel_); // DEV-086: top-level peer, see drag-mark picker
 }
 
 // DEV-058 (c) — paleta drag-reorder commit. Move userBlocks_[from] to
