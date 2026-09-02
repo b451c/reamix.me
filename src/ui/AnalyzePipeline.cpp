@@ -5,6 +5,7 @@
 #include "analysis/BeatDetector.h"
 #include "analysis/FeatureExtractor.h"
 #include "analysis/StructureResult.h"
+#include "remix/BeatGrid.h"   // ADR-115 E5 (sesja 115)
 #include "io/AudioLoader.h"
 #include "remix/TransitionCost.h"
 
@@ -267,10 +268,11 @@ void AnalyzePipeline::run()
     postProgress ("Computing transitions", kPFeatures);
 
     reamix::remix::TransitionCostInputs tcin{};
-    // ADR-115 v2 scoring. Kept OFF in production until the P1 listening gate
-    // passes (sesja-114 scorer proxy was mixed: 1 of 3 tracks improved);
-    // the calibration harness renders v2 via the batch "v2_scoring" field.
-    tcin.v2_scoring  = false;
+    // ADR-115 v2 scoring: production default since sesja 115 (user decision
+    // after four blinded listening rounds: 11-track panel v2 2 / legacy 1 /
+    // tie 8 / both-bad 1; see meta/research/sesja-115-signal-mapping.md).
+    // Legacy stays reachable through the calibration harness batch field.
+    tcin.v2_scoring  = true;
     tcin.features    = bundle->feat.features.data();
     tcin.n_beats     = bundle->feat.nBeats;
     tcin.n_features  = bundle->feat.nFeat;
@@ -314,10 +316,19 @@ void AnalyzePipeline::run()
                               : reinterpret_cast<const float*> (bundle->feat.edgeFeaturesEnd.data());
     tcin.n_edge_features     = bundle->feat.edgeFeaturesStart.empty() ? 0 : bundle->feat.nFeat;
 
-    tcin.downbeats   = bundle->downbeatTimes.empty() ? nullptr : bundle->downbeatTimes.data();
-    tcin.n_downbeats = (int) bundle->downbeatTimes.size();
+    // ADR-115 E5 (sesja 115): cleaned grid on the v2 path (snapped downbeats,
+    // measured bar length) - same helper RemixPipeline::run uses.
+    const reamix::remix::BeatGridResult v2Grid = tcin.v2_scoring
+        ? reamix::remix::cleanBeatGrid (bundle->beatTimes.data(), (int) bundle->beatTimes.size(),
+                                        bundle->downbeatTimes.empty() ? nullptr : bundle->downbeatTimes.data(),
+                                        (int) bundle->downbeatTimes.size(),
+                                        juce::jmax (1, (int) bundle->timeSigNum))
+        : reamix::remix::BeatGridResult{};
+    const std::vector<double>& gridDownbeats = tcin.v2_scoring ? v2Grid.downbeats : bundle->downbeatTimes;
+    tcin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
+    tcin.n_downbeats = (int) gridDownbeats.size();
 
-    tcin.time_signature = juce::jmax (1, (int) bundle->timeSigNum);
+    tcin.time_signature = tcin.v2_scoring ? v2Grid.bar_beats : juce::jmax (1, (int) bundle->timeSigNum);
 
     try
     {

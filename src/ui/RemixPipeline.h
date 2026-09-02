@@ -95,7 +95,7 @@ public:
         // cost paths (Region / Blocks / Path-A TransitionCost recompute).
         // Production default FALSE until the ADR-115 P1 listening gate passes
         // (sesja-114 scorer proxy mixed); the calibration harness sets it per run.
-        bool v2_scoring = false;
+        bool v2_scoring = true;   // ADR-115: production default since sesja 115 (harness may pass false)
 
         // ADR-080 RESCOPE + ADR-083 (sesja 92) + ADR-084 (sesja 93) —
         // AuditionBar 4-slider params. Defaults bit-exact replicate current
