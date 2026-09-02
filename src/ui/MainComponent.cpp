@@ -1867,6 +1867,7 @@ MainComponent::MainComponent()
         regionFromAuto_ = false;
         modeTabs_.setAutoFlag (false);
         selectedRange_ = sel;
+        chipRegion_    = sel;    // sesja 122: a 2-bar chip (< 6 s) is a valid region
         waveformView_.setSelection (sel);
         mirrorRegionToReaper (spot.start_sec, spot.end_sec);
         recomputeRegionState();
@@ -3951,9 +3952,15 @@ void MainComponent::recomputeRegionState()
         {
             // Manual mode: plugin's waveform selection IS the region. Apply
             // the same ≥ 6 s minimum (sub-6s = treat as preview-only, no
-            // region — Insert disabled).
+            // region — Insert disabled) — except the span a loop-spot chip
+            // set (sesja 122, user decision s118: 2-bar loops are real loops
+            // at >= 120 BPM; the chip IS the region). A drag replaces
+            // selectedRange_, so the 6 s rule returns with it.
+            const bool fromChip = selectedRange_.has_value() && chipRegion_.has_value()
+                && std::abs (selectedRange_->startSec - chipRegion_->startSec) < 1e-6
+                && std::abs (selectedRange_->endSec   - chipRegion_->endSec)   < 1e-6;
             if (selectedRange_.has_value()
-                && (selectedRange_->endSec - selectedRange_->startSec) >= 6.0)
+                && (fromChip || (selectedRange_->endSec - selectedRange_->startSec) >= 6.0))
             {
                 reamix::reaper::ItemRegion r;
                 r.startSec = selectedRange_->startSec;
@@ -4020,14 +4027,26 @@ void MainComponent::recomputeRegionState()
     {
         durationPanel_.setRegion (
             reamix::ui::DurationPanel::RegionInfo { region->startSec, region->endSec });
-        durationPanel_.setOriginalDuration (region->endSec - region->startSec);
+        const double span = region->endSec - region->startSec;
+        // sesja 122: a 2-bar chip region can be shorter than kDurationMinSec
+        // (5 s); keep the ORIG thumb on the track by lowering the floor to
+        // the region itself (the max stays the source-based one).
+        durationPanel_.setRange (std::min (kDurationMinSec, span),
+                                 std::max (kDurationMinSec + 1.0,
+                                           std::round (currentSourceDurationSec_ * kDurationMaxMultiplier)));
+        durationPanel_.setOriginalDuration (span);
         durationPanel_.setActive (true);
     }
     else
     {
         durationPanel_.setRegion (std::nullopt);
         if (currentSourceDurationSec_ > 0.0)
+        {
+            durationPanel_.setRange (kDurationMinSec,
+                                     std::max (kDurationMinSec + 1.0,
+                                               std::round (currentSourceDurationSec_ * kDurationMaxMultiplier)));
             durationPanel_.setOriginalDuration (currentSourceDurationSec_);
+        }
         // Region mode without a selection — slider has no defined target, so
         // disable it. Hint via status bar so user knows what to do next.
         if (appMode_ == Mode::Region)

@@ -12,13 +12,14 @@
 //   F = (47 -> 40)  q 0.44   bars 10-11 (2 bars, 4 s)     below the floor
 //   G = ( 7 -> 24)  q 0.95   FORWARD skip                 never a loop
 //   H = (55 -> 40)  q 0.66   bars 10-13 (4 bars)          medium
+//   I = (63 -> 56)  q 0.60   bars 14-15 (2 bars, 4 s)     2-bar loop (sesja 122)
 //
 // Invariants:
-//   1. extract: G dropped; 7 spots best-first; span and bars hand-checked;
-//   2. suggest (whole track, max_bars 8): D (span 2 s < 6 s), E (16 bars),
+//   1. extract: G dropped; 8 spots best-first; span and bars hand-checked;
+//   2. suggest (whole track, max_bars 8): D (1 bar < min_bars 2), E (16 bars),
 //      F (q < 0.5) are filtered; greedy non-overlap picks A, then C is
-//      rejected (overlaps A), B accepted (adjacent, end == start), H accepted
-//      -> [A, B, H];
+//      rejected (overlaps A), B accepted (adjacent, end == start), H accepted,
+//      I accepted (2 bars, 4 s: no 6 s floor since sesja 122) -> [A, B, H, I];
 //   3. max_count 1 -> [A] only;
 //   4. window = bars 4-13 (8 s .. 28 s) -> A and C excluded (start before
 //      the window), picks [B, H]; window = bars 8-9 -> nothing;
@@ -85,13 +86,14 @@ int main()
     add(47, 40, 0.44);   // F
     add( 7, 24, 0.95);   // G (forward)
     add(55, 40, 0.66);   // H
+    add(63, 56, 0.60);   // I (2 bars, sesja 122)
 
     std::printf("[1] extract\n");
     const auto all = extractLoopSpots(pool, bt.data(), kBeats, kBarBeats);
-    CHECK(all.size() == 7, "forward pair dropped, 7 loop spots");
+    CHECK(all.size() == 8, "forward pair dropped, 8 loop spots");
     CHECK(!all.empty() && isPair(all[0], 11, 8), "best first = D (q 0.90)");
     CHECK(all.size() >= 2 && isPair(all[1], 15, 0), "second = A (q 0.82)");
-    CHECK(all.size() == 7 && isPair(all[6], 47, 40), "last = F (q 0.44)");
+    CHECK(all.size() == 8 && isPair(all[7], 47, 40), "last = F (q 0.44)");
     for (const auto& s : all) {
         if (isPair(s, 15, 0)) {
             CHECK(std::abs(s.start_sec - 0.0) < 1e-9 && std::abs(s.end_sec - 8.0) < 1e-9,
@@ -113,12 +115,13 @@ int main()
     LoopSpotFilter f;
     f.max_bars = 8;
     auto picks = suggestLoopSpots(all, f);
-    CHECK(picks.size() == 3, "three non-overlapping spots");
-    CHECK(picks.size() == 3 && isPair(picks[0], 15, 0),  "pick 1 = A");
-    CHECK(picks.size() == 3 && isPair(picks[1], 31, 16), "pick 2 = B (adjacent to A allowed, C overlaps A)");
-    CHECK(picks.size() == 3 && isPair(picks[2], 55, 40), "pick 3 = H (medium, F below floor)");
+    CHECK(picks.size() == 4, "four non-overlapping spots");
+    CHECK(picks.size() == 4 && isPair(picks[0], 15, 0),  "pick 1 = A");
+    CHECK(picks.size() == 4 && isPair(picks[1], 31, 16), "pick 2 = B (adjacent to A allowed, C overlaps A)");
+    CHECK(picks.size() == 4 && isPair(picks[2], 55, 40), "pick 3 = H (medium, F below floor)");
+    CHECK(picks.size() == 4 && isPair(picks[3], 63, 56), "pick 4 = I (2 bars, 4 s: shown since sesja 122)");
     for (const auto& p : picks) {
-        CHECK(!isPair(p, 11, 8),  "D (2 s) filtered by min_span");
+        CHECK(!isPair(p, 11, 8),  "D (1 bar) filtered by min_bars 2");
         CHECK(!isPair(p, 63, 0),  "E (16 bars) filtered by max_bars 8");
         CHECK(!isPair(p, 47, 40), "F (q 0.44) filtered by min_quality");
         CHECK(!isPair(p, 23, 8),  "C rejected: overlaps A");
@@ -152,7 +155,7 @@ int main()
     // Every pair becomes the span between its two cut points, forward pairs
     // included: G (7 -> 24) skips [8, 24) = 8 s .. 12 s, 4 bars.
     const auto spans = extractSectionSpans(pool, bt.data(), kBeats, kBarBeats);
-    CHECK(spans.size() == 8, "all 8 pairs become spans (forward kept)");
+    CHECK(spans.size() == 9, "all 9 pairs become spans (forward kept)");
     CHECK(!spans.empty() && isPair(spans[0], 7, 24), "best first = G (q 0.95)");
     for (const auto& s : spans) {
         if (isPair(s, 7, 24)) {
@@ -174,6 +177,7 @@ int main()
     CHECK(sections.size() == 2 && isPair(sections[1], 55, 40), "section 2 = H [20, 28) (A, B, C, E overlap G)");
     for (const auto& p : sections) {
         CHECK(!isPair(p, 11, 8),  "D (1 bar) filtered by min_bars");
+        CHECK(!isPair(p, 63, 56), "I (2 bars) filtered by min_bars 4");
         CHECK(!isPair(p, 15, 0),  "A overlaps G -> rejected");
         CHECK(!isPair(p, 63, 0),  "E (16 bars) overlaps everything after G");
     }

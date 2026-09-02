@@ -60,9 +60,11 @@ struct LoopSpotFilter
     double window_eps_sec   = 1e-3;
 
     double min_quality  = 0.5;   // WaveformView Medium bucket floor
-    double min_span_sec = 6.0;   // Region minimum (ReaperBridge getItemRegion)
+    double min_span_sec = 0.0;   // sesja 122 (user, s118): 2-bar loops (< 6 s at >= 120 BPM)
+                                 // are shown; the 6 s Region minimum applies to manual /
+                                 // auto selections only, a clicked chip is exactly its span
     int    max_bars     = 16;    // longer repeats are sections, not spots
-    int    min_bars     = 0;     // sesja 120: Blocks suggestions want whole sections (>= 4)
+    int    min_bars     = 2;     // a one-bar repeat is not a loop spot; Blocks overrides (>= 4)
     int    max_count    = 5;     // chips shown
 };
 

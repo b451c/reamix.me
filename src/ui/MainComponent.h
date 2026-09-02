@@ -417,6 +417,9 @@ private:
     std::atomic<bool> updateCheckAborted_ { false };
 
     std::optional<reamix::ui::WaveformView::SelectionRange> selectedRange_;
+    // sesja 122: the span the last loop-spot chip click set; exempt from the
+    // 6 s manual-region minimum while selectedRange_ still equals it.
+    std::optional<reamix::ui::WaveformView::SelectionRange> chipRegion_;
 
     // Sesja 64 BUG-2 — last waveform click-to-seek position. Space starts
     // preview from this offset when no drag-select range is active. Reset
