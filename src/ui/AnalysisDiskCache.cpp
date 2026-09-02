@@ -20,8 +20,12 @@ namespace
     //       7 stems-aware tail fields removed.
     //   5 — sesja 91 ADR-082 CL-3: Fast mode removal — fastMode byte
     //       removed from header.
+    //   6 - sesja 115 ADR-115: cached `tc` now comes from the v2 scoring
+    //       path (exp sequential-baseline mapping, repetition prior, cleaned
+    //       beat grid); layout unchanged, but a version-5 bundle carries a
+    //       legacy transition matrix that Duration remix would keep using.
     constexpr char        kMagic[4]       = { 'R', 'X', 'B', 'C' };
-    constexpr juce::uint32 kFormatVersion = 5;
+    constexpr juce::uint32 kFormatVersion = 6;
 
     juce::String hashOf (const juce::String& s)
     {
