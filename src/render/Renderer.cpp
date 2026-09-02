@@ -479,6 +479,10 @@ EditPlan Renderer::buildEditPlan(reamix::remix::RemixPath& path)
         incomingStart = std::max<std::int64_t>(0,
             std::min(incomingStart, runs[idx + 1].sourceEndSample - 1));
 
+        // DEV-087 (ADR-115 E7): when the onset-anchor geometry is accepted this
+        // overlap (>= 2 x 120 ms, up to ~2 beats) is what REAPER Insert applies,
+        // while the preview WAV path caps the crossfade at max_xf (200 ms) -
+        // preview and inserted result diverge by (overlap - max_xf) per splice.
         const double overlapSec = static_cast<double>(overlapSamples) / sr_;
         runs[idx].sourceEndSample      = outgoingCut;
         runs[idx].fadeOutSec           = overlapSec;

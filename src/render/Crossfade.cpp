@@ -160,6 +160,8 @@ void applyShiftFull(double*     inBand,
 }
 
 // Compute max_xf_samples per crossfade.py:252-253.
+// DEV-087 (ADR-115 E7): this cap is why the preview WAV cannot honour an
+// anchor-accepted overlap longer than the widest band (see Renderer.cpp).
 std::size_t maxXfSamples(const Crossfade::Band* bands, std::size_t nBands,
                          int sr,
                          std::size_t outLen, std::size_t inLen)
