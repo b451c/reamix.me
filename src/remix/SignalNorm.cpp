@@ -12,16 +12,25 @@ void DistanceBaseline::build(std::vector<double> samples)
     for (double s : samples)
         if (std::isfinite(s) && s >= 0.0) sorted_.push_back(s);
     std::sort(sorted_.begin(), sorted_.end());
+    // Guard: a flat track (all steps 0) must not divide by zero; a tiny
+    // positive scale then makes any non-zero step cost heavily, which is
+    // the right reading of "the track never moves between beats".
+    scale_  = std::max(percentile(kScalePercentile), 1e-6);
+    reject_ = percentile(kRejectPercentile);
 }
 
 double DistanceBaseline::quality(double d) const noexcept
 {
     if (! valid()) return 1.0;
     if (! std::isfinite(d)) return 0.0;
-    // number of reference samples strictly greater than d
-    const auto it = std::upper_bound(sorted_.begin(), sorted_.end(), d);
-    const auto worse = static_cast<double>(sorted_.end() - it);
-    return worse / static_cast<double>(sorted_.size());
+    return std::exp(-std::max(d, 0.0) / scale_);
+}
+
+bool DistanceBaseline::reject(double d) const noexcept
+{
+    if (! valid()) return false;
+    if (! std::isfinite(d)) return true;
+    return d > reject_;
 }
 
 double DistanceBaseline::percentile(double p) const noexcept
@@ -101,6 +110,13 @@ double onsetQualityV2(const SignalBaselines& b, double o_i, double o_j, double l
 double edgeEnergyQualityV2(const SignalBaselines& b, double energy_diff_db, double legacy)
 {
     return b.edge_energy.valid() ? b.edge_energy.quality(energy_diff_db) : legacy;
+}
+
+bool loudnessRejectV2(const SignalBaselines& b, double rms_i, double rms_j,
+                      double energy_diff_db)
+{
+    return b.energy.reject(logStep(rms_i, rms_j))
+        || b.edge_energy.reject(energy_diff_db);
 }
 
 } // namespace reamix::remix

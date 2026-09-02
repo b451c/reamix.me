@@ -812,7 +812,12 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
                     std::abs(in.spectral_centroid[i] - in.spectral_centroid[j]);
                 centroid_match = std::max(0.0, 1.0 - c_diff * CENTROID_DIFF_SCALE);
             }
-            if (v2) {   // ADR-115 E1 — per-track sequential-baseline percentiles
+            if (v2) {   // ADR-115 E1 — per-track sequential-baseline scale (exp mapping, sesja 115)
+                // ADR-115 E2 — reject when a loudness step exceeds the track's
+                // own p98 consecutive step (sesja 115; the 8 dB edge gate stays absolute).
+                if (in.rms_energy != nullptr && edge_db.available
+                    && loudnessRejectV2(baselines, in.rms_energy[i], in.rms_energy[j], energy_diff))
+                    continue;
                 if (in.rms_energy != nullptr)
                     energy_match = energyQualityV2(baselines, in.rms_energy[i], in.rms_energy[j], energy_match);
                 if (edge_db.available)

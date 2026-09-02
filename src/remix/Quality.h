@@ -317,7 +317,7 @@ inline constexpr QualityWeights kV2QualityWeights{
     /* use_harmonic_mean     */ false,
     /* harmonic_vs_timbre    */ 0.0,
     /* use_geometric_mean    */ true,
-    /* geometric_floor       */ 0.10
+    /* geometric_floor       */ 0.05   // sesja 115: exp mapping never hits 0; floor only backs the p98 reject
 };
 inline constexpr double kV2QualityWeightsSum =
     kV2QualityWeights.waveform + kV2QualityWeights.energy

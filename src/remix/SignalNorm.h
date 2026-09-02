@@ -24,7 +24,11 @@ namespace reamix::remix {
 class DistanceBaseline
 {
 public:
-    static constexpr int kMinSamples = 8;
+    // Below this many consecutive pairs a p90 / p98 scale is meaningless;
+    // the caller falls back to the legacy formula (research sesja 115).
+    static constexpr int    kMinSamples = 32;
+    static constexpr double kScalePercentile  = 0.90;
+    static constexpr double kRejectPercentile = 0.98;
 
     DistanceBaseline() = default;
     explicit DistanceBaseline(std::vector<double> samples) { build(std::move(samples)); }
@@ -34,17 +38,26 @@ public:
     bool valid() const noexcept { return sorted_.size() >= static_cast<std::size_t>(kMinSamples); }
     std::size_t size() const noexcept { return sorted_.size(); }
 
-    // Quality of a candidate distance: fraction of reference samples strictly
-    // greater than d, i.e. 1 - F(d). d below every sample -> 1.0; d above
-    // every sample -> 0.0. Returns 1.0 when the baseline is not valid so a
-    // missing baseline never penalises (caller decides whether to use it).
+    // Quality of a candidate distance: exp(-d / scale()), monotone with no
+    // saturation (d = 0 -> 1, d = scale -> e^-1, d = 2 scale -> e^-2 ...).
+    // Returns 1.0 when the baseline is not valid so a missing baseline never
+    // penalises (caller decides whether to use it); 0.0 for non-finite d.
     double quality(double d) const noexcept;
+
+    // True when d exceeds the track's own p98 consecutive step (ADR-115 E2
+    // per-signal reject). False when the baseline is not valid.
+    bool reject(double d) const noexcept;
+
+    double scale() const noexcept { return scale_; }         // p90, > 0
+    double rejectAbove() const noexcept { return reject_; }  // p98
 
     // Value at percentile p in [0, 1] (nearest-rank, clamped).
     double percentile(double p) const noexcept;
 
 private:
     std::vector<double> sorted_;
+    double scale_  { 1.0 };
+    double reject_ { 0.0 };
 };
 
 // |v[i+1] - v[i]| over i, optionally in the log domain (guarded by `floor`),
@@ -91,5 +104,11 @@ double onsetQualityV2(const SignalBaselines& b, double o_i, double o_j,
                       double legacy);
 double edgeEnergyQualityV2(const SignalBaselines& b, double energy_diff_db,
                            double legacy);
+
+// ADR-115 E2 per-signal reject on the two loudness signals (whole-beat RMS
+// step, edge dB step): the candidate is worse than the track's own p98
+// consecutive step. Never fires when the baseline is invalid.
+bool loudnessRejectV2(const SignalBaselines& b, double rms_i, double rms_j,
+                      double energy_diff_db);
 
 } // namespace reamix::remix

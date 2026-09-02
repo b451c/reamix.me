@@ -547,7 +547,11 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
                 const double c_diff = std::abs(in.spectral_centroid[abs_i] - in.spectral_centroid[abs_j]);
                 centroid_match = std::max(0.0, 1.0 - c_diff * 5.0);  // UNJUSTIFIED (C16)
             }
-            if (v2) {   // ADR-115 E1 — per-track sequential-baseline percentiles
+            if (v2) {   // ADR-115 E1 — per-track sequential-baseline scale (exp mapping, sesja 115)
+                // ADR-115 E2 — p98 loudness reject (sesja 115), mirrors TransitionCost.
+                if (in.rms_energy != nullptr && have_edge_db
+                    && loudnessRejectV2(baselines, in.rms_energy[abs_i], in.rms_energy[abs_j], energy_diff))
+                    continue;
                 if (in.rms_energy != nullptr)
                     energy_match = energyQualityV2(baselines, in.rms_energy[abs_i], in.rms_energy[abs_j], energy_match);
                 if (have_edge_db)

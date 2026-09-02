@@ -60,9 +60,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -74,6 +76,7 @@ struct Args
     juce::String batchPath;
     juce::String dumpBeatsJson;       // sesja 74 — optional, exits after dump
     juce::String dumpComponentsCsv;   // sesja 80 — D1 correlation matrix dump
+    bool         dumpV2 { false };    // sesja 115 - dump under ADR-115 v2 scoring
 };
 
 int printUsage (const char* argv0)
@@ -81,7 +84,7 @@ int printUsage (const char* argv0)
     std::fprintf (stderr,
         "usage: %s --source <abs/audio> --batch <abs/jsonl>\n"
         "       %s --source <abs/audio> --dump-beats <out.json>           (sesja 74 helper)\n"
-        "       %s --source <abs/audio> --dump-components <out.csv>       (sesja 80 D1 helper)\n",
+        "       %s --source <abs/audio> --dump-components <out.csv> [--v2] (sesja 80 D1 helper; --v2 = ADR-115 scoring)\n",
         argv0, argv0, argv0);
     return 2;
 }
@@ -95,6 +98,7 @@ bool parseArgs (int argc, char** argv, Args& out)
         else if (a == "--batch"           && i + 1 < argc) out.batchPath           = juce::String (argv[++i]);
         else if (a == "--dump-beats"      && i + 1 < argc) out.dumpBeatsJson       = juce::String (argv[++i]);
         else if (a == "--dump-components" && i + 1 < argc) out.dumpComponentsCsv   = juce::String (argv[++i]);
+        else if (a == "--v2")                              out.dumpV2              = true;
         else
         {
             std::fprintf (stderr, "unknown arg: %s\n", a.c_str());
@@ -624,10 +628,35 @@ int main (int argc, char** argv)
         // Default weights — we want the production gate stack (chroma_prefilter
         // 0.45 + energy_hard_block 8 dB + composite HARD_FLOOR 0.45) so the
         // surviving-pair pool matches the production Viterbi candidate space.
-        std::fprintf (stderr, "[harness] dump-components: running computeTransitionCosts...\n");
+        // sesja 115: --v2 switches to the ADR-115 path (kV2QualityWeights,
+        // geometric composite, sequential-baseline q's, bar-align constraint).
+        tcin.v2_scoring = args.dumpV2;
+        std::fprintf (stderr, "[harness] dump-components: running computeTransitionCosts (v2=%d)...\n",
+                      (int) args.dumpV2);
         auto tc = reamix::remix::computeTransitionCosts (tcin);
-        std::fprintf (stderr, "[harness] dump-components: %d surviving pairs\n",
-                      (int) tc.candidates.size());
+        {
+            std::set<int> sources;
+            for (const auto& kv : tc.candidates) sources.insert (kv.second.from_beat);
+            std::fprintf (stderr, "[harness] dump-components: %d surviving pairs over %d source beats "
+                          "(%.2f per source, %d beats total)\n",
+                          (int) tc.candidates.size(), (int) sources.size(),
+                          sources.empty() ? 0.0 : (double) tc.candidates.size() / (double) sources.size(),
+                          (int) bundle->feat.nBeats);
+        }
+        const auto& rmsv = bundle->feat.rmsEnergy;
+        const auto& cenv = bundle->feat.spectralCentroid;
+        const auto& onsv = bundle->feat.onsetStrength;
+        auto stepLog = [] (const std::vector<double>& v, int i, int j) -> double
+        {
+            if ((std::size_t) i >= v.size() || (std::size_t) j >= v.size()) return -1.0;
+            return std::abs (std::log (std::max (v[(std::size_t) j], 1e-9))
+                           - std::log (std::max (v[(std::size_t) i], 1e-9)));
+        };
+        auto stepLin = [] (const std::vector<double>& v, int i, int j) -> double
+        {
+            if ((std::size_t) i >= v.size() || (std::size_t) j >= v.size()) return -1.0;
+            return std::abs (v[(std::size_t) j] - v[(std::size_t) i]);
+        };
 
         juce::File outf (args.dumpComponentsCsv);
         outf.getParentDirectory().createDirectory();
@@ -642,10 +671,11 @@ int main (int argc, char** argv)
         s.setPosition (0);
         s.truncate();
         // Header: 12 components + composite quality + chroma_distance + energy_diff_db
+        // + sesja 115 raw steps (rms log step, centroid log step, onset abs step)
         s << "from_beat,to_beat,quality,"
              "waveform,successor,edge_splice,context,label,section,bar_align,"
              "energy,edge_energy,centroid,transient_continuity,mfcc_continuity,"
-             "chroma_distance,energy_diff_db\n";
+             "chroma_distance,energy_diff_db,rms_log_step,centroid_log_step,onset_step\n";
         for (const auto& kv : tc.candidates)
         {
             const auto& c = kv.second;
@@ -664,7 +694,10 @@ int main (int argc, char** argv)
               << juce::String (c.transient_continuity,  6) << ','
               << juce::String (c.mfcc_continuity,       6) << ','
               << juce::String (c.chroma_distance,       6) << ','
-              << juce::String (c.energy_diff_db,        3) << '\n';
+              << juce::String (c.energy_diff_db,        3) << ','
+              << juce::String (stepLog (rmsv, c.from_beat, c.to_beat), 6) << ','
+              << juce::String (stepLog (cenv, c.from_beat, c.to_beat), 6) << ','
+              << juce::String (stepLin (onsv, c.from_beat, c.to_beat), 6) << '\n';
         }
         std::fprintf (stderr, "[harness] wrote %s (%d pairs)\n",
                       args.dumpComponentsCsv.toRawUTF8(),
