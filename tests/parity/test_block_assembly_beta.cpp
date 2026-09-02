@@ -443,11 +443,174 @@ void test_assemble_outside_window_unclamp()
           "Unclamped path (allow_outside_window=true) includes outside-window beat 6");
 }
 
+// ─── Test 8: fragment_penalty_direction (DEV-094, sesja 119) ──────────────
+// The authored boundary keeps both blocks whole → zero penalty; a candidate
+// that truncates or extends pays frag_w × (dev_i + dev_j) exactly.
+void test_fragment_penalty_direction()
+{
+    std::printf("[8] fragment_penalty_direction (DEV-094)\n");
+    auto f = buildFixture();
+    std::vector<int> queue = { 0, 1 };
+
+    auto run = [&](double frag_w) {
+        BlockCompatInputs bin{};
+        wireInputs(bin, f);
+        bin.block_assembly_beta = true;
+        bin.block_sequence      = queue.data();
+        bin.n_block_sequence    = static_cast<int>(queue.size());
+        bin.fragment_penalty_weight     = frag_w;
+        bin.short_block_threshold_beats = 0;
+        bin.top_k_min_separation_beats  = 0;
+        bin.outside_window_beats        = 0;
+        bin.min_jump_beats              = 0;
+        bin.downbeat_only_splices       = false;
+        return computeBlockCompatibility(bin);
+    };
+    auto compat_zero = run(0.0);
+    auto compat_pos  = run(0.10);
+    const auto& pool0 = compat_zero.pools[0 * kNBlocks + 1];
+    const auto& pool1 = compat_pos.pools[0 * kNBlocks + 1];
+    check(!pool0.empty() && !pool1.empty(), "β path fills the junction pool");
+
+    const BlockInfo& b0 = f.blocks[0];
+    const BlockInfo& b1 = f.blocks[1];
+    bool authored_found = false, authored_zero = true, formula_ok = true, truncating_seen = false;
+    for (const auto& c0 : pool0) {
+        for (const auto& c1 : pool1) {
+            if (c0.from_beat != c1.from_beat || c0.to_beat != c1.to_beat) continue;
+            const double dev_i = std::min(1.0, std::abs(c0.from_beat + 1 - b0.end_beat) / (double) b0.n_beats);
+            const double dev_j = std::min(1.0, std::abs(c0.to_beat - b1.start_beat) / (double) b1.n_beats);
+            const double expected = c0.quality - 0.10 * (dev_i + dev_j);
+            if (std::abs(c1.quality - expected) > 1e-9) formula_ok = false;
+            if (c0.from_beat == b0.end_beat - 1 && c0.to_beat == b1.start_beat) {
+                authored_found = true;
+                if (std::abs(c1.quality - c0.quality) > 1e-12) authored_zero = false;
+            }
+            if (dev_i > 0.0 || dev_j > 0.0) truncating_seen = true;
+        }
+    }
+    check(authored_found, "authored boundary candidate survives in both pools");
+    check(authored_zero,  "authored boundary pays ZERO fragment penalty");
+    check(truncating_seen && formula_ok,
+          "off-boundary candidates pay frag_w x (dev_i + dev_j) (deviation as a fraction of the block)");
+}
+
+// Synthetic β compat (pools populated) for the joint-resolution tests.
+BlockCompatResult emptyBetaCompat()
+{
+    BlockCompatResult compat;
+    compat.n = kNBlocks;
+    const size_t nn  = static_cast<size_t>(kNBlocks) * kNBlocks;
+    const size_t nnk = nn * reamix::remix::BLOCK_TOP_K;
+    compat.quality.assign(nn, 0.0);
+    compat.splice_from.assign(nn, 0);
+    compat.splice_to.assign(nn, 0);
+    compat.top_k_quality.assign(nnk, 0.0);
+    compat.top_k_from.assign(nnk, 0);
+    compat.top_k_to.assign(nnk, 0);
+    compat.pools.assign(nn, {});
+    return compat;
+}
+
+reamix::remix::BlockJunctionCandidate cand(int from, int to, double q)
+{
+    reamix::remix::BlockJunctionCandidate c;
+    c.from_beat = from; c.to_beat = to; c.quality = q;
+    return c;
+}
+
+// ─── Test 9: joint_resolution_no_collapse (DEV-094) ───────────────────────
+// Independent picks would enter block 1 at beat 14 and leave it at beat 9
+// (inverted → one-beat collapse in the legacy assembler). The joint DP must
+// pick the only combination that keeps ≥ 4 beats: enter 8, exit 15.
+void test_joint_resolution_no_collapse()
+{
+    std::printf("[9] joint_resolution_no_collapse (DEV-094)\n");
+    auto f = buildFixture();
+    auto compat = emptyBetaCompat();
+    compat.pools[0 * kNBlocks + 1] = { cand(7, 14, 0.9), cand(7, 8, 0.6) };
+    compat.pools[1 * kNBlocks + 2] = { cand(9, 16, 0.9), cand(15, 16, 0.6) };
+    std::vector<int> queue = { 0, 1, 2 };
+
+    auto path = assembleBlocks(queue, f.blocks, f.beat_times.data(), kBeats, compat,
+                               0, nullptr, 1.0, /*allow_outside_window=*/true, /*min_keep_beats=*/4);
+    // Expected beats: 0..7, 8..15, 16..23 = 24 beats, monotone within blocks.
+    check(path.duration_beats == 24, "joint path keeps every block whole (24 beats)");
+    bool mono = true;
+    for (size_t i = 1; i < path.beat_indices.size(); ++i)
+        if (path.beat_indices[i] < path.beat_indices[i - 1] && path.beat_indices[i] != 8 && path.beat_indices[i] != 16)
+            mono = false;
+    check(mono, "no block collapses or inverts");
+    check(path.transitions.size() == 0 || path.transitions.size() == 2,
+          "continuations are not recorded as transitions");
+    // Both chosen candidates are the 0.6 ones → the DP paid the feasible price.
+    const double expected_cost = 0.0;   // (7,8) and (15,16) are continuations → no recorded cost
+    check(std::abs(path.total_cost - expected_cost) < 1e-12, "continuation junctions carry no jump cost");
+
+    // Now make the feasible picks non-adjacent so the metadata can be checked.
+    compat.pools[0 * kNBlocks + 1] = { cand(7, 14, 0.9), cand(7, 10, 0.6) };
+    compat.pools[1 * kNBlocks + 2] = { cand(9, 16, 0.9), cand(15, 18, 0.6) };
+    path = assembleBlocks(queue, f.blocks, f.beat_times.data(), kBeats, compat,
+                          0, nullptr, 1.0, true, 4);
+    bool meta_ok = path.transitions.size() == 2;
+    if (meta_ok) {
+        const auto& m0 = path.transition_metadata[path.transitions[0]];
+        const auto& m1 = path.transition_metadata[path.transitions[1]];
+        meta_ok = path.transitions[0] == std::make_pair(7, 10) && path.transitions[1] == std::make_pair(15, 18)
+               && m0.at("junction_idx") == 0.0 && m1.at("junction_idx") == 1.0
+               && m0.at("junction_fallback") == 0.0 && std::abs(m0.at("quality_score") - 0.6) < 1e-12
+               && m0.count("energy_diff_db") == 1 && m0.count("waveform_similarity") == 1;
+    }
+    check(meta_ok, "DP picks (7->10, 15->18); metadata carries junction_idx / quality / energy keys");
+}
+
+// ─── Test 10: empty_pool_falls_back_to_user_boundary (DEV-094) ────────────
+void test_empty_pool_fallback()
+{
+    std::printf("[10] empty_pool_fallback (DEV-094)\n");
+    auto f = buildFixture();
+    auto compat = emptyBetaCompat();   // pool (0,2) empty on purpose
+    std::vector<int> queue = { 0, 2 };
+    auto path = assembleBlocks(queue, f.blocks, f.beat_times.data(), kBeats, compat,
+                               0, nullptr, 1.0, true, 4);
+    bool ok = path.transitions.size() == 1
+           && path.transitions[0] == std::make_pair(7, 16)
+           && path.duration_beats == 16;
+    if (ok) {
+        const auto& m = path.transition_metadata[path.transitions[0]];
+        ok = m.at("junction_fallback") == 1.0 && m.at("quality_score") == 0.0;
+    }
+    check(ok, "all-rejected junction splices at the authored boundary (7->16), flagged, quality 0 (was beat 0)");
+}
+
+// ─── Test 11: forced_variation_uses_diverse_slot (DEV-094) ────────────────
+void test_forced_variation()
+{
+    std::printf("[11] forced_variation (DEV-094)\n");
+    auto f = buildFixture();
+    auto compat = emptyBetaCompat();
+    const size_t idx = 0 * kNBlocks + 2;
+    compat.pools[idx] = { cand(7, 16, 0.9), cand(5, 18, 0.7) };
+    const size_t base = idx * reamix::remix::BLOCK_TOP_K;
+    compat.top_k_quality[base] = 0.9; compat.top_k_from[base] = 7; compat.top_k_to[base] = 16;
+    compat.top_k_quality[base + 1] = 0.7; compat.top_k_from[base + 1] = 5; compat.top_k_to[base + 1] = 18;
+    std::vector<int> queue = { 0, 2 };
+    std::map<int, int> jv = { { 0, 1 } };
+    auto path = assembleBlocks(queue, f.blocks, f.beat_times.data(), kBeats, compat,
+                               0, &jv, 1.0, true, 4);
+    check(path.transitions.size() == 1 && path.transitions[0] == std::make_pair(5, 18),
+          "\"Try different splice\" forces the 2nd diverse slot (5->18)");
+    auto path0 = assembleBlocks(queue, f.blocks, f.beat_times.data(), kBeats, compat,
+                                0, nullptr, 1.0, true, 4);
+    check(path0.transitions.size() == 1 && path0.transitions[0] == std::make_pair(7, 16),
+          "without a variation the best candidate wins (7->16)");
+}
+
 }  // namespace
 
 int main()
 {
-    std::printf("test_block_assembly_beta — sesja 96 (ADR-081 STATUS UPDATE 4)\n");
+    std::printf("test_block_assembly_beta — sesja 96 (ADR-081 STATUS UPDATE 4) + sesja 119 (DEV-094)\n");
     test_default_field_value();
     test_legacy_completes();
     test_beta_distinct_from_legacy();
@@ -455,6 +618,10 @@ int main()
     test_min_jump_filter();
     test_lazy_compute();
     test_assemble_outside_window_unclamp();
+    test_fragment_penalty_direction();
+    test_joint_resolution_no_collapse();
+    test_empty_pool_fallback();
+    test_forced_variation();
     if (!kCheckPassed) {
         std::printf("test_block_assembly_beta: FAILED\n");
         return 1;

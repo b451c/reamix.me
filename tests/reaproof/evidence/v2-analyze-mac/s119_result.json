@@ -1,0 +1,13 @@
+[
+ {
+  "tag": "s119_run1",
+  "ok": false,
+  "item_len": 293.82666666666665,
+  "cache_hit": true,
+  "window_lost_at": 173.9,
+  "analyze_seconds": 173.9,
+  "window_alive": false,
+  "waveform_present": false,
+  "reaper_alive": true
+ }
+]

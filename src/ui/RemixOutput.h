@@ -27,6 +27,9 @@ struct RemixOutput
 {
     bool         ok           { false };
     juce::String errorMessage;
+    // Sesja 119 (DEV-095): non-fatal note shown next to "Remix ready"
+    // (e.g. queued blocks shorter than 2 beats were skipped).
+    juce::String warningMessage;
 
     // Inputs that produced this output (echoed for cache-key construction
     // and Insert-time staleness detection).

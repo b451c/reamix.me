@@ -195,6 +195,10 @@ void RemixPipeline::run()
                   0.0);
 
     reamix::remix::RemixPath path;
+    // Sesja 119 (DEV-096): Blocks-mode junction labels (from -> to block),
+    // indexed by junction; the metadata key "junction_idx" maps a transition
+    // back to its junction (adjacent continuations record no transition).
+    std::vector<std::pair<juce::String, juce::String>> blockJunctionLabels;
     try
     {
         const std::set<std::pair<int,int>>* blockedPtr =
@@ -225,9 +229,14 @@ void RemixPipeline::run()
 
             // Map UserBlocks → BlockInfo. Skip degenerate (n_beats < 2) blocks.
             // Disambiguate display_name by counting prior occurrences per kind.
+            // Sesja 119 (DEV-095): the queue indexes userBlocks, infos is the
+            // compacted list → keep a userIdx -> infoIdx map and report drops.
             std::vector<reamix::remix::BlockInfo> infos;
             infos.reserve (in_.userBlocks.size());
             std::map<int,int> kindCounts;
+            std::vector<int> infoIdxOfUser (in_.userBlocks.size(), -1);
+            std::vector<juce::String> infoDisplay;
+            int nDropped = 0;
 
             static const std::array<const char*, 12> kKindLabels = {
                 "intro", "verse", "pre-chorus", "chorus", "post-chorus",
@@ -239,7 +248,7 @@ void RemixPipeline::run()
                 const auto& ub = in_.userBlocks[bi];
                 const int sb = nearestBeatIdx (ub.startSec);
                 const int eb = nearestBeatIdx (ub.endSec);
-                if (eb - sb < 2) continue;
+                if (eb - sb < 2) { ++nDropped; continue; }
 
                 reamix::remix::BlockInfo info{};
                 info.segment_idx = (int) bi;
@@ -257,6 +266,9 @@ void RemixPipeline::run()
                 info.n_beats    = eb - sb;
                 info.duration_sec = info.end_sec - info.start_sec;
                 info.cluster_id = kindInt;
+                infoIdxOfUser[bi] = (int) infos.size();
+                infoDisplay.push_back (ub.labelOverride.has_value() && ub.labelOverride->isNotEmpty()
+                                           ? *ub.labelOverride : juce::String (info.label));
                 infos.push_back (info);
             }
 
@@ -305,12 +317,22 @@ void RemixPipeline::run()
                                                                                 : bundle.feat.edgeVocalOnsetStart.data();
             bin.edge_vocal_release_end = bundle.feat.edgeVocalReleaseEnd.empty() ? nullptr
                                                                                 : bundle.feat.edgeVocalReleaseEnd.data();
+            // Sesja 119 (DEV-096) — edge-resolution vocal activity for the
+            // shared vocal penalty (same inputs Region passes).
+            bin.edge_vocal_activity_start = bundle.feat.edgeVocalActivityStart.empty() ? nullptr
+                                                                                       : bundle.feat.edgeVocalActivityStart.data();
+            bin.edge_vocal_activity_end   = bundle.feat.edgeVocalActivityEnd.empty() ? nullptr
+                                                                                     : bundle.feat.edgeVocalActivityEnd.data();
 
             bin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
             bin.n_downbeats = (int) gridDownbeats.size();
             bin.time_signature = gridBarBeats;
 
-            bin.search_window_beats   = std::max (1, in_.spliceFlexBeats);
+            // Sesja 119 (DEV-096): every "bar-ish" beat constant derives from
+            // the measured bar (ADR-115 E5) instead of the 4/4 literals. The
+            // drift penalty is normalised by two bars (= the old W=8 at 4/4).
+            const int barBeats = std::max (1, gridBarBeats);
+            bin.search_window_beats   = 2 * barBeats;
             bin.drift_penalty_weight  = in_.driftPenaltyWeight;
 
             // ADR-058 — calibration weight override (sesja 71). nullptr →
@@ -322,24 +344,39 @@ void RemixPipeline::run()
             // ADR-081 (sesja 96) — β-model candidate-space expansion. Filter
             // queue first (used by lazy compute in β-mode). Default
             // block_assembly_beta=false preserves legacy ±W path.
+            // DEV-095 (sesja 119): remap the queue through the userIdx ->
+            // infoIdx map so a dropped short block cannot shift the others.
             std::vector<int> validQueue;
             validQueue.reserve (in_.userBlocksQueue.size());
+            int nSkippedQueue = 0;
             for (int q : in_.userBlocksQueue)
             {
-                if (q >= 0 && q < (int) infos.size())
-                    validQueue.push_back (q);
+                if (q >= 0 && q < (int) infoIdxOfUser.size() && infoIdxOfUser[(std::size_t) q] >= 0)
+                    validQueue.push_back (infoIdxOfUser[(std::size_t) q]);
+                else
+                    ++nSkippedQueue;
             }
             if (validQueue.size() < 2)
                 throw std::runtime_error ("Queue has fewer than 2 valid blocks");
+            if (nDropped > 0 || nSkippedQueue > 0)
+                out.warningMessage = juce::String (nSkippedQueue) + " queued block"
+                                   + (nSkippedQueue == 1 ? "" : "s")
+                                   + " shorter than 2 beats skipped";
+            for (std::size_t k = 0; k + 1 < validQueue.size(); ++k)
+                blockJunctionLabels.emplace_back (infoDisplay[(std::size_t) validQueue[k]],
+                                                  infoDisplay[(std::size_t) validQueue[k + 1]]);
 
             bin.block_assembly_beta = in_.block_assembly_beta;
+            bin.block_energy_gate   = in_.block_energy_gate;   // sesja 119
             // β-fields below have no effect when block_assembly_beta=false.
-            // Defaults match sesja-69 captured design + ADR-081 sketch.
+            // Sesja-69 captured design + ADR-081 sketch, in measured bars
+            // (sesja 119): outside window 2 bars, min jump / top-K separation /
+            // short-block threshold 1 bar.
             bin.fragment_penalty_weight    = 0.03;
-            bin.short_block_threshold_beats= 4;
-            bin.top_k_min_separation_beats = 4;
-            bin.outside_window_beats       = 8;
-            bin.min_jump_beats             = 4;
+            bin.short_block_threshold_beats= barBeats;
+            bin.top_k_min_separation_beats = barBeats;
+            bin.outside_window_beats       = 2 * barBeats;
+            bin.min_jump_beats             = barBeats;
             bin.downbeat_only_splices      = true;
             bin.block_sequence_lazy        = true;
             bin.block_sequence             = validQueue.empty() ? nullptr : validQueue.data();
@@ -355,7 +392,8 @@ void RemixPipeline::run()
                                                      ? nullptr
                                                      : &in_.junctionVariations,
                                                    in_.edit_length_jump_scale,   // ADR-084 sesja 93
-                                                   /*allow_outside_window=*/in_.block_assembly_beta);
+                                                   /*allow_outside_window=*/in_.block_assembly_beta,
+                                                   /*min_keep_beats=*/barBeats);   // DEV-094 sesja 119
             (void) blockedPtr; // assembleBlocks does not consume blocked set
         }
         else if (regionMode)
@@ -825,6 +863,7 @@ void RemixPipeline::run()
             const int tb = tr.second;
             float quality   = 0.0f;
             float energyDb  = 0.0f;
+            int   junction  = -1;
             auto it = path.transition_metadata.find (tr);
             if (it != path.transition_metadata.end())
             {
@@ -832,13 +871,23 @@ void RemixPipeline::run()
                 if (qit != it->second.end()) quality = (float) qit->second;
                 auto eit = it->second.find ("energy_diff_db");
                 if (eit != it->second.end()) energyDb = (float) eit->second;
+                auto jit = it->second.find ("junction_idx");
+                if (jit != it->second.end()) junction = (int) jit->second;
             }
             out.transitionFromBeats.push_back (fb);
             out.transitionToBeats.push_back (tb);
             out.transitionQualities.push_back (quality);
             out.transitionEnergyDiffsDb.push_back (energyDb);
-            out.transitionFromLabels.push_back (labelAtBeat (fb));
-            out.transitionToLabels.push_back (labelAtBeat (tb));
+            if (junction >= 0 && junction < (int) blockJunctionLabels.size())
+            {
+                out.transitionFromLabels.push_back (blockJunctionLabels[(std::size_t) junction].first);
+                out.transitionToLabels.push_back (blockJunctionLabels[(std::size_t) junction].second);
+            }
+            else
+            {
+                out.transitionFromLabels.push_back (labelAtBeat (fb));
+                out.transitionToLabels.push_back (labelAtBeat (tb));
+            }
         }
     }
 

@@ -3389,9 +3389,11 @@ void MainComponent::applyRemixToUi (const reamix::ui::RemixOutput& remix)
         waveformView_.setUserBlockSplices ({});
     }
 
-    const juce::String msg = "Remix ready: "
-                           + juce::String (remix.nTransitions) + " splices, "
-                           + rxFmt (remix.remixDurationSec);
+    juce::String msg = "Remix ready: "
+                     + juce::String (remix.nTransitions) + " splices, "
+                     + rxFmt (remix.remixDurationSec);
+    if (remix.warningMessage.isNotEmpty())   // DEV-095 sesja 119
+        msg += " - " + remix.warningMessage;
     statusBar_.setText (msg);
 }
 

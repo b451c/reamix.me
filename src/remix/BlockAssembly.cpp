@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>    // dev-only REAMIX_BLOCKS_DEBUG dump (sesja 119)
+#include <cstdlib>
 #include <map>
 #include <optional>
 #include <set>
@@ -15,6 +17,8 @@
 
 #include "dsp/WaveformXcorr.h"
 #include "remix/Quality.h"
+#include "remix/PairScorer.h"   // sesja 119 (DEV-096) shared pair scorer
+#include "remix/RegionCost.h"   // REGION_CHROMA_PREFILTER (Region C2 gate, shared sesja 119)
 #include "remix/SignalNorm.h"  // ADR-115 v2 scoring
 #include "remix/TransitionCost.h"  // chromaRange + EDGE_ENERGY_SATURATION_DB + N_CHROMA_DIMS
 
@@ -407,6 +411,190 @@ getSpliceK(const BlockCompatResult& compat, int i, int j, int k)
             static_cast<int>(compat.top_k_to  [base + k])};
 }
 
+
+// Sesja 119 (DEV-094): joint junction resolution for the β path.
+//
+// The legacy assembler takes block k's entry from junction (k-1, k) and its
+// exit from junction (k, k+1) as two unrelated top-K lookups, then clamps
+// `exit = max(entry, exit)`: with 2-bar outside windows the exit can land
+// before the entry and the block silently collapses to one beat, or an all-
+// rejected junction reads the zero-initialised slot and splices to beat 0.
+// Here every junction keeps its full sorted candidate pool and a small DP
+// over (junction, candidate) picks the cheapest combination in which every
+// block keeps at least `min_keep_beats` beats (one measured bar, or the
+// whole block when shorter). Cost per junction = scale x (1 - quality), the
+// quality already carrying the drift / fragment penalties, so whenever the
+// independent picks are feasible the DP returns exactly them.
+//
+// "Try different splice" (variation / junction_variations) forces the
+// chosen diverse top-K slot at that junction; the other junctions re-solve
+// around it. An empty pool becomes the flagged user boundary
+// (`junction_fallback` = 1, quality 0). If no combination is feasible even
+// with a one-beat minimum, the independent picks are used with the legacy
+// clamp so the remix still renders.
+struct JointCandidate
+{
+    BlockJunctionCandidate c;
+    bool fallback = false;
+};
+
+RemixPath assembleBlocksJoint(const std::vector<int>&        seq,
+                              const std::vector<BlockInfo>&  blocks,
+                              int                            n_beats,
+                              const BlockCompatResult&       compat,
+                              int                            variation,
+                              const std::map<int, int>*      junction_variations,
+                              double                         edit_length_jump_scale,
+                              int                            min_keep_beats)
+{
+    RemixPath path;
+    const int m = static_cast<int>(seq.size());
+    const int J = m - 1;
+
+    // Per-junction pools (forced slot, full pool, or flagged fallback).
+    std::vector<std::vector<JointCandidate>> P(static_cast<std::size_t>(std::max(0, J)));
+    for (int k = 0; k < J; ++k) {
+        const int i = seq[static_cast<std::size_t>(k)];
+        const int j = seq[static_cast<std::size_t>(k + 1)];
+        const auto& pool = compat.pools[static_cast<std::size_t>(i) * compat.n + j];
+        auto& Pk = P[static_cast<std::size_t>(k)];
+
+        int kk = variation;
+        if (junction_variations != nullptr) {
+            auto it = junction_variations->find(k);
+            if (it != junction_variations->end()) kk = it->second;
+        }
+        if (kk > 0 && !pool.empty()) {
+            if (kk >= BLOCK_TOP_K) kk = BLOCK_TOP_K - 1;
+            const std::size_t base = (static_cast<std::size_t>(i) * compat.n + j) * BLOCK_TOP_K;
+            while (kk > 0 && compat.top_k_quality[base + kk] <= 0.0) --kk;
+            if (kk > 0) {
+                const int ff = static_cast<int>(compat.top_k_from[base + kk]);
+                const int tt = static_cast<int>(compat.top_k_to  [base + kk]);
+                for (const auto& c : pool)
+                    if (c.from_beat == ff && c.to_beat == tt) { Pk.push_back({c, false}); break; }
+                if (Pk.empty()) {   // diverse slot beyond the pool cap
+                    BlockJunctionCandidate c;
+                    c.from_beat = ff; c.to_beat = tt; c.quality = compat.top_k_quality[base + kk];
+                    Pk.push_back({c, false});
+                }
+            }
+        }
+        if (Pk.empty()) {
+            for (const auto& c : pool) Pk.push_back({c, false});
+        }
+        if (Pk.empty()) {
+            BlockJunctionCandidate c;
+            c.from_beat = blocks[static_cast<std::size_t>(i)].end_beat - 1;
+            c.to_beat   = blocks[static_cast<std::size_t>(j)].start_beat;
+            c.quality   = 0.0;
+            Pk.push_back({c, true});
+        }
+    }
+
+    auto entryOf = [&](int b, int choice_prev) {
+        return b == 0 ? blocks[static_cast<std::size_t>(seq[0])].start_beat
+                      : P[static_cast<std::size_t>(b - 1)][static_cast<std::size_t>(choice_prev)].c.to_beat;
+    };
+    auto exitOf = [&](int b, int choice) {
+        return b == J ? blocks[static_cast<std::size_t>(seq[static_cast<std::size_t>(J)])].end_beat - 1
+                      : P[static_cast<std::size_t>(b)][static_cast<std::size_t>(choice)].c.from_beat;
+    };
+
+    std::vector<int> choice(static_cast<std::size_t>(std::max(0, J)), 0);
+    bool feasible = (J == 0);
+
+    for (int attempt = 0; attempt < 2 && !feasible && J > 0; ++attempt) {
+        auto minKeep = [&](int b) {
+            const int len = blocks[static_cast<std::size_t>(seq[static_cast<std::size_t>(b)])].n_beats;
+            return attempt == 0 ? std::max(1, std::min(len, min_keep_beats)) : 1;
+        };
+        auto ok = [&](int b, int entry, int exit) { return exit - entry + 1 >= minKeep(b); };
+
+        constexpr double kInf = 1e300;
+        std::vector<std::vector<double>> best(static_cast<std::size_t>(J));
+        std::vector<std::vector<int>>    from(static_cast<std::size_t>(J));
+        for (int k = 0; k < J; ++k) {
+            const auto& Pk = P[static_cast<std::size_t>(k)];
+            best[static_cast<std::size_t>(k)].assign(Pk.size(), kInf);
+            from[static_cast<std::size_t>(k)].assign(Pk.size(), -1);
+            for (std::size_t c = 0; c < Pk.size(); ++c) {
+                const double cost = edit_length_jump_scale * (1.0 - Pk[c].c.quality);
+                if (k == 0) {
+                    if (ok(0, entryOf(0, 0), exitOf(0, static_cast<int>(c))))
+                        best[0][c] = cost;
+                    continue;
+                }
+                const auto& Pp = P[static_cast<std::size_t>(k - 1)];
+                for (std::size_t cp = 0; cp < Pp.size(); ++cp) {
+                    const double prev = best[static_cast<std::size_t>(k - 1)][cp];
+                    if (prev >= kInf) continue;
+                    if (!ok(k, entryOf(k, static_cast<int>(cp)), exitOf(k, static_cast<int>(c)))) continue;
+                    if (prev + cost < best[static_cast<std::size_t>(k)][c]) {
+                        best[static_cast<std::size_t>(k)][c] = prev + cost;
+                        from[static_cast<std::size_t>(k)][c] = static_cast<int>(cp);
+                    }
+                }
+            }
+        }
+        // Last block: entry from the last junction, exit at its authored end.
+        int best_c = -1;
+        double best_v = kInf;
+        const auto& Pl = P[static_cast<std::size_t>(J - 1)];
+        for (std::size_t c = 0; c < Pl.size(); ++c) {
+            const double v = best[static_cast<std::size_t>(J - 1)][c];
+            if (v >= kInf) continue;
+            if (!ok(J, entryOf(J, static_cast<int>(c)), exitOf(J, 0))) continue;
+            if (v < best_v) { best_v = v; best_c = static_cast<int>(c); }
+        }
+        if (best_c < 0) continue;
+        feasible = true;
+        for (int k = J - 1; k >= 0; --k) {
+            choice[static_cast<std::size_t>(k)] = best_c;
+            best_c = from[static_cast<std::size_t>(k)][static_cast<std::size_t>(best_c)];
+        }
+    }
+    // Infeasible even at one beat per block: independent best picks (choice
+    // stays 0 = highest quality) with the legacy clamp below.
+
+    std::vector<int> all_beats;
+    double total_cost = 0.0;
+    for (int b = 0; b < m; ++b) {
+        const int block_idx = seq[static_cast<std::size_t>(b)];
+        int entry_beat = entryOf(b, b > 0 ? choice[static_cast<std::size_t>(b - 1)] : 0);
+        int exit_beat  = exitOf(b, b < J ? choice[static_cast<std::size_t>(b)] : 0);
+        entry_beat = std::max(0, std::min(entry_beat, n_beats - 1));
+        exit_beat  = std::max(feasible ? 0 : entry_beat, std::min(exit_beat, n_beats - 1));
+        if (exit_beat < entry_beat) exit_beat = entry_beat;   // defensive (feasible DP never triggers)
+
+        if (b > 0 && !all_beats.empty()) {
+            const int last_beat  = all_beats.back();
+            const int first_beat = entry_beat;
+            if (first_beat != last_beat + 1) {
+                const auto& jc = P[static_cast<std::size_t>(b - 1)][static_cast<std::size_t>(choice[static_cast<std::size_t>(b - 1)])];
+                path.transitions.emplace_back(last_beat, first_beat);
+                total_cost += edit_length_jump_scale * (1.0 - jc.c.quality);
+                auto& meta = path.transition_metadata[{last_beat, first_beat}];
+                meta["quality_score"]       = jc.c.quality;
+                meta["block_transition"]    = BLOCK_TRANSITION_MARKER;
+                meta["energy_diff_db"]      = jc.c.energy_diff_db;
+                meta["waveform_similarity"] = jc.c.waveform_sim;
+                meta["chroma_distance"]     = jc.c.chroma_distance;
+                meta["total_cost"]          = 1.0 - jc.c.quality;
+                meta["junction_idx"]        = static_cast<double>(b - 1);
+                meta["junction_fallback"]   = jc.fallback ? 1.0 : 0.0;
+            }
+        }
+        for (int bb = entry_beat; bb <= exit_beat; ++bb) all_beats.push_back(bb);
+        (void) block_idx;
+    }
+
+    path.beat_indices   = std::move(all_beats);
+    path.total_cost     = total_cost;
+    path.duration_beats = static_cast<int>(path.beat_indices.size());
+    return path;
+}
+
 } // namespace
 
 // --- Public API implementations -----------------------------------------
@@ -646,6 +834,15 @@ computeBlockCompatibility(const BlockCompatInputs& in)
     // downbeat-only filter, and (when block_sequence_lazy == true) lazy
     // compute restricted to (seq[k], seq[k+1]) junctions.
     //
+    // Sesja 119 (DEV-094 / DEV-096): the β path scores every candidate with
+    // the pair scorer shared with Region (remix/PairScorer.h) - v2 successor-
+    // view energy gate, p98 loudness reject, chroma prefilter, track-level
+    // vocal gate - and keeps the full sorted candidate pool per junction
+    // (`pools`, capped at BLOCK_POOL_CAP) for the joint resolution in
+    // assembleBlocks. The legacy (non-v2) β path keeps the graduated energy
+    // penalty instead of the hard gate so the harness "legacy engine" rows
+    // keep their meaning.
+    //
     // Default block_assembly_beta=false → legacy ±W path runs unchanged
     // (bit-exact baseline + Python parity preserved).
     if (in.block_assembly_beta) {
@@ -656,6 +853,52 @@ computeBlockCompatibility(const BlockCompatInputs& in)
         const double frag_w      = in.fragment_penalty_weight;
         const bool downbeat_only =
             in.downbeat_only_splices && !db_set.empty() && !pre_db_set.empty();
+
+        // Track-level vocal detection (Region rule, region_cost.py:98-102).
+        bool track_has_vocals = false;
+        if (in.vocal_activity != nullptr) {
+            double max_va = 0.0;
+            for (int b = 0; b < n_beats; ++b) max_va = std::max(max_va, in.vocal_activity[b]);
+            track_has_vocals = max_va >= TRACK_VOCAL_THRESHOLD;
+        }
+
+        PairScorerTrack track{};
+        track.n_total             = n_beats;
+        track.n_features          = in.n_features;
+        track.features            = in.features;
+        track.boundary_waveforms  = in.boundary_waveforms;
+        track.n_samples_per_bnd   = in.n_samples_per_bnd;
+        track.max_lag             = max_lag;
+        track.has_waveforms       = has_wf;
+        track.edge_db_end         = ctx.edge_db_end;
+        track.edge_db_start       = ctx.edge_db_start;
+        track.edge_features_start = in.edge_features_start;
+        track.edge_features_end   = in.edge_features_end;
+        track.n_edge_features     = in.n_edge_features;
+        track.rms_energy          = in.rms_energy;
+        track.spectral_centroid   = in.spectral_centroid;
+        track.onset_strength      = in.onset_strength;
+        track.vocal_activity      = in.vocal_activity;
+        track.edge_vocal_activity_start = in.edge_vocal_activity_start;
+        track.edge_vocal_activity_end   = in.edge_vocal_activity_end;
+        track.edge_vocal_onset_start    = in.edge_vocal_onset_start;
+        track.edge_vocal_release_end    = in.edge_vocal_release_end;
+        track.onset_norm          = ctx.onset_norm;
+        track.onset_norm_n        = ctx.onset_norm_n;
+        track.mfcc_continuity_matrix   = ctx.mfcc_continuity_matrix;
+        track.chroma_continuity_matrix = ctx.chroma_continuity_matrix;
+        track.ctx_lo              = 0;
+        track.ctx_hi              = n_beats;
+        track.v2                  = in.v2_scoring;
+        track.baselines           = ctx.baselines;
+        track.weights             = ctx.quality_weights != nullptr ? ctx.quality_weights
+                                  : (in.v2_scoring ? &kV2QualityWeights : &kDefaultQualityWeights);
+        track.track_has_vocals    = track_has_vocals;
+        track.gate                = (in.v2_scoring && in.block_energy_gate) ? PairGate::SuccessorView
+                                                                             : PairGate::None;
+        track.graduated_energy_penalty = ! in.v2_scoring;
+
+        out.pools.assign(nn, {});
 
         // Build the (i, j) pair list. Lazy mode = only the junctions in the
         // user-arranged block sequence; full mode = n × n.
@@ -704,10 +947,11 @@ computeBlockCompatibility(const BlockCompatInputs& in)
             const int bj_lo = std::max(b_start - W_out, 0);
             const int bj_hi = std::min(bj_block.end_beat + W_out, n_beats);
 
-            std::vector<std::array<double, 3>> candidates;
-            // Full interior search can produce many candidates; reserve
-            // proportional to range product but capped (worst case is large
-            // for whole-track blocks but we throw away below TOP_K anyway).
+            const double label_match =
+                (bi_block.label == bj_block.label && bi_block.label != BLOCK_LABEL_UNKNOWN) ? 1.0 : 0.0;
+            const double section_sim = label_match * BLOCK_SECTION_SIM_SCALE + BLOCK_SECTION_SIM_BIAS;
+
+            std::vector<BlockJunctionCandidate> candidates;
             const int est = std::max(0, (bi_hi - bi_lo)) * std::max(0, (bj_hi - bj_lo));
             candidates.reserve(static_cast<std::size_t>(std::min(est, 4096)));
 
@@ -725,10 +969,27 @@ computeBlockCompatibility(const BlockCompatInputs& in)
                         if (std::abs(bj - bi) < min_jump) continue;
                     }
 
-                    double q = scoreJunction(
-                        bi, bj,
-                        bi_block.label, bj_block.label,
-                        ctx);
+                    // Chroma prefilter (Region C2, REGION_CHROMA_PREFILTER):
+                    // row-shifted chroma cosine distance between the beat
+                    // after the cut and the landing beat.
+                    const int sb = std::min(bi + 1, n_beats - 1);
+                    const double* cn_src = chroma_normed.data() + static_cast<std::size_t>(sb) * n_chroma;
+                    const double* cn_tgt = chroma_normed.data() + static_cast<std::size_t>(bj) * n_chroma;
+                    double cdot = 0.0;
+                    for (int k = 0; k < n_chroma; ++k) cdot += cn_src[k] * cn_tgt[k];
+                    const double chroma_distance = 1.0 - std::clamp(cdot, -1.0, 1.0);
+                    if (chroma_distance > REGION_CHROMA_PREFILTER) continue;
+
+                    PairScorerRequest req{};
+                    req.abs_i       = bi;
+                    req.abs_j       = bj;
+                    req.label_match = label_match;
+                    req.section_sim = section_sim;
+                    req.bar_aligned =
+                        (pre_db_set.count(bi) > 0 && db_set.count(bj) > 0) ? 1.0 : 0.0;
+                    const PairScore score = scorePair(track, req);
+                    if (score.rejected) continue;
+                    double q = score.quality;
 
                     // Drift penalty (ADR-051) preserved in β-mode for
                     // continuity with legacy path semantics. drift_w == 0
@@ -741,46 +1002,53 @@ computeBlockCompatibility(const BlockCompatInputs& in)
                         q -= drift_w * drift;
                     }
 
-                    // Fragment-preservation penalty (sesja-69 captured
-                    // design). Outside-block candidates land at clamp
-                    // boundary (kept = 1, neutral). Bypassed for short
-                    // blocks (no meaningful interior).
+                    // Fragment penalty (sesja-69 design, fixed sesja 119 /
+                    // DEV-094): the sesja-96 formula measured the DROPPED
+                    // fraction as "kept", so the authored boundary paid the
+                    // full penalty and truncation paid none. Now dev_i = how
+                    // far the cut sits from the authored end of block i, as a
+                    // fraction of the block length (truncation and extension
+                    // alike - an extra bar changes a 2-bar block, not a 16-bar
+                    // one), dev_j the same for the authored start of block j.
+                    // The authored boundary (bi = end_i - 1, bj = start_j) is
+                    // free. Bypassed for short blocks (no meaningful interior).
                     if (!bypass_short && frag_w > 0.0) {
                         const double len_i = std::max(1, bi_block.n_beats);
                         const double len_j = std::max(1, bj_block.n_beats);
-                        double kept_i = (double) (a_end - bi) / len_i;
-                        double kept_j = (double) (bj - b_start) / len_j;
-                        if (kept_i < 0.0) kept_i = 0.0;
-                        if (kept_i > 1.0) kept_i = 1.0;
-                        if (kept_j < 0.0) kept_j = 0.0;
-                        if (kept_j > 1.0) kept_j = 1.0;
-                        q -= frag_w * ((1.0 - kept_i) + (1.0 - kept_j));
+                        const double dev_i = std::min(1.0, std::abs(bi + 1 - a_end) / len_i);
+                        const double dev_j = std::min(1.0, std::abs(bj - b_start) / len_j);
+                        q -= frag_w * (dev_i + dev_j);
                     }
 
                     if (q > 0.0) {
-                        candidates.push_back({q,
-                                              static_cast<double>(bi),
-                                              static_cast<double>(bj)});
+                        BlockJunctionCandidate c;
+                        c.from_beat       = bi;
+                        c.to_beat         = bj;
+                        c.quality         = q;
+                        c.energy_diff_db  = score.energy_diff_db;
+                        c.waveform_sim    = score.waveform_sim;
+                        c.chroma_distance = chroma_distance;
+                        candidates.push_back(c);
                     }
                 }
             }
 
             // Sort by quality DESC (stable, matches Python Timsort).
             std::stable_sort(candidates.begin(), candidates.end(),
-                [](const auto& a, const auto& b) { return a[0] > b[0]; });
+                [](const auto& a, const auto& b) { return a.quality > b.quality; });
 
             // Top-K spatial diversity: greedy fill ensures ≥ min_sep beats
             // separation between selected (bi, bj) tuples. Preserves
             // highest-quality candidate first.
-            std::vector<std::array<double, 3>> selected;
+            std::vector<BlockJunctionCandidate> selected;
             selected.reserve(BLOCK_TOP_K);
             for (const auto& cand : candidates) {
                 if ((int) selected.size() >= BLOCK_TOP_K) break;
                 bool too_close = false;
                 if (min_sep > 0) {
                     for (const auto& sel : selected) {
-                        const int dbi = std::abs((int) cand[1] - (int) sel[1]);
-                        const int dbj = std::abs((int) cand[2] - (int) sel[2]);
+                        const int dbi = std::abs(cand.from_beat - sel.from_beat);
+                        const int dbj = std::abs(cand.to_beat - sel.to_beat);
                         if (dbi < min_sep && dbj < min_sep) {
                             too_close = true;
                             break;
@@ -793,18 +1061,50 @@ computeBlockCompatibility(const BlockCompatInputs& in)
             const std::size_t base_k =
                 (static_cast<std::size_t>(i) * n + j) * BLOCK_TOP_K;
             for (std::size_t k = 0; k < selected.size(); ++k) {
-                out.top_k_quality[base_k + k] = selected[k][0];
-                out.top_k_from   [base_k + k] = static_cast<int64_t>(selected[k][1]);
-                out.top_k_to     [base_k + k] = static_cast<int64_t>(selected[k][2]);
+                out.top_k_quality[base_k + k] = selected[k].quality;
+                out.top_k_from   [base_k + k] = static_cast<int64_t>(selected[k].from_beat);
+                out.top_k_to     [base_k + k] = static_cast<int64_t>(selected[k].to_beat);
             }
 
             const std::size_t idx2 = static_cast<std::size_t>(i) * n + j;
+
+            // Dev-only junction diagnostic (sesja 119, DEV-094 / DEV-096):
+            // REAMIX_BLOCKS_DEBUG=<path> appends, per block pair, the score
+            // of the authored boundary (or the gate that rejected it), the
+            // pool size and the five best candidates.
+            if (const char* dbg = std::getenv("REAMIX_BLOCKS_DEBUG")) {
+                if (FILE* f = std::fopen(dbg, "a")) {
+                    PairScorerRequest areq{};
+                    areq.abs_i = core_exit; areq.abs_j = core_entry;
+                    areq.label_match = label_match; areq.section_sim = section_sim;
+                    areq.bar_aligned = (pre_db_set.count(core_exit) > 0 && db_set.count(core_entry) > 0) ? 1.0 : 0.0;
+                    const PairScore as = scorePair(track, areq);
+                    std::fprintf(f, "# pair %d(%s %d..%d) -> %d(%s %d..%d): authored (%d,%d) %s q=%.4f edb=%.2f bar=%d | pool=%d\n",
+                                 i, bi_block.label.c_str(), bi_block.start_beat, a_end,
+                                 j, bj_block.label.c_str(), b_start, bj_block.end_beat,
+                                 core_exit, core_entry,
+                                 as.rejected ? (as.gate == 1 ? "GATE:energy" : "GATE:loudness") : "ok",
+                                 as.quality, as.energy_diff_db, (int) areq.bar_aligned,
+                                 static_cast<int>(candidates.size()));
+                    for (std::size_t k = 0; k < candidates.size() && k < 5; ++k)
+                        std::fprintf(f, "#   %d -> %d  q=%.4f  edb=%.2f  cd=%.3f  drift=%d\n",
+                                     candidates[k].from_beat, candidates[k].to_beat, candidates[k].quality,
+                                     candidates[k].energy_diff_db, candidates[k].chroma_distance,
+                                     std::abs(candidates[k].from_beat - core_exit) + std::abs(candidates[k].to_beat - core_entry));
+                    std::fclose(f);
+                }
+            }
+
+            if (candidates.size() > static_cast<std::size_t>(BLOCK_POOL_CAP))
+                candidates.resize(static_cast<std::size_t>(BLOCK_POOL_CAP));
+            out.pools[idx2] = std::move(candidates);
             if (!selected.empty()) {
-                out.quality    [idx2] = selected[0][0];
-                out.splice_from[idx2] = static_cast<int64_t>(selected[0][1]);
-                out.splice_to  [idx2] = static_cast<int64_t>(selected[0][2]);
+                out.quality    [idx2] = selected[0].quality;
+                out.splice_from[idx2] = static_cast<int64_t>(selected[0].from_beat);
+                out.splice_to  [idx2] = static_cast<int64_t>(selected[0].to_beat);
             } else {
-                // Fallback to user boundary (matches legacy Python L270-271).
+                // No survivor: the user boundary is the fallback. assembleBlocks
+                // synthesises the flagged candidate from the empty pool.
                 out.splice_from[idx2] = static_cast<int64_t>(a_end - 1);
                 out.splice_to  [idx2] = static_cast<int64_t>(b_start);
             }
@@ -915,12 +1215,25 @@ assembleBlocks(const std::vector<int>&              block_sequence,
                int                                  variation,
                const std::map<int, int>*            junction_variations,
                double                               edit_length_jump_scale,
-               bool                                 allow_outside_window)
+               bool                                 allow_outside_window,
+               int                                  min_keep_beats)
 {
     RemixPath path;
 
     // PARITY: block_assembly.py:439-443 — empty-in → empty-out.
     if (block_sequence.empty() || blocks.empty()) return path;
+
+    // Sesja 119 (DEV-094): β compat carries per-junction pools → joint path.
+    if (!compat.pools.empty()) {
+        std::vector<int> seq;
+        seq.reserve(block_sequence.size());
+        for (int b : block_sequence)
+            if (b >= 0 && b < static_cast<int>(blocks.size())) seq.push_back(b);
+        if (seq.empty()) return path;
+        return assembleBlocksJoint(seq, blocks, n_beats, compat, variation,
+                                   junction_variations, edit_length_jump_scale,
+                                   std::max(1, min_keep_beats));
+    }
 
     const int n_seq = static_cast<int>(block_sequence.size());
     std::vector<int> all_beats;

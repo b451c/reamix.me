@@ -127,6 +127,9 @@ public:
         // for parity tests + rollback safety). No effect on Duration /
         // Region modes (Block branch only).
         bool   block_assembly_beta    = true;
+        // Sesja 119 (DEV-096) — Region successor-view hard gate on block
+        // junctions; default off (see BlockCompatInputs::block_energy_gate).
+        bool   block_energy_gate      = false;
     };
 
     using ProgressCb = std::function<void (juce::String label, double p01)>;

@@ -1660,6 +1660,7 @@ if(REAMIX_BUILD_TESTS)
     tests/parity/test_region_optimizer.cpp
     src/remix/RegionOptimizer.cpp
     src/remix/RegionCost.cpp
+    src/remix/PairScorer.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
     src/remix/BeatGrid.cpp
@@ -1726,6 +1727,7 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_block_assembly
     tests/parity/test_block_assembly.cpp
     src/remix/BlockAssembly.cpp
+    src/remix/PairScorer.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
     src/remix/BeatGrid.cpp
@@ -2078,6 +2080,7 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_block_assembly_beta
     tests/parity/test_block_assembly_beta.cpp
     src/remix/BlockAssembly.cpp
+    src/remix/PairScorer.cpp
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
@@ -2319,6 +2322,7 @@ if(ORT_FOUND)
     src/remix/RepetitionPrior.cpp
     src/remix/BeatGrid.cpp
     src/remix/RegionCost.cpp
+    src/remix/PairScorer.cpp
     src/remix/LoopSpots.cpp
     src/ui/LoopSpotsBuilder.cpp
     src/analysis/Recurrence.cpp

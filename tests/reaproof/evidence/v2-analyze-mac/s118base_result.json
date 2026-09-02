@@ -1,0 +1,12 @@
+[
+ {
+  "tag": "s118base_run1",
+  "ok": true,
+  "item_len": 293.82666666666665,
+  "cache_hit": true,
+  "analyze_seconds": 241.4,
+  "window_alive": true,
+  "waveform_present": true,
+  "reaper_alive": true
+ }
+]

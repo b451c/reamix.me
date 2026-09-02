@@ -172,6 +172,24 @@ struct BlockInfo
 //   - TopK[i, j, k]  = top_k[(i * n + j) * K + k].
 //
 // Zero-initialization on unpopulated slots matches Python `np.zeros` default.
+// Sesja 119 (DEV-094) — one scored junction candidate of the β path.
+// `quality` already carries the drift / fragment penalties.
+struct BlockJunctionCandidate
+{
+    int    from_beat       = 0;
+    int    to_beat         = 0;
+    double quality         = 0.0;
+    double energy_diff_db  = 0.0;   // |end(from) - start(to)| edge view (metadata)
+    double waveform_sim    = 0.0;
+    double chroma_distance = 0.0;
+};
+
+// Sorted candidates kept per junction for the joint resolution (DEV-094).
+// 64 = comfortably more than the ~30 bar-aligned pairs two 8-bar blocks with
+// 2-bar outside windows produce, so a feasible entry < exit combination is
+// always available when one exists. C++-canonical (ADR-065).
+inline constexpr int BLOCK_POOL_CAP = 64;
+
 struct BlockCompatResult
 {
     int n = 0;   // = number of blocks
@@ -183,6 +201,12 @@ struct BlockCompatResult
     std::vector<double>  top_k_quality; // (n, n, BLOCK_TOP_K)
     std::vector<int64_t> top_k_from;
     std::vector<int64_t> top_k_to;
+
+    // Sesja 119 (DEV-094): full sorted candidate pool per pair, β path only
+    // (empty on the legacy ±W path → assembleBlocks keeps the Python-parity
+    // assembler). An empty inner vector = no survivor → user-boundary
+    // fallback flagged in the metadata.
+    std::vector<std::vector<BlockJunctionCandidate>> pools;
 };
 
 // Optional inputs for the compatibility scoring.
@@ -235,6 +259,12 @@ struct BlockCompatInputs
     const double* edge_vocal_onset_start;
     const double* edge_vocal_release_end;
 
+    // Sesja 119 (DEV-096) — edge-resolution vocal activity for the shared
+    // vocal penalty (Region passes these; β path only, nullptr = beat-level
+    // fallback inside computeVocalPenalty).
+    const double* edge_vocal_activity_start = nullptr;
+    const double* edge_vocal_activity_end   = nullptr;
+
     // OPTIONAL DOWNBEATS (seconds) — used for bar-aligned scoring.
     const double* downbeats;            // (n_db,) f64 seconds
     int           n_downbeats;
@@ -249,6 +279,14 @@ struct BlockCompatInputs
     // chosen among allowed targets only. false = legacy Python-parity path.
     bool v2_scoring = false;
 
+    // Sesja 119 (DEV-096) — β path, v2 only: apply the Region successor-view
+    // 8 dB hard gate to block junctions. Default false: a user-arranged
+    // section change (verse -> chorus) is a loudness step by design, and the
+    // gate rejected the authored Billie Jean boundaries (11 / 15 dB) so the
+    // engine cut a bar early instead. The relative edge-energy signal and the
+    // p98 loudness reject (ADR-115 E1 / E2) stay on either way. Harness key
+    // "blocks_energy_gate" flips it for the blinded A/B/C.
+    bool block_energy_gate = false;
 
     // ADR-051 (sesja 61) — junction search-window radius (beats either side
     // of the user-authored boundary). Default = BLOCK_SEARCH_WINDOW_BEATS to
@@ -281,11 +319,13 @@ struct BlockCompatInputs
 
     // β-fields below have NO effect when block_assembly_beta == false.
 
-    // Linear fragment-preservation soft cost. quality -=
-    //   fragment_penalty_weight × ((1 - kept_i) + (1 - kept_j))
-    // where kept_i = (block_i.end - bi) / block_i.length (clamped [0,1]),
-    // kept_j = (bj - block_j.start) / block_j.length (clamped [0,1]).
-    // Outside-block candidates are clamp-neutral (kept = 1, no penalty).
+    // Linear fragment soft cost (sesja 119 / DEV-094 formula). quality -=
+    //   fragment_penalty_weight × (dev_i + dev_j)
+    // where dev_i = |bi + 1 - block_i.end| / block_i.length (clamped to 1) is
+    // the cut's distance from the authored end of block i as a fraction of
+    // the block, truncation and extension alike, and dev_j the same for the
+    // authored start of block j. The authored boundary is free. (The sesja-96
+    // "kept" formula was sign-inverted and left extension free.)
     // Default 0.03 per sesja 69 user-confirmed value (ADR-058 § Decision).
     double fragment_penalty_weight = 0.03;
 
@@ -379,6 +419,14 @@ computeBlockCompatibility(const BlockCompatInputs& inputs);
 // (clamp loosened to global [0, n_beats - 1] with exit ≥ entry invariant).
 // Block β-mode (RemixPipeline.cpp Block branch) sets this true when
 // block_assembly_beta is enabled.
+// Sesja 119 (DEV-094) — when `compat.pools` is populated (β path) the
+// junctions are resolved jointly (see assembleBlocksJoint in the .cpp):
+// every block keeps >= `min_keep_beats` beats (the caller passes the measured
+// bar; blocks shorter than that keep their whole length), no block can
+// collapse or invert, and an all-rejected junction splices at the user
+// boundary with `junction_fallback` = 1 in the metadata. Metadata then also
+// carries energy_diff_db / waveform_similarity / chroma_distance /
+// total_cost / junction_idx (the Region keys, DEV-096).
 RemixPath
 assembleBlocks(const std::vector<int>&              block_sequence,
                const std::vector<BlockInfo>&        blocks,
@@ -388,7 +436,8 @@ assembleBlocks(const std::vector<int>&              block_sequence,
                int                                  variation              = 0,
                const std::map<int, int>*            junction_variations    = nullptr,
                double                               edit_length_jump_scale = 1.0,
-               bool                                 allow_outside_window   = false);
+               bool                                 allow_outside_window   = false,
+               int                                  min_keep_beats         = 1);
 
 // Crossfade duration for a given quality score — UI helper. Useful for the
 // dump tool and parity validation.

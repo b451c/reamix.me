@@ -3,7 +3,7 @@
 #include "remix/Quality.h"
 #include "remix/SignalNorm.h"
 #include "remix/RepetitionPrior.h"  // ADR-115 E4 (sesja 115)
-#include "dsp/WaveformXcorr.h"
+#include "remix/PairScorer.h"      // sesja 119 (DEV-096) shared pair scorer
 
 #include <algorithm>
 #include <cmath>
@@ -277,29 +277,6 @@ int waveformMaxLag(int waveform_sample_rate)
     return static_cast<int>(max_lag_ms * static_cast<double>(waveform_sample_rate) / 1000.0);  // CLEAN (C10)
 }
 
-// Safe window mean for context similarity.
-// Port of `_safe_window_mean` (region_cost.py:423-431).
-std::vector<double> safeWindowMean(const float* feats_region,
-                                    int          n_region,
-                                    int          n_dim,
-                                    int          lo,
-                                    int          hi)
-{
-    std::vector<double> out(static_cast<std::size_t>(n_dim), 0.0);
-    const int lo_c = std::max(0, lo);
-    const int hi_c = std::min(n_region, hi);
-    if (lo_c >= hi_c) return out;  // all zeros
-    const int count = hi_c - lo_c;
-    // Mean over [lo_c, hi_c) rows.
-    for (int i = lo_c; i < hi_c; ++i) {
-        const float* row = feats_region + static_cast<std::size_t>(i) * n_dim;
-        for (int k = 0; k < n_dim; ++k) out[k] += static_cast<double>(row[k]);
-    }
-    const double inv = 1.0 / static_cast<double>(count);
-    for (int k = 0; k < n_dim; ++k) out[k] *= inv;
-    return out;
-}
-
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -482,8 +459,40 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
     }
 
     // Non-sequential: evaluate viable region-internal pairs.
-    // Features for region (f32 pointer into full array).
-    const float* feats_region = in.features + static_cast<std::size_t>(in.entry_beat) * in.n_features;
+    // Sesja 119 (DEV-096): the per-pair scoring body is shared with Block
+    // Assembly (remix/PairScorer.h). Region keeps its own candidate gates
+    // (bar constraint, prior, micro-skip, chroma prefilter) and the span
+    // penalty; the precomputed f32 successor / edge-splice matrices are
+    // passed through so the legacy path stays bit-exact.
+    PairScorerTrack track{};
+    track.n_total             = n_total;
+    track.n_features          = in.n_features;
+    track.features            = in.features;
+    track.boundary_waveforms  = in.boundary_waveforms;
+    track.n_samples_per_bnd   = in.n_samples_per_bnd;
+    track.max_lag             = max_lag_samples;
+    track.has_waveforms       = has_waveforms;
+    track.edge_db_end         = edge_db_end.empty()   ? nullptr : edge_db_end.data();
+    track.edge_db_start       = edge_db_start.empty() ? nullptr : edge_db_start.data();
+    track.rms_energy          = in.rms_energy;
+    track.spectral_centroid   = in.spectral_centroid;
+    track.onset_strength      = in.onset_strength;
+    track.vocal_activity      = in.vocal_activity;
+    track.edge_vocal_activity_start = in.edge_vocal_activity_start;
+    track.edge_vocal_activity_end   = in.edge_vocal_activity_end;
+    track.edge_vocal_onset_start    = in.edge_vocal_onset_start;
+    track.edge_vocal_release_end    = in.edge_vocal_release_end;
+    track.onset_norm          = onset_norm.empty() ? nullptr : onset_norm.data();
+    track.onset_norm_n        = static_cast<int>(onset_norm.size());
+    track.mfcc_continuity_matrix   = mfcc_continuity_matrix.empty() ? nullptr : mfcc_continuity_matrix.data();
+    track.chroma_continuity_matrix = chroma_continuity_matrix.empty() ? nullptr : chroma_continuity_matrix.data();
+    track.ctx_lo              = in.entry_beat;
+    track.ctx_hi              = in.exit_beat;
+    track.v2                  = v2;
+    track.baselines           = v2 ? &baselines : nullptr;
+    track.weights             = in.quality_weights != nullptr ? in.quality_weights : &v2_default_weights;
+    track.track_has_vocals    = track_has_vocals;
+    track.gate                = v2 ? PairGate::SuccessorView : PairGate::LegacyAbsolute;
 
     for (int ri = 0; ri < n_region - 1; ++ri) {
         const int abs_i = in.entry_beat + ri;
@@ -498,91 +507,6 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             if (cd > REGION_CHROMA_PREFILTER) { ++n_gate_chroma; continue; }  // C2
 
             const int abs_j = in.entry_beat + rj;
-            const int source_boundary = abs_i + 1;
-
-            // --- Hard gates ---
-            double energy_diff = 0.0;
-            const bool have_edge_db = !edge_db_end.empty() && !edge_db_start.empty();
-            if (have_edge_db) {
-                energy_diff = std::abs(edge_db_end[abs_i] - edge_db_start[abs_j]);
-                if (v2) {
-                    // ADR-115 E8 (sesja 116, DEV-090): successor-view hard gate.
-                    // The legacy gate compares the tail of beat i with the
-                    // attack of beat j, which on attack-heavy material is the
-                    // NATURAL bar step (Billie Jean: median 10.5 dB from a
-                    // pre-downbeat tail to the downbeat kick) and rejected 42
-                    // of 49 bar pairs in the reported region. A splice is
-                    // audible when the incoming attack differs from the one
-                    // the listener expects (start(j) vs start(i+1)) or the
-                    // outgoing tail differs from what precedes j (end(i) vs
-                    // end(j-1)); those two mismatches are gated at the same
-                    // 8 dB. energy_diff itself stays the edge_energy signal
-                    // (relative mapping, edgeEnergyQualityV2). Region-only,
-                    // like the other relaxed gates in this file; the Duration
-                    // gate is DEV-091.
-                    const bool succ_ok = abs_i + 1 < n_total && abs_j > 0
-                        && std::abs(edge_db_start[abs_j] - edge_db_start[abs_i + 1]) <= ENERGY_HARD_BLOCK_DB
-                        && std::abs(edge_db_end[abs_i] - edge_db_end[abs_j - 1]) <= ENERGY_HARD_BLOCK_DB;
-                    if (! succ_ok) { ++n_gate_energy; continue; }
-                } else if (energy_diff > ENERGY_HARD_BLOCK_DB) {  // CLEAN (sesja 18)
-                    ++n_gate_energy;
-                    continue;
-                }
-            }
-
-            // Vocal features.
-            double va_i = 0.0;
-            double va_j = 0.0;
-            if (track_has_vocals && in.vocal_activity != nullptr) {
-                if (abs_i < n_total) va_i = in.vocal_activity[abs_i];
-                if (abs_j < n_total) va_j = in.vocal_activity[abs_j];
-            }
-
-            // --- Quality signals ---
-            std::optional<double> waveform_sim;
-            int lag = 0;
-            if (has_waveforms && source_boundary < n_total) {
-                auto [ws, l] = dsp::WaveformXcorr::compute(
-                    in.boundary_waveforms + static_cast<std::size_t>(source_boundary) * in.n_samples_per_bnd,
-                    in.boundary_waveforms + static_cast<std::size_t>(abs_j) * in.n_samples_per_bnd,
-                    static_cast<std::size_t>(in.n_samples_per_bnd),
-                    static_cast<std::size_t>(in.n_samples_per_bnd),
-                    max_lag_samples);
-                waveform_sim = ws;
-                lag          = l;
-            }
-
-            const double successor_sim_v =
-                successor_sim[static_cast<std::size_t>(ri) * n_region + rj];
-
-            std::optional<double> edge_splice_sim;
-            if (!edge_splice.empty()) {
-                edge_splice_sim = edge_splice[static_cast<std::size_t>(ri) * n_region + rj];
-            }
-
-            // Context similarity (2-beat window — region_cost.py:337-338).
-            // C11 UNJUSTIFIED-DRIFT: hardcoded 2 before + 3 after, NOT
-            // config.py::context_window_beats=2 (DEAD-CONFIG).
-            std::vector<double> ctx_before = safeWindowMean(
-                feats_region, n_region, in.n_features,
-                std::max(0, ri - REGION_CONTEXT_BEFORE_BEATS),
-                ri + 1);
-            std::vector<double> ctx_after = safeWindowMean(
-                feats_region, n_region, in.n_features,
-                rj,
-                std::min(n_region, rj + REGION_CONTEXT_AFTER_BEATS));
-            double na = 0.0, nb = 0.0, dot = 0.0;
-            for (int k = 0; k < in.n_features; ++k) {
-                na  += ctx_before[k] * ctx_before[k];
-                nb  += ctx_after[k]  * ctx_after[k];
-                dot += ctx_before[k] * ctx_after[k];
-            }
-            na = std::sqrt(na);
-            nb = std::sqrt(nb);
-            double context_sim = 0.0;
-            if (na > 1e-8 && nb > 1e-8) {  // DEFENSIVE (C12)
-                context_sim = std::clamp(dot / (na * nb), -1.0, 1.0);
-            }
 
             const double label_match = (
                 beat_labels[static_cast<std::size_t>(ri)] != "unknown"
@@ -592,121 +516,31 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             const double bar_aligned =
                 (pre_db_set.count(ri) > 0 && db_set.count(rj) > 0) ? 1.0 : 0.0;  // MARKER (C13)
 
-            // Energy / centroid matches (absolute indices).
-            double energy_match = 1.0;
-            if (in.rms_energy != nullptr) {
-                const double rms_diff = std::abs(in.rms_energy[abs_i] - in.rms_energy[abs_j]);
-                energy_match = std::max(0.0, 1.0 - rms_diff * 5.0);  // UNJUSTIFIED (C14)
-            }
-
-            double edge_energy_match = 1.0;
-            if (have_edge_db) {
-                // UNJUSTIFIED-DRIFT (C15) — 12.0 cap matches session-16 soft-penalty saturation pattern.
-                // Session-24 retrofit: 2nd consumer of public EDGE_ENERGY_SATURATION_DB
-                // (from TransitionCost.h, promoted session 18). Hard Rule #1 single-source-of-truth —
-                // see ADR-029 for consolidation of 3 consumers (TransitionCost + RegionCost + BlockAssembly).
-                edge_energy_match = std::max(
-                    0.0,
-                    1.0 - std::min(energy_diff, EDGE_ENERGY_SATURATION_DB) / EDGE_ENERGY_SATURATION_DB);
-            }
-
-            double centroid_match = 1.0;
-            if (in.spectral_centroid != nullptr) {
-                const double c_diff = std::abs(in.spectral_centroid[abs_i] - in.spectral_centroid[abs_j]);
-                centroid_match = std::max(0.0, 1.0 - c_diff * 5.0);  // UNJUSTIFIED (C16)
-            }
-            if (v2) {   // ADR-115 E1 — per-track sequential-baseline scale (exp mapping, sesja 115)
-                // ADR-115 E2 — p98 loudness reject (sesja 115), mirrors TransitionCost.
-                if (in.rms_energy != nullptr && have_edge_db
-                    && loudnessRejectV2(baselines, in.rms_energy[abs_i], in.rms_energy[abs_j], energy_diff))
-                    { ++n_gate_loud; continue; }
-                if (in.rms_energy != nullptr)
-                    energy_match = energyQualityV2(baselines, in.rms_energy[abs_i], in.rms_energy[abs_j], energy_match);
-                if (have_edge_db)
-                    edge_energy_match = edgeEnergyQualityV2(baselines, energy_diff, edge_energy_match);
-                if (in.spectral_centroid != nullptr)
-                    centroid_match = centroidQualityV2(baselines, in.spectral_centroid[abs_i], in.spectral_centroid[abs_j], centroid_match);
-            }
-
+            PairScorerRequest req{};
+            req.abs_i         = abs_i;
+            req.abs_j         = abs_j;
+            req.successor_sim = successor_sim[static_cast<std::size_t>(ri) * n_region + rj];
+            if (!edge_splice.empty())
+                req.edge_splice_sim = edge_splice[static_cast<std::size_t>(ri) * n_region + rj];
+            req.label_match = label_match;
+            req.bar_aligned = bar_aligned;
             // Section sim — region_cost.py:368. ADR-044: 0 in no-structure
             // mode (otherwise label_match=0 would still leave the BIAS=0.1 floor).
-            const double section_sim = noStructure ? 0.0
+            req.section_sim = noStructure ? 0.0
                 : (label_match * REGION_SECTION_SIM_SCALE + REGION_SECTION_SIM_BIAS);  // UNJUSTIFIED (C17)
 
-            // Compose quality score.
-            QualityInputs q;
-            q.waveform_sim     = waveform_sim;
-            q.successor_sim    = successor_sim_v;
-            q.edge_splice_sim  = edge_splice_sim;
-            q.context_sim      = context_sim;
-            q.label_match      = label_match;
-            q.section_sim      = section_sim;
-            q.bar_aligned      = bar_aligned;
-            q.energy_match     = energy_match;
-            q.edge_energy_match = edge_energy_match;
-            q.centroid_match   = centroid_match;
-            // ADR-064 sesja 75 — transient continuity (absolute indices).
-            if (! onset_norm.empty()
-                && abs_i < n_total && abs_j < n_total) {
-                q.transient_continuity =
-                    1.0 - std::abs(onset_norm[(std::size_t) abs_i]
-                                 - onset_norm[(std::size_t) abs_j]);
-                if (v2 && in.onset_strength != nullptr)
-                    q.transient_continuity = onsetQualityV2(
-                        baselines, in.onset_strength[abs_i], in.onset_strength[abs_j],
-                        *q.transient_continuity);
+            const PairScore score = scorePair(track, req);
+            if (score.rejected) {
+                if (score.gate == 1) ++n_gate_energy; else ++n_gate_loud;
+                continue;
             }
-            // ADR-066 sesja 77 — MFCC continuity (absolute indices).
-            if (! mfcc_continuity_matrix.empty()
-                && abs_i < n_total && abs_j < n_total) {
-                q.mfcc_continuity = mfcc_continuity_matrix[
-                    (std::size_t) abs_i * (std::size_t) n_total
-                  + (std::size_t) abs_j];
-            }
-            // ADR-080 RESCOPE + ADR-083 sesja 92 — full-mix chroma continuity
-            // (absolute indices). Consumed by Tone slider blend in
-            // computeQualityScore. nullopt → blend bypassed.
-            if (! chroma_continuity_matrix.empty()
-                && abs_i < n_total && abs_j < n_total) {
-                q.full_mix_chroma_continuity = chroma_continuity_matrix[
-                    (std::size_t) abs_i * (std::size_t) n_total
-                  + (std::size_t) abs_j];
-            }
-            // ADR-088 sesja 98 STATUS UPDATE 1 — vocal phrase continuity, fixed
-            // formula (see TransitionCost.cpp for rationale).
-            //   HIGH boundary signals → HIGH quality (reward alignment).
-            //   Silence-gate: vocal_density<0.1 → q=1.0 (instrumental clean).
-            //   Soft floor 0.5: prevents harmonic mean composite crash via
-            //   epsilon-clamped term.
-            if (in.edge_vocal_onset_start != nullptr
-                && in.edge_vocal_release_end != nullptr
-                && abs_i < n_total && abs_j < n_total) {
-                const double rel_i = in.edge_vocal_release_end[(std::size_t) abs_i];
-                const double on_j  = in.edge_vocal_onset_start[(std::size_t) abs_j];
-                const double boundary = std::max(rel_i, on_j);
-
-                double vocal_density = 0.0;
-                if (in.vocal_activity != nullptr) {
-                    const double va_i = in.vocal_activity[(std::size_t) abs_i];
-                    const double va_j = in.vocal_activity[(std::size_t) abs_j];
-                    vocal_density = std::max(va_i, va_j);
-                }
-
-                constexpr double kSilenceThreshold = 0.1;
-                if (vocal_density < kSilenceThreshold) {
-                    q.vocal_continuity = 1.0;
-                } else {
-                    q.vocal_continuity = 0.5 + 0.5 * boundary;
-                }
-            }
-
-            double quality = computeQualityScore(
-                q,
-                in.quality_weights != nullptr ? *in.quality_weights : v2_default_weights);
+            double quality = score.quality;
 
             // Span penalty — region_cost.py:384-387.
             // ADR-044: skipped in no-structure mode (label_match=0 would
-            // otherwise blanket-fire on every short jump).
+            // otherwise blanket-fire on every short jump). Applied after the
+            // shared vocal / onset penalties: every penalty is >= 0 and
+            // clamped, so the order does not change the value.
             if (! noStructure) {
                 const int jump_beats = std::abs(rj - ri);
                 if (jump_beats < SPAN_PENALTY_MAX_BEATS
@@ -717,25 +551,6 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
                 // No same-section span penalty (region_cost.py:387 comment).
             }
 
-            // Vocal penalty.
-            if (track_has_vocals && in.vocal_activity != nullptr) {
-                std::optional<double> eva_end;
-                std::optional<double> eva_start;
-                if (in.edge_vocal_activity_end != nullptr && abs_i < n_total)
-                    eva_end = in.edge_vocal_activity_end[abs_i];
-                if (in.edge_vocal_activity_start != nullptr && abs_j < n_total)
-                    eva_start = in.edge_vocal_activity_start[abs_j];
-                const double vp = computeVocalPenalty(va_i, va_j, eva_end, eva_start);
-                quality = std::max(0.0, quality - vp);
-            }
-
-            // Onset penalty.
-            if (in.onset_strength != nullptr) {
-                std::optional<double> os_j;
-                if (abs_j < n_total) os_j = in.onset_strength[abs_j];
-                quality = std::max(0.0, quality - computeOnsetPenalty(os_j));
-            }
-
             const double total_cost = 1.0 - quality;  // CLEAN (C20)
 
             // Write into region_W + candidates.
@@ -744,12 +559,12 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             cand.from_beat              = abs_i;
             cand.to_beat                = abs_j;
             cand.quality_score          = quality;
-            cand.waveform_similarity    = waveform_sim.value_or(0.0);
-            cand.successor_similarity   = successor_sim_v;
-            cand.edge_splice_similarity = edge_splice_sim.value_or(0.0);
+            cand.waveform_similarity    = score.waveform_sim;
+            cand.successor_similarity   = score.successor_sim;
+            cand.edge_splice_similarity = score.edge_splice_sim;
             cand.chroma_distance        = cd;
-            cand.energy_diff_db         = energy_diff;
-            cand.alignment_lag_samples  = lag;
+            cand.energy_diff_db         = score.energy_diff_db;
+            cand.alignment_lag_samples  = score.lag;
             cand.total_cost             = total_cost;
             out.candidates[{abs_i, abs_j}] = cand;
         }

@@ -54,6 +54,8 @@
 #include "remix/Quality.h"
 #include "remix/TransitionCost.h"
 #include "remix/BeatGrid.h"          // ADR-115 E5 (sesja 115)
+#include "remix/RegionCost.h"        // sesja 119 --dump-region-pool
+#include "ui/RegionCostWiring.h"      // sesja 119 --dump-region-pool
 #include "calibration_harness_parse_weights.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -81,6 +83,7 @@ struct Args
     juce::String dumpComponentsCsv;   // sesja 80 — D1 correlation matrix dump
     bool         dumpV2 { false };    // sesja 115 - dump under ADR-115 v2 scoring
     bool         dumpLoopSpots { false };   // sesja 117 - ADR-115 E11 loop-spot map, exits after dump
+    juce::String dumpRegionPool;            // sesja 119 - "start:end" seconds, prints the v2 Region pool at full precision
 };
 
 int printUsage (const char* argv0)
@@ -105,6 +108,7 @@ bool parseArgs (int argc, char** argv, Args& out)
         else if (a == "--dump-components" && i + 1 < argc) out.dumpComponentsCsv   = juce::String (argv[++i]);
         else if (a == "--v2")                              out.dumpV2              = true;
         else if (a == "--dump-loop-spots")                 out.dumpLoopSpots       = true;
+        else if (a == "--dump-region-pool" && i + 1 < argc) out.dumpRegionPool     = juce::String (argv[++i]);
         else
         {
             std::fprintf (stderr, "unknown arg: %s\n", a.c_str());
@@ -115,7 +119,8 @@ bool parseArgs (int argc, char** argv, Args& out)
     return out.batchPath.isNotEmpty()
         || out.dumpBeatsJson.isNotEmpty()
         || out.dumpComponentsCsv.isNotEmpty()
-        || out.dumpLoopSpots;
+        || out.dumpLoopSpots
+        || out.dumpRegionPool.isNotEmpty();
 }
 
 // parseWeights — extracted to tools/calibration_harness_parse_weights.h
@@ -418,6 +423,8 @@ struct Run
     std::vector<reamix::ui::UserBlock> userBlocks;
     std::vector<int>                   userBlocksQueue;
     int          variation        { 0 };
+    bool         blocksEnergyGate { false };   // sesja 119 - "blocks_energy_gate" (blocks only)
+    double       blocksDriftWeight { 0.10 };   // sesja 119 - "blocks_drift_weight" (blocks only; BLOCK_DRIFT_PENALTY_WEIGHT)
     juce::String outWav;
     juce::String outCsv;
 
@@ -480,6 +487,8 @@ Run parseRun (const juce::var& v)
             r.userBlocksQueue.push_back ((int) queueVar[i]);
     }
     r.variation = (int) v.getProperty ("variation", 0);
+    r.blocksEnergyGate = (bool) v.getProperty ("blocks_energy_gate", false);
+    r.blocksDriftWeight = (double) v.getProperty ("blocks_drift_weight", 0.10);
     r.outWav = v.getProperty ("out_wav", juce::String()).toString();
     r.outCsv = v.getProperty ("out_csv", juce::String()).toString();
     if (r.outWav.isEmpty() || r.outCsv.isEmpty())
@@ -521,6 +530,8 @@ reamix::ui::RemixOutput driveRemixPipeline (
     if (useOverride)
         pin.qualityWeightsOverride = run.weights;
     pin.v2_scoring = run.v2;   // ADR-115
+    pin.block_energy_gate  = run.blocksEnergyGate;   // sesja 119
+    pin.driftPenaltyWeight = run.blocksDriftWeight;  // sesja 119
 
     std::atomic<bool>          done { false };
     reamix::ui::RemixOutput    result;
@@ -633,6 +644,37 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    // sesja 119 helper: --dump-region-pool start:end prints every scored
+    // v2 Region candidate of that span at full precision (bit-exactness
+    // checks of the shared pair scorer, DEV-096) and exits.
+    if (args.dumpRegionPool.isNotEmpty())
+    {
+        const double s0 = args.dumpRegionPool.upToFirstOccurrenceOf (":", false, false).getDoubleValue();
+        const double s1 = args.dumpRegionPool.fromFirstOccurrenceOf (":", false, false).getDoubleValue();
+        const auto& bt = bundle->beatTimes;
+        const int entry = (int) std::distance (bt.begin(), std::lower_bound (bt.begin(), bt.end(), s0));
+        const int exit  = (int) std::distance (bt.begin(), std::lower_bound (bt.begin(), bt.end(), s1));
+        const auto grid = reamix::remix::cleanBeatGrid (bt.data(), (int) bt.size(),
+            bundle->downbeatTimes.empty() ? nullptr : bundle->downbeatTimes.data(),
+            (int) bundle->downbeatTimes.size(), std::max (1, (int) bundle->timeSigNum));
+        reamix::remix::RegionCostInputs rcin{};
+        reamix::ui::fillRegionCostInputs (rcin, *bundle, grid.downbeats, grid.bar_beats);
+        rcin.entry_beat = entry;
+        rcin.exit_beat  = exit;
+        rcin.v2_scoring = true;
+        const auto rc = reamix::remix::computeRegionCosts (rcin);
+        std::printf ("# region pool %d..%d: %d candidates\n", entry, exit, (int) rc.candidates.size());
+        std::printf ("# from,to,quality,waveform,successor,edge_splice,chroma_distance,energy_diff_db,total_cost\n");
+        for (const auto& kv : rc.candidates)
+        {
+            const auto& c = kv.second;
+            std::printf ("%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n", c.from_beat, c.to_beat,
+                         c.quality_score, c.waveform_similarity, c.successor_similarity,
+                         c.edge_splice_similarity, c.chroma_distance, c.energy_diff_db, c.total_cost);
+        }
+        return 0;
+    }
+
     // sesja 74 helper: --dump-beats writes beat_times to JSON and exits.
     // Used by precompute_extra1_mert.py to align Python embeddings with the
     // exact beat indexing the harness will use during the sweep.
@@ -664,6 +706,21 @@ int main (int argc, char** argv)
         {
             if (i > 0) s << ", ";
             s << juce::String (bundle->downbeatTimes[i], 6);
+        }
+        s << "],\n";
+        // Sesja 119: the cleaned grid the v2 engines use (ADR-115 E5), so
+        // block authoring tools (blocks_ab.py) can align blocks on it.
+        const auto grid = reamix::remix::cleanBeatGrid (
+            bundle->beatTimes.data(), (int) bundle->beatTimes.size(),
+            bundle->downbeatTimes.empty() ? nullptr : bundle->downbeatTimes.data(),
+            (int) bundle->downbeatTimes.size(), std::max (1, (int) bundle->timeSigNum));
+        s << "  \"bar_beats\": " << grid.bar_beats << ",\n";
+        s << "  \"grid_synthetic\": " << (grid.synthetic_downbeats ? 1 : 0) << ",\n";
+        s << "  \"downbeat_times_clean\": [";
+        for (std::size_t i = 0; i < grid.downbeats.size(); ++i)
+        {
+            if (i > 0) s << ", ";
+            s << juce::String (grid.downbeats[i], 6);
         }
         s << "]\n}\n";
         std::fprintf (stderr, "[harness] wrote %s (%d beats)\n",
