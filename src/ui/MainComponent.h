@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "AnalysisBundle.h"
+#include "remix/LoopSpots.h"   // ADR-115 E11 (sesja 117)
 #include "AnalyzePipeline.h"
 #include "BlockAssemblyPanel.h"
 #include "DurationPanel.h"
@@ -139,6 +140,12 @@ private:
     // RemixPipeline run when the region changed. Idempotent — safe to call
     // from any of the inputs (mode click, drag-select, timerCallback poll).
     void recomputeRegionState();
+
+    // ADR-115 E11 (sesja 117) — loop-spot suggestions for the Region tab:
+    // whole-track chips without a selection, chips + verdict pill inside
+    // one. Called from recomputeRegionState; re-pushes only when the
+    // (bundle, region) key changes (100 ms poll).
+    void updateLoopSpotSuggestions (const std::optional<reamix::reaper::ItemRegion>& region);
 
     // ADR-050 Filozofia A — every mode switch (manual click OR auto-flip)
     // resets the waveform back to Source variant + clears selection + resets
@@ -468,6 +475,11 @@ private:
     // (when auto) lastRespectedTimeSelection_. nullopt when not in Region
     // mode OR Region mode but no valid selection.
     std::optional<reamix::reaper::ItemRegion> currentRegion_;
+
+    // ADR-115 E11 (sesja 117) — suggestions currently shown as chips
+    // (display order == chip index) + change key for the 100 ms poll.
+    std::vector<reamix::remix::LoopSpot> loopSpotSuggestions_;
+    juce::String                         lastLoopSpotKey_;
 
     // Snapshot of selectedRange_ at the moment a Region remix completed —
     // restored when the user clicks the "↺ Edit region" overlay to return to

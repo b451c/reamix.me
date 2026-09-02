@@ -309,6 +309,32 @@ public:
     std::function<void (int spliceIdx, juce::Point<int> screenPos)> onUserBlockSpliceHover;
     std::optional<SelectionRange> getSelection   () const { return selection_; }
 
+    // ── Loop-spot suggestions (ADR-115 E11, sesja 117) ────────────────
+    // Region mode: MainComponent pushes up to N suggested loop spans (the
+    // whole track without a selection, inside the selection with one).
+    // Painted as quality-coloured chips in the segBar (Source variant, not
+    // in Blocks mode where user tiles own the bar); click emits
+    // onLoopSpotClicked(idx) and MainComponent turns the span into the
+    // region. Empty vector = no chips.
+    struct LoopSpotChip
+    {
+        double        startSec;
+        double        endSec;
+        SpliceQuality quality;
+        juce::String  label;        // "LOOP · 4 BARS · 82%" (wide chip)
+        juce::String  shortLabel;   // "4 BARS" (narrow chip)
+    };
+    void setLoopSpots (std::vector<LoopSpotChip>);
+    std::function<void (int idx)> onLoopSpotClicked;
+
+    // Verdict pill centred over the region span at the canvas top ("LOOP ·
+    // 4 BARS · 82%" / "NO CLEAN LOOP IN THIS SELECTION"). Painted from the
+    // given span, not from selection_ (an auto-Region driven by REAPER's
+    // time-selection has no scrim). Empty text = no pill; nullopt quality =
+    // Info colour.
+    void setSelectionVerdict (juce::String text, std::optional<SpliceQuality> quality,
+                              double startSec, double endSec);
+
     void paint          (juce::Graphics&)         override;
     void resized        ()                        override;
     void mouseMove      (const juce::MouseEvent&) override;
@@ -428,6 +454,12 @@ private:
     // into userBlockSplices_ when cursorX is within ±kSpliceHitToleranceX
     // of a splice line's painted x. -1 otherwise.
     int userBlockSpliceHitTest (int cursorX) const;
+
+    // ADR-115 E11 — loop-spot chip hit-test on the segBar (index into
+    // loopSpots_, -1 = none) + chip painter.
+    int  loopSpotHitTest (juce::Point<int> pos) const;
+    void paintLoopSpots  (juce::Graphics&, juce::Rectangle<int> bar);
+    void paintVerdict    (juce::Graphics&);
 
     struct PeaksCache
     {
@@ -564,6 +596,14 @@ private:
     //   - paintSegBar layering (user blocks tiles + provisional drag preview).
     bool                                blockMarkingEnabled_ { false };
     std::vector<reamix::ui::UserBlock>  userBlocks_;
+
+    // ADR-115 E11 (sesja 117) — loop-spot chips + selection verdict.
+    std::vector<LoopSpotChip>           loopSpots_;
+    int                                 hoveredLoopSpotIdx_ { -1 };
+    juce::String                        selectionVerdict_;
+    std::optional<SpliceQuality>        selectionVerdictQuality_;
+    double                              selectionVerdictStart_ { 0.0 };
+    double                              selectionVerdictEnd_   { 0.0 };
 
     // ADR-092 sesja 100c — non-owning. Caller (MainComponent) owns lifetime.
     const reamix::ui::CustomKindRegistry* customKindRegistry_ { nullptr };

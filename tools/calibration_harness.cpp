@@ -48,6 +48,8 @@
 #include "ui/AnalysisDiskCache.h"
 #include "ui/AnalysisBundle.h"
 #include "ui/RemixPipeline.h"
+#include "ui/LoopSpotsBuilder.h"   // sesja 117 (ADR-115 E11)
+#include "remix/LoopSpots.h"
 #include "ui/UserBlock.h"
 #include "remix/Quality.h"
 #include "remix/TransitionCost.h"
@@ -78,6 +80,7 @@ struct Args
     juce::String dumpBeatsJson;       // sesja 74 — optional, exits after dump
     juce::String dumpComponentsCsv;   // sesja 80 — D1 correlation matrix dump
     bool         dumpV2 { false };    // sesja 115 - dump under ADR-115 v2 scoring
+    bool         dumpLoopSpots { false };   // sesja 117 - ADR-115 E11 loop-spot map, exits after dump
 };
 
 int printUsage (const char* argv0)
@@ -85,8 +88,9 @@ int printUsage (const char* argv0)
     std::fprintf (stderr,
         "usage: %s --source <abs/audio> --batch <abs/jsonl>\n"
         "       %s --source <abs/audio> --dump-beats <out.json>           (sesja 74 helper)\n"
-        "       %s --source <abs/audio> --dump-components <out.csv> [--v2] (sesja 80 D1 helper; --v2 = ADR-115 scoring)\n",
-        argv0, argv0, argv0);
+        "       %s --source <abs/audio> --dump-components <out.csv> [--v2] (sesja 80 D1 helper; --v2 = ADR-115 scoring)\n"
+        "       %s --source <abs/audio> --dump-loop-spots                  (sesja 117 ADR-115 E11 loop-spot map)\n",
+        argv0, argv0, argv0, argv0);
     return 2;
 }
 
@@ -100,6 +104,7 @@ bool parseArgs (int argc, char** argv, Args& out)
         else if (a == "--dump-beats"      && i + 1 < argc) out.dumpBeatsJson       = juce::String (argv[++i]);
         else if (a == "--dump-components" && i + 1 < argc) out.dumpComponentsCsv   = juce::String (argv[++i]);
         else if (a == "--v2")                              out.dumpV2              = true;
+        else if (a == "--dump-loop-spots")                 out.dumpLoopSpots       = true;
         else
         {
             std::fprintf (stderr, "unknown arg: %s\n", a.c_str());
@@ -109,7 +114,8 @@ bool parseArgs (int argc, char** argv, Args& out)
     if (out.sourcePath.isEmpty()) return false;
     return out.batchPath.isNotEmpty()
         || out.dumpBeatsJson.isNotEmpty()
-        || out.dumpComponentsCsv.isNotEmpty();
+        || out.dumpComponentsCsv.isNotEmpty()
+        || out.dumpLoopSpots;
 }
 
 // parseWeights — extracted to tools/calibration_harness_parse_weights.h
@@ -604,6 +610,28 @@ int main (int argc, char** argv)
     std::fprintf (stderr, "  OK %d beats · %.1f BPM · %d native samples\n",
                   (int) bundle->beatTimes.size(), bundle->bpm,
                   (int) bundle->nativeSamples);
+
+    // sesja 117 helper (ADR-115 E11): --dump-loop-spots prints the whole-track
+    // loop-spot map (all backward bar-aligned pairs, best first) + the chips
+    // the Region tab would show without a selection, then exits.
+    if (args.dumpLoopSpots)
+    {
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        reamix::ui::ensureLoopSpots (*bundle);
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        std::printf ("# loop spots: %d backward pairs, bar_beats=%d, %.0f ms\n",
+                     (int) bundle->loopSpots.size(), bundle->loopSpotsBarBeats, ms);
+        std::printf ("# from_beat,to_beat,quality,start_sec,end_sec,bars\n");
+        for (const auto& sp : bundle->loopSpots)
+            std::printf ("%d,%d,%.3f,%.3f,%.3f,%d\n", sp.from_beat, sp.to_beat, sp.quality,
+                         sp.start_sec, sp.end_sec, sp.bars);
+        const auto picks = reamix::remix::suggestLoopSpots (bundle->loopSpots, reamix::remix::LoopSpotFilter{});
+        std::printf ("# suggested (whole track, default filter): %d\n", (int) picks.size());
+        for (const auto& sp : picks)
+            std::printf ("#   %.1f-%.1f s  %d bars  q=%.2f  (%d->%d)\n", sp.start_sec, sp.end_sec,
+                         sp.bars, sp.quality, sp.from_beat, sp.to_beat);
+        return 0;
+    }
 
     // sesja 74 helper: --dump-beats writes beat_times to JSON and exits.
     // Used by precompute_extra1_mert.py to align Python embeddings with the

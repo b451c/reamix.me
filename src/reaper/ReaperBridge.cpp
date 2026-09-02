@@ -87,6 +87,21 @@ std::optional<TimeSelection> getTimeSelection()
 #endif
 }
 
+bool setTimeSelection (double startSec, double endSec)
+{
+#if REAMIX_WITH_REAPER_IO
+    if (! GetSet_LoopTimeRange || endSec <= startSec)
+        return false;
+    double s = startSec;
+    double e = endSec;
+    GetSet_LoopTimeRange (true, false, &s, &e, false);
+    return true;
+#else
+    (void) startSec; (void) endSec;
+    return false;
+#endif
+}
+
 std::optional<ItemRegion> getItemRegion (double itemDurationSec,
                                           double itemPositionSec)
 {

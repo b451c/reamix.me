@@ -1,5 +1,6 @@
 #include "ui/RemixPipeline.h"
 #include "remix/BeatGrid.h"   // ADR-115 E5 (sesja 115)
+#include "RegionCostWiring.h"  // ADR-115 E11 (sesja 117)
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -390,62 +391,8 @@ void RemixPipeline::run()
             rcin.v2_scoring = in_.v2_scoring;   // ADR-115 v2 scoring
             rcin.entry_beat = entry_beat;
             rcin.exit_beat  = exit_beat;
-            rcin.features   = bundle.feat.features.data();
-            rcin.n_total    = bundle.tc.n_beats;
-            rcin.n_features = bundle.feat.nFeat;
-            rcin.beat_times = bundle.beatTimes.data();
-
-            rcin.segments   = bundle.structure.segments.data();
-            rcin.n_segments = (int) bundle.structure.segments.size();
-
-            // Sesja 60 hot-fix — pass boundary waveforms so RegionCost runs
-            // its xcorr-based phase-alignment branch (RegionCost.cpp:373-434).
-            // Without this, splice point selection lacks audio-level phase
-            // matching and falls back to chroma + feature distance only,
-            // producing "rigid" splice picks. FeatureExtractor stage 3
-            // populates boundaryWaveforms unconditionally (155 ms window per
-            // beat @ 22050 Hz ≈ 3417 samples).
-            const auto& bw = bundle.feat.boundaryWaveforms;
-            if (! bw.empty() && bundle.tc.n_beats > 0)
-            {
-                rcin.boundary_waveforms   = bw.data();
-                rcin.n_boundary_waveforms = bundle.tc.n_beats;
-                rcin.n_samples_per_bnd    =
-                    (int) (bw.size() / (std::size_t) bundle.tc.n_beats);
-            }
-            else
-            {
-                rcin.boundary_waveforms   = nullptr;
-                rcin.n_boundary_waveforms = 0;
-                rcin.n_samples_per_bnd    = 0;
-            }
-            rcin.waveform_sample_rate = kAnalysisSampleRate;
-
-            rcin.edge_rms_start = bundle.feat.edgeRmsStart.empty() ? nullptr : bundle.feat.edgeRmsStart.data();
-            rcin.edge_rms_end   = bundle.feat.edgeRmsEnd.empty()   ? nullptr : bundle.feat.edgeRmsEnd.data();
-            rcin.edge_features_start = bundle.feat.edgeFeaturesStart.empty() ? nullptr
-                                       : reinterpret_cast<const float*> (bundle.feat.edgeFeaturesStart.data());
-            rcin.edge_features_end   = bundle.feat.edgeFeaturesEnd.empty()   ? nullptr
-                                       : reinterpret_cast<const float*> (bundle.feat.edgeFeaturesEnd.data());
-            rcin.n_edge_features     = bundle.feat.edgeFeaturesStart.empty() ? 0 : bundle.feat.nFeat;
-
-            rcin.rms_energy        = bundle.feat.rmsEnergy.empty()        ? nullptr : bundle.feat.rmsEnergy.data();
-            rcin.onset_strength    = bundle.feat.onsetStrength.empty()    ? nullptr : bundle.feat.onsetStrength.data();
-            rcin.spectral_centroid = bundle.feat.spectralCentroid.empty() ? nullptr : bundle.feat.spectralCentroid.data();
-            rcin.vocal_activity    = bundle.feat.vocalActivity.empty()    ? nullptr : bundle.feat.vocalActivity.data();
-            rcin.edge_vocal_activity_start = bundle.feat.edgeVocalActivityStart.empty()
-                                              ? nullptr : bundle.feat.edgeVocalActivityStart.data();
-            rcin.edge_vocal_activity_end   = bundle.feat.edgeVocalActivityEnd.empty()
-                                              ? nullptr : bundle.feat.edgeVocalActivityEnd.data();
-            // ADR-088 sesja 98 — vocal phrase boundary signals.
-            rcin.edge_vocal_onset_start    = bundle.feat.edgeVocalOnsetStart.empty()
-                                              ? nullptr : bundle.feat.edgeVocalOnsetStart.data();
-            rcin.edge_vocal_release_end    = bundle.feat.edgeVocalReleaseEnd.empty()
-                                              ? nullptr : bundle.feat.edgeVocalReleaseEnd.data();
-
-            rcin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
-            rcin.n_downbeats = (int) gridDownbeats.size();
-            rcin.time_signature = gridBarBeats;
+            // Shared with the loop-spot map (RegionCostWiring.h, ADR-115 E11).
+            fillRegionCostInputs (rcin, bundle, gridDownbeats, gridBarBeats);
 
             // ADR-058 — calibration weight override (sesja 71). nullptr →
             // kDefaultQualityWeights → preserves production baseline + parity.

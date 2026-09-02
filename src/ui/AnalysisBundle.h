@@ -9,6 +9,7 @@
 #include "Theme.h"
 #include "analysis/FeatureExtractor.h"
 #include "analysis/StructureResult.h"
+#include "remix/LoopSpots.h"
 #include "remix/TransitionCost.h"
 
 // AnalysisBundle — output of AnalyzePipeline (stages 1-5 of the original
@@ -76,6 +77,14 @@ struct AnalysisBundle
     // mapping label strings to SegmentKind enum (mapLabel helper). Empty in
     // auto mode per ADR-044; populated when Block Assembly user labels land.
     std::vector<AnalysisSegment> uiSegments;
+
+    // ── Loop-spot map (ADR-115 E11, sesja 117) ───────────────────────
+    // Whole-track Region pool as backward bar-aligned spans, best quality
+    // first (LoopSpotsBuilder::ensureLoopSpots). In-memory only: not part of
+    // the disk-cache payload, rebuilt after a cache hit.
+    std::vector<reamix::remix::LoopSpot> loopSpots;
+    int                                  loopSpotsBarBeats { 4 };
+    bool                                 loopSpotsBuilt    { false };
 };
 
 using AnalysisBundlePtr = std::shared_ptr<AnalysisBundle>;

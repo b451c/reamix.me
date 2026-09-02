@@ -1,4 +1,5 @@
 #include "ui/AnalyzePipeline.h"
+#include "ui/LoopSpotsBuilder.h"   // ADR-115 E11 (sesja 117)
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -339,6 +340,11 @@ void AnalyzePipeline::run()
         postCompletion (nullptr, juce::String ("Transition cost failed: ") + e.what());
         return;
     }
+    if (threadShouldExit()) return;
+
+    // ── Loop-spot map (ADR-115 E11, sesja 117) ─────────────────────
+    // Whole-track Region pool -> bundle.loopSpots (Region tab suggestions).
+    ensureLoopSpots (*bundle);
     if (threadShouldExit()) return;
 
     // ── UI segments view ───────────────────────────────────────────

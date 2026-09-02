@@ -19,6 +19,7 @@
 #include "reaper/BlocksGroupTracker.h"
 #include "remix/BlockAssembly.h"
 #include "AnalysisDiskCache.h"
+#include "LoopSpotsBuilder.h"   // ADR-115 E11 (sesja 117)
 
 #if REAMIX_WITH_REAPER_IO
 #include "reaper_plugin.h"
@@ -1831,6 +1832,36 @@ MainComponent::MainComponent()
         invalidateBlocksAssembledOutput();
         if (userBlocksQueue_.size() >= 2)
             blockAssemblyPanel_.setDirty (true);
+    };
+
+    // ADR-115 E11 (sesja 117) — a clicked loop-spot chip becomes the region.
+    // Same path as a waveform drag (manual region: selectedRange_ drives
+    // recomputeRegionState); mirrored into REAPER's time-selection so the
+    // arrange view shows the loop, pre-seeded as "respected" so the 100 ms
+    // poll does not treat it as a new user selection.
+    waveformView_.onLoopSpotClicked = [this] (int idx)
+    {
+        if (idx < 0 || idx >= (int) loopSpotSuggestions_.size()) return;
+        const auto spot = loopSpotSuggestions_[(std::size_t) idx];
+
+        reamix::ui::WaveformView::SelectionRange sel;
+        sel.startSec = spot.start_sec;
+        sel.endSec   = spot.end_sec;
+        regionFromAuto_ = false;
+        modeTabs_.setAutoFlag (false);
+        selectedRange_ = sel;
+        waveformView_.setSelection (sel);
+
+        if (auto item = reamix::reaper::getSelectedItem())
+        {
+            reamix::reaper::TimeSelection ts;
+            ts.startSec    = item->positionSec + spot.start_sec;
+            ts.endSec      = item->positionSec + spot.end_sec;
+            ts.durationSec = ts.endSec - ts.startSec;
+            if (reamix::reaper::setTimeSelection (ts.startSec, ts.endSec))
+                lastRespectedTimeSelection_ = ts;
+        }
+        recomputeRegionState();
     };
 
     waveformView_.onUserBlockClicked = [this] (int idx)
@@ -3741,6 +3772,89 @@ void MainComponent::resetMaterialView()
     tooltip_.hide();
 }
 
+void MainComponent::updateLoopSpotSuggestions (const std::optional<reamix::reaper::ItemRegion>& region)
+{
+    using Mode = reamix::ui::ModeTabs::Mode;
+    using Chip = reamix::ui::WaveformView::LoopSpotChip;
+    using Q    = reamix::ui::WaveformView::SpliceQuality;
+
+    const reamix::ui::AnalysisBundle* bundle = nullptr;
+    if (appMode_ == Mode::Region && currentSourcePath_.isNotEmpty())
+        if (auto it = analysisBundles_.find (currentSourcePath_);
+            it != analysisBundles_.end() && it->second != nullptr && it->second->loopSpotsBuilt)
+            bundle = it->second.get();
+
+    juce::String key;
+    if (bundle != nullptr)
+    {
+        key = juce::String::toHexString ((juce::pointer_sized_int) bundle) + "|";
+        key += region.has_value()
+             ? juce::String (region->startSec, 3) + "-" + juce::String (region->endSec, 3)
+             : juce::String ("all");
+    }
+    if (key == lastLoopSpotKey_) return;
+    lastLoopSpotKey_ = key;
+
+    loopSpotSuggestions_.clear();
+    std::vector<Chip>  chips;
+    juce::String       verdict;
+    std::optional<Q>   verdictQuality;
+
+    auto bucket = [] (double q)
+    {
+        return (q > 0.7) ? Q::Good : (q >= 0.5) ? Q::Medium : Q::Bad;   // splice-marker buckets
+    };
+
+    if (bundle != nullptr)
+    {
+        reamix::remix::LoopSpotFilter filter;
+        if (region.has_value())
+        {
+            filter.window_start_sec = region->startSec;
+            filter.window_end_sec   = region->endSec;
+            filter.max_count        = 3;
+        }
+        loopSpotSuggestions_ = reamix::remix::suggestLoopSpots (bundle->loopSpots, filter);
+
+        for (const auto& s : loopSpotSuggestions_)
+        {
+            Chip c;
+            c.startSec   = s.start_sec;
+            c.endSec     = s.end_sec;
+            c.quality    = bucket (s.quality);
+            const juce::String bars = juce::String (s.bars) + (s.bars == 1 ? " BAR" : " BARS");
+            const juce::String pct  = juce::String (juce::roundToInt (s.quality * 100.0)) + "%";
+            c.label      = juce::String::fromUTF8 ("LOOP \xc2\xb7 ") + bars
+                         + juce::String::fromUTF8 (" \xc2\xb7 ") + pct;
+            c.shortLabel = bars;
+            chips.push_back (std::move (c));
+        }
+
+        if (region.has_value())
+        {
+            if (loopSpotSuggestions_.empty())
+            {
+                verdict        = "NO CLEAN LOOP IN THIS SELECTION";
+                verdictQuality = Q::Bad;
+            }
+            else
+            {
+                const auto& best = loopSpotSuggestions_.front();
+                verdict = juce::String::fromUTF8 ("LOOP \xc2\xb7 ") + juce::String (best.bars)
+                        + (best.bars == 1 ? " BAR" : " BARS")
+                        + juce::String::fromUTF8 (" \xc2\xb7 ")
+                        + juce::String (juce::roundToInt (best.quality * 100.0)) + "%";
+                verdictQuality = bucket (best.quality);
+            }
+        }
+    }
+
+    waveformView_.setLoopSpots (std::move (chips));
+    waveformView_.setSelectionVerdict (verdict, verdictQuality,
+                                       region.has_value() ? region->startSec : 0.0,
+                                       region.has_value() ? region->endSec   : 0.0);
+}
+
 void MainComponent::recomputeRegionState()
 {
     using Mode = reamix::ui::ModeTabs::Mode;
@@ -3795,6 +3909,9 @@ void MainComponent::recomputeRegionState()
 
     currentRegion_ = region;
 
+    // ADR-115 E11 — loop-spot chips (+ verdict pill inside a selection).
+    updateLoopSpotSuggestions (region);
+
     // Push to ModeTabs — keep mode + AUTO flag in sync.
     modeTabs_.setMode (appMode_);
     modeTabs_.setAutoFlag (appMode_ == Mode::Region && regionFromAuto_);
@@ -3842,8 +3959,14 @@ void MainComponent::recomputeRegionState()
         if (appMode_ == Mode::Region)
         {
             durationPanel_.setActive (false);
-            statusBar_.setText (juce::String::fromUTF8 (
-                "Region mode \xe2\x80\x94 drag in waveform to select fragment"));
+            // ADR-115 E11 — point at the suggested loop spots when the map
+            // found any; otherwise the classic drag hint.
+            const int nSpots = (int) loopSpotSuggestions_.size();
+            statusBar_.setText (nSpots > 0
+                ? juce::String ("Region mode - ") + juce::String (nSpots)
+                    + (nSpots == 1 ? " suggested loop spot" : " suggested loop spots")
+                    + " below the waveform: click one, or drag to select"
+                : juce::String ("Region mode - drag in waveform to select fragment"));
         }
         else
         {
@@ -4237,6 +4360,10 @@ void MainComponent::applySelectedItem (const juce::String& name,
         // mismatch / source-file-changed → user just re-clicks Analyze.
         if (auto disk = reamix::ui::AnalysisDiskCache::tryLoad (sourcePath))
         {
+            // ADR-115 E11 — the loop-spot map is not cached on disk
+            // (format 6 unchanged); ~0.4 s per 5 min of audio, same
+            // message-thread stall class as tryLoad's own decode.
+            reamix::ui::ensureLoopSpots (*disk);
             analysisBundles_[sourcePath] = disk;
             resolvedBundle               = std::move (disk);
             fromDiskCache                = true;

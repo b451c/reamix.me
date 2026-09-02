@@ -254,6 +254,108 @@ void WaveformView::setUserBlocks (std::vector<reamix::ui::UserBlock> blocks)
     repaint (segBarArea());
 }
 
+// ADR-115 E11 (sesja 117) — loop-spot chips + selection verdict.
+void WaveformView::setLoopSpots (std::vector<LoopSpotChip> spots)
+{
+    loopSpots_          = std::move (spots);
+    hoveredLoopSpotIdx_ = -1;
+    repaint (segBarArea());
+}
+
+void WaveformView::setSelectionVerdict (juce::String text, std::optional<SpliceQuality> quality,
+                                        double startSec, double endSec)
+{
+    if (text == selectionVerdict_ && quality == selectionVerdictQuality_
+        && startSec == selectionVerdictStart_ && endSec == selectionVerdictEnd_) return;
+    selectionVerdict_        = std::move (text);
+    selectionVerdictQuality_ = quality;
+    selectionVerdictStart_   = startSec;
+    selectionVerdictEnd_     = endSec;
+    repaint (canvasArea());
+}
+
+namespace
+{
+    juce::Colour loopSpotColour (WaveformView::SpliceQuality q)
+    {
+        using namespace reamix::theme;
+        switch (q)
+        {
+            case WaveformView::SpliceQuality::Good:   return Good;
+            case WaveformView::SpliceQuality::Medium: return Warn;
+            case WaveformView::SpliceQuality::Bad:    break;
+        }
+        return Bad;
+    }
+}
+
+int WaveformView::loopSpotHitTest (juce::Point<int> pos) const
+{
+    if (loopSpots_.empty() || viewDurationSec_ <= 0.0) return -1;
+    const auto bar = segBarArea();
+    if (! bar.contains (pos)) return -1;
+    const double viewEnd = viewStartSec_ + viewDurationSec_;
+    for (std::size_t i = 0; i < loopSpots_.size(); ++i)
+    {
+        const auto& c = loopSpots_[i];
+        if (c.endSec < viewStartSec_ || c.startSec > viewEnd) continue;
+        const int x0 = (int) timeToX (c.startSec, bar.getX(), bar.getWidth());
+        const int x1 = (int) timeToX (c.endSec,   bar.getX(), bar.getWidth());
+        if (pos.x >= x0 && pos.x <= x1) return (int) i;
+    }
+    return -1;
+}
+
+void WaveformView::paintLoopSpots (juce::Graphics& g, juce::Rectangle<int> bar)
+{
+    // Rounded chip per suggested loop span: quality-tinted fill (18 %),
+    // 1 px quality border, label when wide enough. Hovered chip brightens
+    // so the click affordance is obvious. Stays above the downbeat anchors.
+    using namespace reamix::theme;
+    if (loopSpots_.empty() || viewDurationSec_ <= 0.0) return;
+    const auto chipFont = monoFont (fs::Xs, 700).withExtraKerningFactor (0.06f);
+    const double viewEnd = viewStartSec_ + viewDurationSec_;
+
+    for (std::size_t i = 0; i < loopSpots_.size(); ++i)
+    {
+        const auto& c = loopSpots_[i];
+        if (c.endSec <= viewStartSec_ || c.startSec >= viewEnd) continue;
+        const float x0 = timeToX (std::max (c.startSec, viewStartSec_), bar.getX(), bar.getWidth());
+        const float x1 = timeToX (std::min (c.endSec,   viewEnd),       bar.getX(), bar.getWidth());
+        if (x1 - x0 < 2.0f) continue;
+
+        const bool  hovered = ((int) i == hoveredLoopSpotIdx_);
+        const auto  colour  = loopSpotColour (c.quality);
+        const juce::Rectangle<float> rect (x0 + 0.5f, (float) bar.getY() + 3.0f,
+                                           x1 - x0 - 1.0f, (float) bar.getHeight() - 5.0f);
+        g.setColour (colour.withAlpha (hovered ? 0.42f : 0.18f));
+        g.fillRoundedRectangle (rect, r::R1);
+        g.setColour (colour.withAlpha (hovered ? 1.0f : 0.8f));
+        g.drawRoundedRectangle (rect, r::R1, 1.0f);
+
+        juce::GlyphArrangement arr;
+        arr.addLineOfText (chipFont, c.label, 0.0f, 0.0f);
+        const float fullW = arr.getBoundingBox (0, -1, false).getWidth();
+        juce::String text;
+        if (fullW + 10.0f <= rect.getWidth())
+            text = c.label;
+        else
+        {
+            juce::GlyphArrangement arr2;
+            arr2.addLineOfText (chipFont, c.shortLabel, 0.0f, 0.0f);
+            if (arr2.getBoundingBox (0, -1, false).getWidth() + 8.0f <= rect.getWidth())
+                text = c.shortLabel;
+        }
+        if (text.isNotEmpty())
+        {
+            g.setColour (hovered ? Fg0 : colour);
+            g.setFont (chipFont);
+            g.drawText (text, rect.toNearestInt().reduced (4, 0),
+                        juce::Justification::centred, false);
+        }
+    }
+}
+
 void WaveformView::setUserBlockSplices (std::vector<UserBlockSplice> splices)
 {
     userBlockSplices_ = std::move (splices);
@@ -403,6 +505,7 @@ void WaveformView::paint (juce::Graphics& g)
 
     paintCanvas        (g);
     paintSelection     (g);
+    if (variant_ == Variant::Source) paintVerdict  (g);   // ADR-115 E11
     if (variant_ == Variant::Source) paintSegBar   (g);
     if (variant_ == Variant::Remix)  paintTileList (g);
     paintRuler         (g);
@@ -846,6 +949,7 @@ void WaveformView::paintSegBar (juce::Graphics& g)
     if (segments_.empty() && userBlocks_.empty() && ! segBarDragging_)
     {
         paintDownbeatAnchors (g, bar);
+        if (! blockMarkingEnabled_) paintLoopSpots (g, bar);   // ADR-115 E11
         if (blockMarkingEnabled_)
         {
             const double tMs   = (double) juce::Time::getMillisecondCounter();
@@ -931,6 +1035,7 @@ void WaveformView::paintSegBar (juce::Graphics& g)
     // Provisional drag preview paints last so it sits ON TOP of the placed tiles.
     // Splice lines paint OVER tiles (algorithm's resolved cuts visible above
     // user-authored intent) so user can see drift at a glance.
+    if (! blockMarkingEnabled_)         paintLoopSpots        (g, bar);   // ADR-115 E11
     if (! userBlocks_.empty())          paintUserBlocks       (g, bar);
     if (! userBlockSplices_.empty())    paintUserBlockSplices (g, bar);
     if (segBarDragging_)                paintMarkPreview      (g, bar);
@@ -1541,6 +1646,44 @@ void WaveformView::paintSelection (juce::Graphics& g)
     }
 }
 
+void WaveformView::paintVerdict (juce::Graphics& g)
+{
+    // ADR-115 E11 (sesja 117) — Region verdict pill: same geometry as the
+    // drag-length readout, centred over the region span, quality colour.
+    // Independent of selection_ so an auto-Region (REAPER time-selection,
+    // no scrim) gets the verdict too. Hidden while dragging a new range.
+    if (selectionVerdict_.isEmpty() || dragging_ || viewDurationSec_ <= 0.0) return;
+    if (selectionVerdictEnd_ - selectionVerdictStart_ < 1e-6) return;
+    const auto canvas = canvasArea();
+    if (canvas.isEmpty()) return;
+
+    const float x0 = timeToX (selectionVerdictStart_, canvas.getX(), canvas.getWidth());
+    const float x1 = timeToX (selectionVerdictEnd_,   canvas.getX(), canvas.getWidth());
+    if (x1 < (float) canvas.getX() || x0 > (float) canvas.getRight()) return;   // span off-view
+
+    const auto pillFont = monoFont (fs::Xs, 700).withExtraKerningFactor (0.06f);
+    juce::GlyphArrangement arr;
+    arr.addLineOfText (pillFont, selectionVerdict_, 0.0f, 0.0f);
+    const float textW = arr.getBoundingBox (0, -1, false).getWidth();
+    const float pillW = textW + 10.0f;
+    const float pillH = 12.0f;
+    float pillX = (x0 + x1) * 0.5f - pillW * 0.5f;
+    pillX = juce::jlimit (static_cast<float> (canvas.getX()),
+                          std::max (static_cast<float> (canvas.getX()), canvas.getRight() - pillW),
+                          pillX);
+    const float pillY = static_cast<float> (canvas.getY()) + 2.0f;
+    const juce::Colour pillColour = selectionVerdictQuality_.has_value()
+        ? loopSpotColour (*selectionVerdictQuality_) : Info;
+    g.setColour (pillColour);
+    g.fillRoundedRectangle (pillX, pillY, pillW, pillH, r::R1);
+    g.setColour (Bg0);
+    g.setFont (pillFont);
+    g.drawText (selectionVerdict_,
+                juce::roundToInt (pillX), juce::roundToInt (pillY),
+                juce::roundToInt (pillW), juce::roundToInt (pillH),
+                juce::Justification::centred, false);
+}
+
 void WaveformView::paintPlayhead (juce::Graphics& g)
 {
     // plugin.css:315-325 — .rx-wave-playhead { 1px accent line + 0.5px accent
@@ -1836,7 +1979,18 @@ void WaveformView::mouseMove (const juce::MouseEvent& e)
     if (variant_ == Variant::Source && segBarArea().contains (pos))
         newUserBlockSplice = userBlockSpliceHitTest (pos.x);
 
-    const bool overSomething = (newSplice >= 0) || (newUserBlockSplice >= 0);
+    // ADR-115 E11 — loop-spot chip hover (Source variant, Region mode).
+    int newLoopSpot = -1;
+    if (variant_ == Variant::Source && ! blockMarkingEnabled_ && ! loopSpots_.empty()
+        && segBarArea().contains (pos))
+        newLoopSpot = loopSpotHitTest (pos);
+    if (newLoopSpot != hoveredLoopSpotIdx_)
+    {
+        hoveredLoopSpotIdx_ = newLoopSpot;
+        repaint (segBarArea());
+    }
+
+    const bool overSomething = (newSplice >= 0) || (newUserBlockSplice >= 0) || (newLoopSpot >= 0);
     setMouseCursor (overSomething
                     ? juce::MouseCursor::PointingHandCursor
                     : juce::MouseCursor::IBeamCursor);
@@ -1863,6 +2017,11 @@ void WaveformView::mouseMove (const juce::MouseEvent& e)
 
 void WaveformView::mouseExit (const juce::MouseEvent&)
 {
+    if (hoveredLoopSpotIdx_ != -1)
+    {
+        hoveredLoopSpotIdx_ = -1;
+        repaint (segBarArea());
+    }
     if (cursorX_ >= 0)
     {
         repaint (hoverDirtyRect (cursorX_));
@@ -1923,6 +2082,17 @@ void WaveformView::mouseDown (const juce::MouseEvent& e)
     const bool insideCanvas = canvas.contains (pos);
     const bool insideSegBar = bar.contains (pos);
     if (! (insideCanvas || insideSegBar)) return;
+
+    // ADR-115 E11 (sesja 117) — loop-spot chip click (Region mode segBar).
+    if (insideSegBar && ! blockMarkingEnabled_ && ! loopSpots_.empty())
+    {
+        const int spot = loopSpotHitTest (pos);
+        if (spot >= 0)
+        {
+            if (onLoopSpotClicked) onLoopSpotClicked (spot);
+            return;
+        }
+    }
 
     // Splice marker handling — Remix variant only. Right-click → context
     // menu (4 actions: Try different / Reset / Block / Seek). Left-click →

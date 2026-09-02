@@ -74,6 +74,13 @@ struct TimeSelection
 // when end <= start (no time-selection).
 std::optional<TimeSelection> getTimeSelection();
 
+// ADR-115 E11 (sesja 117) — write the REAPER time-selection (absolute project
+// seconds) so a clicked loop-spot suggestion shows up in the arrange view and
+// drives Region mode like a hand-made selection. No-op (false) without the
+// REAPER API or when end <= start. Not an undo point (REAPER does not record
+// time-selection changes).
+bool setTimeSelection (double startSec, double endSec);
+
 // Item-relative region for a given selected item. The region is the overlap
 // of the REAPER time-selection with the item, expressed in item-relative
 // seconds (0 = item start). Returns nullopt when:

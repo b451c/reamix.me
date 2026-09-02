@@ -2013,6 +2013,24 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_region_dp_v2
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_loop_spots — sesja 117 (ADR-115 E11) self-validation. Loop-spot map
+  # (backward bar-aligned Region pairs as spans) + greedy non-overlapping
+  # suggestion filter on a synthetic 64-beat track. Per ADR-065: hand-computed
+  # invariants.
+  add_executable(test_loop_spots
+    tests/parity/test_loop_spots.cpp
+    src/remix/LoopSpots.cpp
+  )
+  target_include_directories(test_loop_spots PRIVATE src)
+  if(MSVC)
+    target_compile_options(test_loop_spots PRIVATE /W3)
+  else()
+    target_compile_options(test_loop_spots PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  endif()
+  add_test(NAME loop_spots
+           COMMAND test_loop_spots
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_region_optimizer_k_best — sesja 100 (DEV-032, ADR-091) self-validation.
   # Validates RegionOptimizer K-best variations (Region mirror of ADR-048
   # Duration K-best per CleanOptimizer::remix_k_best). Exposes new public
@@ -2300,6 +2318,9 @@ if(ORT_FOUND)
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
     src/remix/BeatGrid.cpp
+    src/remix/RegionCost.cpp
+    src/remix/LoopSpots.cpp
+    src/ui/LoopSpotsBuilder.cpp
     src/analysis/Recurrence.cpp
     src/ui/AnalyzePipeline.cpp
     src/ui/AnalysisDiskCache.cpp
@@ -2357,6 +2378,7 @@ if(ORT_FOUND)
     src/io/AudioLoader.cpp
     src/ui/AnalyzePipeline.cpp
     src/ui/AnalysisDiskCache.cpp
+    src/ui/LoopSpotsBuilder.cpp
     src/ui/RemixPipeline.cpp
     src/ui/Theme.cpp
   )
