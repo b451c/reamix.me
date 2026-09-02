@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <numeric>
@@ -60,6 +61,26 @@ constexpr int    REGION_FALLBACK_MIN_REPEATS  = 1;
 // sentinel. Four occurrences — all the same class, documented as one.
 constexpr int REGION_MIN_VIABLE_DP = 2;
 
+// ADR-115 E8 (sesja 116, DEV-090) — v2 region path search constants.
+// C++-canonical (ADR-065), no library citation; validated by
+// tests/parity/test_region_dp_v2.cpp on synthetic pools.
+//   kRegionQualityBand   non-sequential pairs whose cost exceeds the region's
+//                        best pair by more than this are dropped before the
+//                        DP (cost = 1 - quality; 0.08 = "within 8 quality
+//                        points of the best"). Sesja-115 Billie Jean pools:
+//                        best 0.59 vs chosen 0.47 / 0.54 loops would be cut.
+//   kRegionRepeatPenalty paid by a jump that repeats (or lies within a
+//                        Gaussian neighbourhood, sigma = one bar, of) the
+//                        previous jump's pair; smaller than a jump tax
+//                        (0.3 x min(5, 2 w) ~ 0.3 at w = 0.5) so the DP
+//                        alternates between band pairs but never adds a cut
+//                        to avoid a repeat.
+//   kRegionMaxBandPairs  cap on the jump alphabet (DP state carries the
+//                        previous pair: (t, beat, pair) states).
+constexpr double kRegionQualityBand   = 0.08;
+constexpr double kRegionRepeatPenalty = 0.15;
+constexpr int    kRegionMaxBandPairs  = 16;
+
 // Python `int(round(x))` banker's rounding — std::nearbyint with default
 // FE_TONEAREST. Same helper as Optimizer.cpp session 22.
 int pyIntRound(double x)
@@ -87,6 +108,8 @@ RegionOptimizer::RegionOptimizer(const RegionOptimizerInputs& in)
     , region_beta_(in.region_beta)  // ADR-081 STATUS UPDATE 1 sesja 94
     , entry_beat_override_(in.entry_beat_override)  // ADR-081 STATUS UPDATE 2 sesja 94
     , exit_beat_override_(in.exit_beat_override)
+    , v2_scoring_(in.v2_scoring)  // ADR-115 E8 sesja 116
+    , bar_beats_(std::max(1, in.bar_beats))
 {
 }
 
@@ -278,8 +301,34 @@ RemixPath RegionOptimizer::remix(double                                         
     buildRegionCostMatrix(n_region, region_W, is_extending_);
 
     // Build neighbor lists — region_optimizer.py:106-107.
-    buildRegionNeighbors(n_region);
+    buildRegionNeighbors(n_region, rW_);
 
+    // ADR-115 E8 (sesja 116, DEV-090) — v2 region path search: quality band
+    // + repetition-penalty DP with cooldown = one measured bar (Min cut UI
+    // override still honoured until P3 removes it). Falls through to the
+    // synthesizer / legacy DP when it finds no path.
+    if (v2_scoring_) {
+        const std::int64_t cooldown_v2 =
+            (min_seq_after_jump_override_ > 0)
+                ? static_cast<std::int64_t>(min_seq_after_jump_override_)
+                : static_cast<std::int64_t>(bar_beats_);
+        V2Result v2 = regionDpV2(n_region, min_target_, max_target_, target_beats_,
+                                 cooldown_v2, entry_beat);
+        if (v2.ok) {
+            std::vector<std::pair<int, int>>                             transitions;
+            std::map<std::pair<int, int>, std::map<std::string, double>> metadata;
+            regionTransitions(v2.path, region_candidates, transitions, metadata);
+            RemixPath out;
+            out.beat_indices.reserve(v2.path.size());
+            for (std::int64_t idx : v2.path) out.beat_indices.push_back(static_cast<int>(idx));
+            out.total_cost          = v2.score;
+            out.duration_beats      = static_cast<int>(out.beat_indices.size());
+            out.transitions         = std::move(transitions);
+            out.transition_metadata = std::move(metadata);
+            return out;
+        }
+        buildRegionNeighbors(n_region, rW_);   // restore the plain lists for the fallbacks
+    }
 
     // ADR-081 STATUS UPDATE 2 sesja 94 — Region β-model loop synthesizer.
     // When region_beta_ AND is_extending_, try explicit (i, j, N) synthesis
@@ -353,7 +402,15 @@ RemixPath RegionOptimizer::remix(double                                         
     }
 
     // Run DP — region_optimizer.py:109-113.
-    DpResult dp_res = regionDp(n_region, min_target_, max_target_, target_beats_);
+    // ADR-083 sesja 92 — Min cut UI override. Default 0 → legacy
+    // REGION_COOLDOWN=8 → bit-exact baseline. UI passes user slider value
+    // 4-32 beats when slider dragged off default 16.
+    const std::int64_t effective_cooldown =
+        (min_seq_after_jump_override_ > 0)
+            ? static_cast<std::int64_t>(min_seq_after_jump_override_)
+            : REGION_COOLDOWN;
+    DpResult dp_res = regionDp(n_region, min_target_, max_target_, target_beats_,
+                               rW_, effective_cooldown);
 
     // Check failure — region_optimizer.py:115-119.
     if (dp_res.best_cost >= INF) {
@@ -424,7 +481,7 @@ void RegionOptimizer::buildRegionCostMatrix(int           n_region,
 // Build CSR neighbor list.
 // Port of `_build_region_neighbors` (region_optimizer.py:181-213).
 // ---------------------------------------------------------------------------
-void RegionOptimizer::buildRegionNeighbors(int n_region)
+void RegionOptimizer::buildRegionNeighbors(int n_region, const std::vector<double>& W)
 {
     std::vector<std::vector<int>> region_neighbors(static_cast<std::size_t>(n_region));
 
@@ -436,7 +493,7 @@ void RegionOptimizer::buildRegionNeighbors(int n_region)
         std::vector<double> costs(static_cast<std::size_t>(n_region));
         for (int j = 0; j < n_region; ++j) {
             costs[static_cast<std::size_t>(j)] =
-                rW_[static_cast<std::size_t>(ri) * n_region + j];
+                W[static_cast<std::size_t>(ri) * n_region + j];
         }
         costs[static_cast<std::size_t>(ri)] = INF;
         if (ri + 1 < n_region) costs[static_cast<std::size_t>(ri + 1)] = INF;
@@ -487,7 +544,9 @@ RegionOptimizer::DpResult
 RegionOptimizer::regionDp(int n_region,
                            int min_target,
                            int max_target,
-                           int target_beats) const
+                           int target_beats,
+                           const std::vector<double>& W,
+                           std::int64_t cooldown) const
 {
     const std::size_t rows = static_cast<std::size_t>(max_target + 1);
     const std::size_t cols = static_cast<std::size_t>(n_region);
@@ -502,13 +561,9 @@ RegionOptimizer::regionDp(int n_region,
     // R8 MARKER — region_optimizer.py:233.
     cooldown_ssj[1 * cols + 0] = REGION_SSJ_NO_RECENT_JUMP_SENTINEL;
 
-    // ADR-083 sesja 92 — Min cut UI override. Default 0 → legacy
-    // REGION_COOLDOWN=8 → bit-exact baseline. UI passes user slider value
-    // 4-32 beats when slider dragged off default 16.
-    const std::int64_t effective_cooldown =
-        (min_seq_after_jump_override_ > 0)
-            ? static_cast<std::int64_t>(min_seq_after_jump_override_)
-            : REGION_COOLDOWN;
+    // Cooldown: legacy REGION_COOLDOWN (8) or the Min cut UI override
+    // (ADR-083 sesja 92); one measured bar on the v2 path (sesja 116).
+    const std::int64_t effective_cooldown = cooldown;
 
     // ADR-081 STATUS UPDATE 1 sesja 94 — beta-path tunables. Default
     // (region_beta_=false) preserves bit-exact baseline. Beta values
@@ -536,7 +591,7 @@ RegionOptimizer::regionDp(int n_region,
             if (ssj_ri < effective_cooldown) {
                 const int rj = ri + 1;
                 if (rj < n_region) {
-                    const double w_seq = rW_[static_cast<std::size_t>(ri) * n_region + static_cast<std::size_t>(rj)];
+                    const double w_seq = W[static_cast<std::size_t>(ri) * n_region + static_cast<std::size_t>(rj)];
                     const double cost  = d_ri + w_seq;
                     const std::size_t dst = (t_row + 1) * cols + static_cast<std::size_t>(rj);
                     if (cost < dp[dst]) {
@@ -553,7 +608,7 @@ RegionOptimizer::regionDp(int n_region,
             const int end_  = static_cast<int>(nb_offsets_[static_cast<std::size_t>(ri + 1)]);
             for (int ni = start; ni < end_; ++ni) {
                 const int rj = static_cast<int>(nb_indices_[static_cast<std::size_t>(ni)]);
-                const double raw_w = rW_[static_cast<std::size_t>(ri) * n_region + static_cast<std::size_t>(rj)];
+                const double raw_w = W[static_cast<std::size_t>(ri) * n_region + static_cast<std::size_t>(rj)];
                 if (raw_w >= INF) continue;
 
                 // Sesja 100 (DEV-032) — skip transitions in blocked set.
@@ -630,6 +685,173 @@ RegionOptimizer::regionDp(int n_region,
     out.best_ri   = best_ri;
     out.parent    = std::move(parent);
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// ADR-115 E8 (sesja 116, DEV-090) — v2 region path search.
+// See RegionOptimizer.h for the algorithm summary.
+//
+// Why a "last pair" state instead of iterative re-weighting: an additive DP
+// under a matrix that penalises every use of a pair only ever switches to
+// another pair wholesale (pure A x N -> pure B x M); it cannot express "A
+// then B then A". The patent applies its Gaussian repetition penalty
+// greedily after each chosen segment, which alternates naturally; carrying
+// the previous jump's pair in the DP state is the exact equivalent (a jump
+// that repeats or neighbours the previous one pays the penalty once).
+// ---------------------------------------------------------------------------
+RegionOptimizer::V2Result
+RegionOptimizer::regionDpV2(int          n_region,
+                            int          min_target,
+                            int          max_target,
+                            int          target_beats,
+                            std::int64_t cooldown,
+                            int          entry_beat)
+{
+    V2Result best;
+    const std::size_t n = static_cast<std::size_t>(n_region);
+    auto cell = [&](int ri, int rj) { return static_cast<std::size_t>(ri) * n + static_cast<std::size_t>(rj); };
+
+    auto isBlocked = [&](int ri, int rj) {
+        if (blocked_transitions_ == nullptr) return false;
+        return blocked_transitions_->find({entry_beat_ + ri, entry_beat_ + rj})
+               != blocked_transitions_->end();
+    };
+
+    // 1. Quality band around the region's best non-sequential pair; the
+    //    surviving pairs (at most kRegionMaxBandPairs, best first) are the
+    //    DP's jump alphabet.
+    struct Pair { int ri, rj; double w; };
+    std::vector<Pair> pool;
+    for (int ri = 0; ri < n_region; ++ri)
+        for (int rj = 0; rj < n_region; ++rj) {
+            if (rj == ri || rj == ri + 1) continue;
+            const double w = rW_[cell(ri, rj)];
+            if (w >= INF || isBlocked(ri, rj)) continue;
+            pool.push_back({ri, rj, w});
+        }
+    if (pool.empty()) return best;
+    std::sort(pool.begin(), pool.end(), [](const Pair& a, const Pair& b) {
+        return a.w < b.w || (a.w == b.w && (a.ri < b.ri || (a.ri == b.ri && a.rj < b.rj)));
+    });
+    const double c_best = pool.front().w;
+    std::vector<Pair> pairs;
+    for (const Pair& p : pool) {
+        if (p.w > c_best + kRegionQualityBand) break;
+        if (static_cast<int>(pairs.size()) >= kRegionMaxBandPairs) break;
+        pairs.push_back(p);
+    }
+    const int P = static_cast<int>(pairs.size());   // index P = "no jump yet"
+    std::vector<int> pair_idx(n * n, -1);
+    for (int q = 0; q < P; ++q) pair_idx[cell(pairs[q].ri, pairs[q].rj)] = q;
+
+    // 2. DP over (t, ri, last pair). Sequential cost from rW_; jump cost =
+    //    w + jump tax (beta constants) + repetition penalty vs the last pair.
+    const double jump_cap  = region_beta_ ? 5.0 : REGION_JUMP_COST_CAP;
+    const double jump_base = region_beta_ ? 0.3 : JUMP_PENALTY_BASE;
+    const double sigma2    = 2.0 * static_cast<double>(bar_beats_) * static_cast<double>(bar_beats_);
+    auto repeatPenalty = [&](int p, int q) {
+        if (p >= P) return 0.0;
+        const double di = static_cast<double>(pairs[p].ri - pairs[q].ri);
+        const double dj = static_cast<double>(pairs[p].rj - pairs[q].rj);
+        return kRegionRepeatPenalty * std::exp(-(di * di + dj * dj) / sigma2);
+    };
+
+    const std::size_t L    = static_cast<std::size_t>(P + 1);
+    const std::size_t rows = static_cast<std::size_t>(max_target + 1);
+    const std::size_t sz   = rows * n * L;
+    auto st = [&](int t, int ri, int p) {
+        return (static_cast<std::size_t>(t) * n + static_cast<std::size_t>(ri)) * L + static_cast<std::size_t>(p);
+    };
+    std::vector<double>       dp(sz, INF);
+    std::vector<std::int32_t> par_ri(sz, -1);
+    std::vector<std::int32_t> par_p(sz, -1);
+    std::vector<std::int32_t> ssj(sz, 0);
+
+    dp[st(1, 0, P)]  = 0.0;
+    ssj[st(1, 0, P)] = static_cast<std::int32_t>(REGION_SSJ_NO_RECENT_JUMP_SENTINEL);
+
+    auto relax = [&](std::size_t dst, double cost, int from_ri, int from_p, std::int32_t new_ssj) {
+        if (cost < dp[dst]) {
+            dp[dst]     = cost;
+            par_ri[dst] = from_ri;
+            par_p[dst]  = from_p;
+            ssj[dst]    = new_ssj;
+        }
+    };
+
+    for (int t = 1; t < max_target; ++t) {
+        for (int ri = 0; ri < n_region; ++ri) {
+            const double w_seq = (ri + 1 < n_region) ? rW_[cell(ri, ri + 1)] : INF;
+            for (int p = 0; p <= P; ++p) {
+                const std::size_t src = st(t, ri, p);
+                const double d = dp[src];
+                if (d >= INF) continue;
+                const std::int32_t s = ssj[src];
+                if (w_seq < INF)
+                    relax(st(t + 1, ri + 1, p), d + w_seq, ri, p, s + 1);
+                if (s < cooldown) continue;   // sequential only while in cooldown
+                for (int q = 0; q < P; ++q) {
+                    if (pairs[q].ri != ri) continue;
+                    const double w = pairs[q].w;
+                    const double cost = d + w
+                        + edit_length_jump_scale_ * jump_base * std::min(jump_cap, w * REGION_JUMP_COST_SCALE)
+                        + repeatPenalty(p, q);
+                    relax(st(t + 1, pairs[q].rj, q), cost, ri, p, 0);
+                }
+            }
+        }
+    }
+
+    // 3. Endpoint: terminal + duration penalties as in regionDp.
+    int best_t = -1, best_ri = -1, best_p = -1;
+    for (int t = min_target; t <= max_target; ++t)
+        for (int ri = 0; ri < n_region; ++ri) {
+            const int dist = std::abs(ri - (n_region - 1));
+            const double terminal = (dist > REGION_TERMINAL_DIST_THRESHOLD)
+                ? static_cast<double>(dist) * REGION_TERMINAL_SCALE : 0.0;
+            const double duration_dev = std::abs(static_cast<double>(t - target_beats))
+                                      / static_cast<double>(std::max(1, target_beats));
+            const double extra = terminal + duration_dev * DURATION_PENALTY_WEIGHT;
+            for (int p = 0; p <= P; ++p) {
+                const double d = dp[st(t, ri, p)];
+                if (d >= INF) continue;
+                const double total = d + extra;
+                if (total < best.score) { best.score = total; best_t = t; best_ri = ri; best_p = p; }
+            }
+        }
+    if (best_t < 0) return best;
+
+    std::vector<int> rel;
+    for (int t = best_t, ri = best_ri, p = best_p; t > 0; --t) {
+        rel.push_back(ri);
+        const std::size_t s = st(t, ri, p);
+        const int pri = par_ri[s], pp = par_p[s];
+        ri = pri; p = pp;
+    }
+    std::reverse(rel.begin(), rel.end());
+    best.path.reserve(rel.size());
+    for (int r : rel) best.path.push_back(static_cast<std::int64_t>(entry_beat + r));
+    best.ok = true;
+
+    // Dev-only diagnostic (sesja 116): REAMIX_REGION_DEBUG=<path> appends the
+    // band and the chosen path's jumps.
+    if (const char* dbg = std::getenv("REAMIX_REGION_DEBUG")) {
+        if (FILE* f = std::fopen(dbg, "a")) {
+            std::fprintf(f, "# v2 n_region=%d target=%d cooldown=%lld c_best=%.4f pool=%d band=%d score=%.4f len=%d band:",
+                         n_region, target_beats, static_cast<long long>(cooldown), c_best,
+                         static_cast<int>(pool.size()), P, best.score, static_cast<int>(best.path.size()));
+            for (const Pair& p : pairs)
+                std::fprintf(f, " %d->%d(%.3f)", entry_beat + p.ri, entry_beat + p.rj, p.w);
+            std::fprintf(f, " jumps:");
+            for (std::size_t k = 0; k + 1 < best.path.size(); ++k)
+                if (best.path[k + 1] != best.path[k] + 1)
+                    std::fprintf(f, " %lld->%lld", static_cast<long long>(best.path[k]),
+                                 static_cast<long long>(best.path[k + 1]));
+            std::fprintf(f, "\n");
+            std::fclose(f);
+        }
+    }
+    return best;
 }
 
 // ---------------------------------------------------------------------------

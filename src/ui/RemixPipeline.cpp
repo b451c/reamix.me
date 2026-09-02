@@ -501,6 +501,11 @@ void RemixPipeline::run()
             roin.entry_beat_override = entry_beat;
             roin.exit_beat_override  = exit_beat;
 
+            // ADR-115 E8 (sesja 116, DEV-090) — v2 region path search with
+            // the measured bar as cooldown / repetition sigma.
+            roin.v2_scoring = in_.v2_scoring;
+            roin.bar_beats  = gridBarBeats;
+
             reamix::remix::RegionOptimizer ropt (roin);
 
             // Sesja 100 (DEV-032) — Region "Try different splice" K-best

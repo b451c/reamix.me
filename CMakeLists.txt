@@ -1978,6 +1978,41 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_region_inner_loop
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_region_dp_v2 — sesja 116 (ADR-115 E8, DEV-090) self-validation.
+  # Validates the v2 Region path search (quality band + repetition-penalty DP
+  # over (length, beat, previous pair) states, cooldown = one measured bar)
+  # on a synthetic 40-beat region with hand-placed loop pairs. Default
+  # v2_scoring=false preserves the sesja-94 synthesizer and the bit-exact
+  # region_optimizer_parity corpus. Per ADR-065: hand-computed invariants.
+  add_executable(test_region_dp_v2
+    tests/parity/test_region_dp_v2.cpp
+    src/remix/RegionOptimizer.cpp
+    src/remix/SegmentData.cpp
+    src/remix/Quality.cpp
+    src/remix/SignalNorm.cpp
+    src/remix/TransitionCost.cpp
+    src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
+    src/analysis/Recurrence.cpp
+    src/dsp/WaveformXcorr.cpp
+    src/dsp/SosFilt.cpp
+  )
+  target_include_directories(test_region_dp_v2 PRIVATE
+    src
+    ${POCKETFFT_DIR}
+  )
+  if(MSVC)
+    target_compile_options(test_region_dp_v2 PRIVATE /W3)
+  else()
+    target_compile_options(test_region_dp_v2 PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME region_dp_v2
+           COMMAND test_region_dp_v2
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_region_optimizer_k_best — sesja 100 (DEV-032, ADR-091) self-validation.
   # Validates RegionOptimizer K-best variations (Region mirror of ADR-048
   # Duration K-best per CleanOptimizer::remix_k_best). Exposes new public

@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>    // dev-only REAMIX_REGION_DEBUG pool dump (sesja 116)
+#include <cstdlib>
 #include <optional>
 #include <set>
 #include <string>
@@ -327,8 +329,13 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
     std::vector<double> edge_splice = precomputeEdgeSplice(
         in.edge_features_end, in.edge_features_start,
         in.entry_beat, in.exit_beat, in.n_edge_features);
+    // Edge dB over the WHOLE track, indexed by absolute beat (DEV-090 sesja
+    // 116): the v2 baselines below must describe the track's own consecutive
+    // steps, not the region slice (a 31-beat slice is below kMinSamples and a
+    // region-local array indexed the wrong beats when combined with the
+    // full-track rms / centroid / onset pointers).
     auto [edge_db_end, edge_db_start] = precomputeEdgeEnergy(
-        in.edge_rms_end, in.edge_rms_start, in.entry_beat, in.exit_beat);
+        in.edge_rms_end, in.edge_rms_start, 0, n_total);
     std::vector<std::string> beat_labels = regionBeatLabels(
         in.segments, in.n_segments, in.beat_times,
         in.entry_beat, in.exit_beat, n_total);
@@ -341,6 +348,7 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
     // Region-relative downbeat sets.
     // argmin over FULL beat_times (region_cost.py:251), then filter to [entry, exit).
     std::set<int> db_set;
+    std::set<int> abs_db_set;   // whole-track downbeat indices (v2 prior, sesja 116)
     if (in.downbeats != nullptr && in.n_downbeats > 0) {
         for (int k = 0; k < in.n_downbeats; ++k) {
             const double dbt = in.downbeats[k];
@@ -350,6 +358,7 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
                 const double d = std::abs(in.beat_times[b] - dbt);
                 if (d < best) { best = d; abs_idx = b; }
             }
+            abs_db_set.insert(abs_idx);
             if (in.entry_beat <= abs_idx && abs_idx < in.exit_beat) {
                 db_set.insert(abs_idx - in.entry_beat);
             }
@@ -358,19 +367,22 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
         // Fallback: synthesized downbeats region_cost.py:254-255.
         for (int ri = 0; ri < n_region; ri += in.time_signature) {  // CLEAN (CALLER OVERRIDE)
             db_set.insert(ri);
+            abs_db_set.insert(in.entry_beat + ri);
         }
     }
     std::set<int> pre_db_set;
     for (int db : db_set) if (db > 0) pre_db_set.insert(db - 1);
+    std::set<int> abs_pre_db_set;
+    for (int db : abs_db_set) if (db > 0) abs_pre_db_set.insert(db - 1);
 
-    // ADR-115 E1/E3 (sesja 114) — v2 scoring state (baselines over the whole
-    // track's consecutive beats; region-local edge dB pairs).
+    // ADR-115 E1/E3 (sesja 114) — v2 scoring state: baselines over the whole
+    // track's consecutive beats (all arrays absolute-indexed, n_total long).
     const bool v2 = in.v2_scoring;
     const SignalBaselines baselines = v2
         ? buildSignalBaselines(in.rms_energy, in.spectral_centroid, in.onset_strength,
                                edge_db_end.empty()   ? nullptr : edge_db_end.data(),
                                edge_db_start.empty() ? nullptr : edge_db_start.data(),
-                               edge_db_end.empty() ? 0 : n_region)
+                               n_total)
         : SignalBaselines{};
     const bool v2_bar_constraint = v2 && db_set.size() >= 2 && ! pre_db_set.empty();
     const QualityWeights& v2_default_weights = v2 ? kV2QualityWeights : kDefaultQualityWeights;
@@ -426,12 +438,37 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             computeChromaContinuityMatrix(chroma_slice.data(), n_total, n_chroma);
     }
 
-    // ADR-115 E4 (sesja 115): repetition-diagonal prior on the region slice
-    // (region-relative indices, same fallback rule as TransitionCost).
-    const RepetitionPrior rep_prior = v2_bar_constraint && ! in.disable_repetition_prior
-        ? RepetitionPrior::build(in.features + static_cast<std::size_t>(in.entry_beat) * in.n_features,
-                                 n_region, in.n_features, pre_db_set, db_set, in.time_signature)
+    // ADR-115 E4 (sesja 115) + E8 (sesja 116, DEV-090): repetition-diagonal
+    // prior built on the WHOLE track (absolute indices) and consulted for the
+    // region's pairs. Sesja 115 built it on the region slice, where a 31-beat
+    // recurrence with k = 12 mutual neighbours is noise and left Billie Jean's
+    // 16 s region with 3 loop pairs from a single source. Region fallback: when
+    // the prior leaves fewer than kRegionMinPriorPairsPerSource allowed pairs
+    // per region source, it is switched off for the region (E3 bar alignment
+    // only) - a short region has too little material to also demand
+    // structural recurrence.
+    RepetitionPrior rep_prior = v2_bar_constraint && ! in.disable_repetition_prior
+        ? RepetitionPrior::build(in.features, n_total, in.n_features,
+                                 abs_pre_db_set, abs_db_set, in.time_signature)
         : RepetitionPrior{};
+    int n_pairs_bar = 0, n_pairs_prior = 0;
+    if (rep_prior.active) {
+        for (int ri : pre_db_set) {
+            for (int rj : db_set) {
+                if (rj == ri + 1 || std::abs(rj - ri) < REGION_MICRO_SKIP_BEATS) continue;
+                ++n_pairs_bar;
+                if (rep_prior.allowed(in.entry_beat + ri, in.entry_beat + rj)) ++n_pairs_prior;
+            }
+        }
+        if (n_pairs_prior < kRegionMinPriorPairsPerSource * static_cast<double>(pre_db_set.size())) {
+            rep_prior.active = false;
+            rep_prior.mask.clear();
+        }
+    }
+    out.prior_active   = rep_prior.active;
+    out.n_pairs_bar    = n_pairs_bar;
+    out.n_pairs_prior  = n_pairs_prior;
+    int n_gate_chroma = 0, n_gate_energy = 0, n_gate_loud = 0;   // dev dump counters
 
     // Build cost matrix (region_cost.py:113-148).
     out.region_W.assign(static_cast<std::size_t>(n_region) * n_region, INF);  // CLEAN
@@ -456,9 +493,9 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             if (std::abs(rj - ri) < REGION_MICRO_SKIP_BEATS) continue;  // C1
             // v2: bar alignment as a candidate constraint (ADR-115 E3)
             if (v2_bar_constraint && ! (pre_db_set.count(ri) > 0 && db_set.count(rj) > 0)) continue;
-            if (v2_bar_constraint && ! rep_prior.allowed(ri, rj)) continue;   // ADR-115 E4
+            if (v2_bar_constraint && ! rep_prior.allowed(abs_i, in.entry_beat + rj)) continue;   // ADR-115 E4 (whole-track prior, sesja 116)
             const double cd = chroma_D[static_cast<std::size_t>(ri) * n_region + rj];
-            if (cd > REGION_CHROMA_PREFILTER) continue;  // C2
+            if (cd > REGION_CHROMA_PREFILTER) { ++n_gate_chroma; continue; }  // C2
 
             const int abs_j = in.entry_beat + rj;
             const int source_boundary = abs_i + 1;
@@ -467,8 +504,30 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             double energy_diff = 0.0;
             const bool have_edge_db = !edge_db_end.empty() && !edge_db_start.empty();
             if (have_edge_db) {
-                energy_diff = std::abs(edge_db_end[ri] - edge_db_start[rj]);
-                if (energy_diff > ENERGY_HARD_BLOCK_DB) continue;  // CLEAN (sesja 18)
+                energy_diff = std::abs(edge_db_end[abs_i] - edge_db_start[abs_j]);
+                if (v2) {
+                    // ADR-115 E8 (sesja 116, DEV-090): successor-view hard gate.
+                    // The legacy gate compares the tail of beat i with the
+                    // attack of beat j, which on attack-heavy material is the
+                    // NATURAL bar step (Billie Jean: median 10.5 dB from a
+                    // pre-downbeat tail to the downbeat kick) and rejected 42
+                    // of 49 bar pairs in the reported region. A splice is
+                    // audible when the incoming attack differs from the one
+                    // the listener expects (start(j) vs start(i+1)) or the
+                    // outgoing tail differs from what precedes j (end(i) vs
+                    // end(j-1)); those two mismatches are gated at the same
+                    // 8 dB. energy_diff itself stays the edge_energy signal
+                    // (relative mapping, edgeEnergyQualityV2). Region-only,
+                    // like the other relaxed gates in this file; the Duration
+                    // gate is DEV-091.
+                    const bool succ_ok = abs_i + 1 < n_total && abs_j > 0
+                        && std::abs(edge_db_start[abs_j] - edge_db_start[abs_i + 1]) <= ENERGY_HARD_BLOCK_DB
+                        && std::abs(edge_db_end[abs_i] - edge_db_end[abs_j - 1]) <= ENERGY_HARD_BLOCK_DB;
+                    if (! succ_ok) { ++n_gate_energy; continue; }
+                } else if (energy_diff > ENERGY_HARD_BLOCK_DB) {  // CLEAN (sesja 18)
+                    ++n_gate_energy;
+                    continue;
+                }
             }
 
             // Vocal features.
@@ -560,7 +619,7 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
                 // ADR-115 E2 — p98 loudness reject (sesja 115), mirrors TransitionCost.
                 if (in.rms_energy != nullptr && have_edge_db
                     && loudnessRejectV2(baselines, in.rms_energy[abs_i], in.rms_energy[abs_j], energy_diff))
-                    continue;
+                    { ++n_gate_loud; continue; }
                 if (in.rms_energy != nullptr)
                     energy_match = energyQualityV2(baselines, in.rms_energy[abs_i], in.rms_energy[abs_j], energy_match);
                 if (have_edge_db)
@@ -693,6 +752,38 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             cand.alignment_lag_samples  = lag;
             cand.total_cost             = total_cost;
             out.candidates[{abs_i, abs_j}] = cand;
+        }
+    }
+
+    // Dev-only pool diagnostic (sesja 116, DEV-090): REAMIX_REGION_DEBUG=<path>
+    // appends one line describing the region candidate pool; pairs with
+    // RegionOptimizer's loop-pair dump under the same variable.
+    if (const char* dbg = std::getenv("REAMIX_REGION_DEBUG")) {
+        if (FILE* f = std::fopen(dbg, "a")) {
+            double best_q = 0.0;
+            for (const auto& kv : out.candidates) best_q = std::max(best_q, kv.second.quality_score);
+            // natural edge step |end(i) - start(i+1)| over the track: all pairs / bar-aligned pairs
+            std::vector<double> step_all, step_bar;
+            if (! edge_db_end.empty())
+                for (int i = 0; i + 1 < n_total; ++i) {
+                    const double d = std::abs(edge_db_end[i] - edge_db_start[i + 1]);
+                    step_all.push_back(d);
+                    if (abs_pre_db_set.count(i)) step_bar.push_back(d);
+                }
+            auto pct = [](std::vector<double> v, double q) {
+                if (v.empty()) return 0.0;
+                std::sort(v.begin(), v.end());
+                return v[static_cast<std::size_t>(q * (v.size() - 1))];
+            };
+            std::fprintf(f, "# natural edge step dB: all p50=%.2f p90=%.2f p98=%.2f | bar p50=%.2f p90=%.2f p98=%.2f (n=%d)\n",
+                         pct(step_all, 0.5), pct(step_all, 0.9), pct(step_all, 0.98),
+                         pct(step_bar, 0.5), pct(step_bar, 0.9), pct(step_bar, 0.98), static_cast<int>(step_bar.size()));
+            std::fprintf(f, "# pool entry=%d n_region=%d bar=%d sources=%d bar_pairs=%d prior_pairs=%d prior_active=%d gate_chroma=%d gate_energy=%d gate_loud=%d scored=%d best_q=%.3f\n",
+                         in.entry_beat, n_region, in.time_signature,
+                         static_cast<int>(pre_db_set.size()), n_pairs_bar, n_pairs_prior,
+                         rep_prior.active ? 1 : 0, n_gate_chroma, n_gate_energy, n_gate_loud,
+                         static_cast<int>(out.candidates.size()), best_q);
+            std::fclose(f);
         }
     }
 

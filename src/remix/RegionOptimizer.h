@@ -168,6 +168,15 @@ struct RegionOptimizerInputs
     // override" → preserves parity test legacy behavior.
     int           entry_beat_override = -1;
     int           exit_beat_override  = -1;
+
+    // ADR-115 E8 (sesja 116, DEV-090) — v2 region path search (quality band
+    // + repetition penalty DP, cooldown = one measured bar). false keeps the
+    // sesja-94 synthesizer / legacy DP exactly (parity + inner-loop tests).
+    // `bar_beats` is the measured bar from BeatGrid (RemixPipeline passes
+    // gridBarBeats); it is the cooldown and the Gaussian sigma of the
+    // repetition penalty.
+    bool          v2_scoring = false;
+    int           bar_beats  = 4;
 };
 
 // ---------------------------------------------------------------------------
@@ -263,10 +272,13 @@ private:
                                const double*  region_W,
                                bool           is_extending);
 
-    // region_optimizer.py:181-213. CSR neighbor list builder.
-    void buildRegionNeighbors(int n_region);
+    // region_optimizer.py:181-213. CSR neighbor list builder over `W`
+    // (rW_ on the legacy path; the band-filtered / reweighted copy on v2).
+    void buildRegionNeighbors(int n_region, const std::vector<double>& W);
 
     // region_optimizer.py:215-288. Returns (best_cost, best_t, best_ri).
+    // `W` is the cost matrix the neighbour lists were built from; `cooldown`
+    // the sequential run required after a jump.
     struct DpResult
     {
         double best_cost;
@@ -277,7 +289,36 @@ private:
     DpResult regionDp(int n_region,
                       int min_target,
                       int max_target,
-                      int target_beats) const;
+                      int target_beats,
+                      const std::vector<double>& W,
+                      std::int64_t cooldown) const;
+
+    // ADR-115 E8 (sesja 116, DEV-090) — v2 region path search. Replaces the
+    // "one loop x N" synthesizer (kept below as fallback):
+    //   1. quality band: non-sequential pairs farther than
+    //      kRegionQualityBand (cost units) from the region's best pair are
+    //      removed, so the path is built from the best material only
+    //      ("quality-first"); among those the jump tax still prefers fewer
+    //      cuts;
+    //   2. DP over (length, beat, previous jump pair) with cooldown = one
+    //      measured bar (2-bar loops allowed);
+    //   3. repetition penalty (patent US9502017B1 Gaussian neighbourhood,
+    //      Plachouras 2023): a jump that repeats, or lies within one bar of,
+    //      the previous jump's pair pays kRegionRepeatPenalty, so equally
+    //      good pairs alternate instead of the same splice N times.
+    // `ok == false` -> caller falls back (synthesizer, legacy DP, tiling).
+    struct V2Result
+    {
+        std::vector<std::int64_t> path;   // absolute beat indices
+        double score = INF;
+        bool   ok    = false;
+    };
+    V2Result regionDpV2(int          n_region,
+                        int          min_target,
+                        int          max_target,
+                        int          target_beats,
+                        std::int64_t cooldown,
+                        int          entry_beat);
 
     // ADR-081 STATUS UPDATE 2 sesja 94 — explicit loop synthesizer for
     // extending mode. Replaces free-form DP with structural (i, j, N) path
@@ -350,6 +391,8 @@ private:
     bool                                                        region_beta_ = false;  // ADR-081 STATUS UPDATE 1 sesja 94
     int                                                         entry_beat_override_ = -1;  // ADR-081 STATUS UPDATE 2 sesja 94
     int                                                         exit_beat_override_  = -1;
+    bool                                                        v2_scoring_ = false;   // ADR-115 E8 (sesja 116)
+    int                                                         bar_beats_  = 4;
 
     // -- Per-call state (cleared on each `remix()` entry) ---------------------
     int    entry_beat_       = 0;

@@ -120,6 +120,12 @@ inline constexpr double REGION_SECTION_SIM_BIAS  = 0.1;
 inline constexpr double REGION_LABEL_MATCH_THRESHOLD = 0.5;
 inline constexpr double REGION_SPAN_PENALTY_HALVING  = 0.5;
 
+// ADR-115 E8 (sesja 116, DEV-090): the whole-track repetition prior is kept
+// for a region only when it leaves at least this many allowed bar-aligned
+// pairs per region source; below that the region falls back to E3 (bar
+// alignment only). C++-canonical (ADR-065).
+inline constexpr double kRegionMinPriorPairsPerSource = 2.0;
+
 // ---------------------------------------------------------------------------
 // Inputs / outputs
 // ---------------------------------------------------------------------------
@@ -202,6 +208,12 @@ struct RegionCostResult
     std::map<std::pair<int, int>, TransitionCandidate> candidates;
 
     int n_region = 0;
+
+    // v2 pool diagnostics (sesja 116): bar-aligned region pairs before the
+    // prior, pairs the whole-track prior allows, and whether it stayed on.
+    bool prior_active  = false;
+    int  n_pairs_bar   = 0;
+    int  n_pairs_prior = 0;
 };
 
 // Main entry point. Port of `compute_region_costs` (region_cost.py:42-148).
