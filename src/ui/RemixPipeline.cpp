@@ -1,4 +1,5 @@
 #include "ui/RemixPipeline.h"
+#include "remix/BeatGrid.h"   // ADR-115 E5 (sesja 115)
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -159,6 +160,20 @@ void RemixPipeline::run()
     // — this worker never writes to bundle members.
     auto& bundle = *in_.bundle;
 
+    // ADR-115 E5 (sesja 115): on the v2 path every engine input gets the
+    // cleaned beat grid (downbeats snapped onto beats with tolerance, hole-
+    // adjacent downbeats dropped, bar length measured from downbeat spacing)
+    // instead of the raw detector downbeats + detected time signature. The
+    // legacy path keeps the raw grid (parity).
+    const reamix::remix::BeatGridResult v2Grid = in_.v2_scoring
+        ? reamix::remix::cleanBeatGrid (bundle.beatTimes.data(), (int) bundle.beatTimes.size(),
+                                        bundle.downbeatTimes.empty() ? nullptr : bundle.downbeatTimes.data(),
+                                        (int) bundle.downbeatTimes.size(),
+                                        juce::jmax (1, (int) bundle.timeSigNum))
+        : reamix::remix::BeatGridResult{};
+    const std::vector<double>& gridDownbeats = in_.v2_scoring ? v2Grid.downbeats : bundle.downbeatTimes;
+    const int gridBarBeats = in_.v2_scoring ? v2Grid.bar_beats : juce::jmax (1, (int) bundle.timeSigNum);
+
     // ── Stage 6 — Optimizer (phase-4 second half) ──────────────────
     // Three branches:
     //   - Blocks  (ADR-051): user-marked + arranged sections; soft-boundary
@@ -290,9 +305,9 @@ void RemixPipeline::run()
             bin.edge_vocal_release_end = bundle.feat.edgeVocalReleaseEnd.empty() ? nullptr
                                                                                 : bundle.feat.edgeVocalReleaseEnd.data();
 
-            bin.downbeats   = bundle.downbeatTimes.empty() ? nullptr : bundle.downbeatTimes.data();
-            bin.n_downbeats = (int) bundle.downbeatTimes.size();
-            bin.time_signature = juce::jmax (1, (int) bundle.timeSigNum);
+            bin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
+            bin.n_downbeats = (int) gridDownbeats.size();
+            bin.time_signature = gridBarBeats;
 
             bin.search_window_beats   = std::max (1, in_.spliceFlexBeats);
             bin.drift_penalty_weight  = in_.driftPenaltyWeight;
@@ -428,9 +443,9 @@ void RemixPipeline::run()
             rcin.edge_vocal_release_end    = bundle.feat.edgeVocalReleaseEnd.empty()
                                               ? nullptr : bundle.feat.edgeVocalReleaseEnd.data();
 
-            rcin.downbeats   = bundle.downbeatTimes.empty() ? nullptr : bundle.downbeatTimes.data();
-            rcin.n_downbeats = (int) bundle.downbeatTimes.size();
-            rcin.time_signature = juce::jmax (1, (int) bundle.timeSigNum);
+            rcin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
+            rcin.n_downbeats = (int) gridDownbeats.size();
+            rcin.time_signature = gridBarBeats;
 
             // ADR-058 — calibration weight override (sesja 71). nullptr →
             // kDefaultQualityWeights → preserves production baseline + parity.
@@ -463,9 +478,8 @@ void RemixPipeline::run()
             // Renderer + Insert pipeline override first/last clip source
             // bounds to user-selection so boundaries are sample-exact match.
             // Supersedes ADR-054 soft-boundary downbeat search.
-            roin.downbeats         = bundle.downbeatTimes.empty() ? nullptr
-                                                                  : bundle.downbeatTimes.data();
-            roin.n_downbeats       = (int) bundle.downbeatTimes.size();
+            roin.downbeats         = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
+            roin.n_downbeats       = (int) gridDownbeats.size();
             roin.splice_flex_beats = 0;
 
             // ADR-081 STATUS UPDATE 1 sesja 94 — Region β-model "inner-loop
@@ -643,10 +657,10 @@ void RemixPipeline::run()
                                           : reinterpret_cast<const float*> (bundle.feat.edgeFeaturesEnd.data());
                 tcin.n_edge_features     = bundle.feat.edgeFeaturesStart.empty() ? 0 : bundle.feat.nFeat;
 
-                tcin.downbeats   = bundle.downbeatTimes.empty() ? nullptr : bundle.downbeatTimes.data();
-                tcin.n_downbeats = (int) bundle.downbeatTimes.size();
+                tcin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
+                tcin.n_downbeats = (int) gridDownbeats.size();
 
-                tcin.time_signature  = juce::jmax (1, (int) bundle.timeSigNum);
+                tcin.time_signature  = gridBarBeats;
                 tcin.quality_weights = &(*in_.qualityWeightsOverride);
 
                 freshTc = reamix::remix::computeTransitionCosts (tcin);
@@ -665,10 +679,10 @@ void RemixPipeline::run()
             oin.features    = bundle.feat.features.data();
             oin.n_features  = bundle.feat.nFeat;
 
-            oin.downbeats   = bundle.downbeatTimes.empty() ? nullptr : bundle.downbeatTimes.data();
-            oin.n_downbeats = (int) bundle.downbeatTimes.size();
+            oin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
+            oin.n_downbeats = (int) gridDownbeats.size();
 
-            oin.time_signature = juce::jmax (1, (int) bundle.timeSigNum);
+            oin.time_signature = gridBarBeats;
             oin.sample_rate    = kAnalysisSampleRate;
 
             // ADR-083 + ADR-084 sesja 92-93 — AuditionBar slider params

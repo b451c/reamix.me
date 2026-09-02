@@ -51,6 +51,7 @@
 #include "ui/UserBlock.h"
 #include "remix/Quality.h"
 #include "remix/TransitionCost.h"
+#include "remix/BeatGrid.h"          // ADR-115 E5 (sesja 115)
 #include "calibration_harness_parse_weights.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -380,6 +381,25 @@ reamix::remix::TransitionCostInputs buildTcInputs (const reamix::ui::AnalysisBun
     return in;
 }
 
+// ADR-115 E5 (sesja 115): for v2 runs, replace the raw downbeat list + detected
+// time signature with the cleaned grid (snapped downbeats, measured bar
+// length). `storage` must outlive `in`.
+void applyV2Grid (reamix::remix::TransitionCostInputs& in,
+                  const reamix::ui::AnalysisBundle& b,
+                  reamix::remix::BeatGridResult& storage)
+{
+    storage = reamix::remix::cleanBeatGrid (b.beatTimes.data(), (int) b.beatTimes.size(),
+                                            b.downbeatTimes.empty() ? nullptr : b.downbeatTimes.data(),
+                                            (int) b.downbeatTimes.size(),
+                                            juce::jmax (1, (int) b.timeSigNum));
+    in.downbeats      = storage.downbeats.empty() ? nullptr : storage.downbeats.data();
+    in.n_downbeats    = (int) storage.downbeats.size();
+    in.time_signature = storage.bar_beats;
+    std::fprintf (stderr, "[harness] beat grid: bar=%d beats (%s), downbeats %d kept / %d off-grid / %d hole-adjacent, holes %d\n",
+                  storage.bar_beats, storage.bar_from_downbeats ? "measured" : "TS hint",
+                  (int) storage.downbeats.size(), storage.n_dropped_offgrid, storage.n_dropped_hole, storage.n_holes);
+}
+
 // One remix request, parsed from a JSONL row.
 struct Run
 {
@@ -610,6 +630,13 @@ int main (int argc, char** argv)
             if (i > 0) s << ", ";
             s << juce::String (bundle->beatTimes[i], 6);
         }
+        s << "],\n  \"time_signature\": " << (int) bundle->timeSigNum << ",\n";
+        s << "  \"downbeat_times\": [";
+        for (std::size_t i = 0; i < bundle->downbeatTimes.size(); ++i)
+        {
+            if (i > 0) s << ", ";
+            s << juce::String (bundle->downbeatTimes[i], 6);
+        }
         s << "]\n}\n";
         std::fprintf (stderr, "[harness] wrote %s (%d beats)\n",
                       args.dumpBeatsJson.toRawUTF8(),
@@ -631,6 +658,8 @@ int main (int argc, char** argv)
         // sesja 115: --v2 switches to the ADR-115 path (kV2QualityWeights,
         // geometric composite, sequential-baseline q's, bar-align constraint).
         tcin.v2_scoring = args.dumpV2;
+        reamix::remix::BeatGridResult gridStorage;
+        if (args.dumpV2) applyV2Grid (tcin, *bundle, gridStorage);
         std::fprintf (stderr, "[harness] dump-components: running computeTransitionCosts (v2=%d)...\n",
                       (int) args.dumpV2);
         auto tc = reamix::remix::computeTransitionCosts (tcin);
@@ -787,6 +816,8 @@ int main (int argc, char** argv)
                 auto tcin = buildTcInputs (*bundle);
                 tcin.quality_weights = &run.weights;
                 tcin.v2_scoring      = run.v2;   // ADR-115
+                reamix::remix::BeatGridResult gridStorage;
+                if (run.v2) applyV2Grid (tcin, *bundle, gridStorage);   // ADR-115 E5
                 if (run.qualityFloor.has_value())
                     tcin.quality_floor = *run.qualityFloor;
                 if (extra1 != nullptr && extra1->n == bundle->feat.nBeats)

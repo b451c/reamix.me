@@ -1491,6 +1491,7 @@ if(REAMIX_BUILD_TESTS)
     tests/parity/test_transition_cost.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
     src/analysis/Recurrence.cpp
     src/remix/SegmentData.cpp
     src/remix/Quality.cpp
@@ -1661,6 +1662,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/RegionCost.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
     src/analysis/Recurrence.cpp
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
@@ -1726,6 +1728,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/BlockAssembly.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
     src/analysis/Recurrence.cpp
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
@@ -1803,6 +1806,7 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_repetition_prior
     tests/parity/test_repetition_prior.cpp
     src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
     src/analysis/Recurrence.cpp
   )
   target_include_directories(test_repetition_prior PRIVATE
@@ -1818,6 +1822,27 @@ if(REAMIX_BUILD_TESTS)
   endif()
   add_test(NAME repetition_prior_parity
            COMMAND test_repetition_prior
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+  # test_beat_grid — sesja 115 (ADR-115 E5) self-validation of the beat /
+  # downbeat grid clean-up (snap tolerance, holes, measured bar length).
+  add_executable(test_beat_grid
+    tests/parity/test_beat_grid.cpp
+    src/remix/BeatGrid.cpp
+  )
+  target_include_directories(test_beat_grid PRIVATE
+    src
+  )
+  if(MSVC)
+    target_compile_options(test_beat_grid PRIVATE /W3)
+  else()
+    target_compile_options(test_beat_grid PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME beat_grid_parity
+           COMMAND test_beat_grid
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
   # test_mfcc_continuity — sesja 77 (DEV-028 ADR-066) self-validation.
@@ -1932,6 +1957,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
     src/analysis/Recurrence.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
@@ -1968,6 +1994,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
     src/analysis/Recurrence.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
@@ -2002,6 +2029,7 @@ if(REAMIX_BUILD_TESTS)
     src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
     src/analysis/Recurrence.cpp
     src/remix/SegmentData.cpp
     src/dsp/WaveformXcorr.cpp
@@ -2236,6 +2264,7 @@ if(ORT_FOUND)
     src/remix/SegmentData.cpp
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
+    src/remix/BeatGrid.cpp
     src/analysis/Recurrence.cpp
     src/ui/AnalyzePipeline.cpp
     src/ui/AnalysisDiskCache.cpp
