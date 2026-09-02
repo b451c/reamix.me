@@ -16,6 +16,20 @@ import xtools  # noqa: E402
 import rm_blocks  # noqa: E402
 
 TABS = {"duration": rm_blocks.DURATION_TAB, "region": (112, 125), "blocks": rm_blocks.BLOCKS_TAB}
+UNDERLINE = {"duration": (12, 80), "region": (90, 170), "blocks": (180, 276)}   # x ranges of the tab underline, y 140-147
+
+
+def tab_active(png):
+    """Name of the tab whose accent underline is painted (None if none)."""
+    from PIL import Image
+    p = Image.open(png).convert("RGB").load()
+    best, best_n = None, 0
+    for name, (xa, xb) in UNDERLINE.items():
+        n = sum(1 for x in range(xa, xb) for y in range(140, 147)
+                if p[x, y][0] > 150 and p[x, y][2] < 110 and p[x, y][0] - p[x, y][2] > 60)
+        if n > best_n:
+            best, best_n = name, n
+    return best if best_n > 20 else None
 
 
 def main():
@@ -53,10 +67,18 @@ def main():
         _, rs = rm_blocks.chips(png)
         if rs:
             break
+    # Sesja 122: right after the chips appear the plugin is still busy for a few
+    # seconds (auto remix + preview load; ~1.7 s on the s121 build, ~3.9 s on
+    # s122 on the aarch64 VM, DEV-102) and tab clicks are dropped, so click
+    # until the tab's underline shows (15 s cap) instead of a fixed sleep.
     for name, (tx, ty) in TABS.items():
-        xtools.click(x0 + tx, y0 + ty); time.sleep(1.5)
-        xtools.capture(rm["win"], str(rm_open.OUT / f"{tag}_{name}.png"))
-        print("captured", name)
+        png = rm_open.OUT / f"{tag}_{name}.png"
+        for _ in range(12):
+            xtools.click(x0 + tx, y0 + ty); time.sleep(1.2)
+            xtools.capture(rm["win"], str(png))
+            if tab_active(str(png)) == name:
+                break
+        print("captured", name, "active =", tab_active(str(png)))
     rm_open.quit_reaper(b); rm_open.remove_bridge()
 
 
