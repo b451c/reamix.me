@@ -147,6 +147,31 @@ private:
     // (bundle, region) key changes (100 ms poll).
     void updateLoopSpotSuggestions (const std::optional<reamix::reaper::ItemRegion>& region);
 
+    // Sesja 120 (DEV-097) — Blocks tab: proposed blocks as section-bar chips
+    // from the whole-track pool (AnalysisBundle::sectionSpans), whole
+    // sections only (>= 4 bars), never overlapping a user block. Re-pushes
+    // only when the (bundle, user blocks) key changes. Called from
+    // recomputeRegionState (after the Region chips) and refreshBlockAssemblyUi.
+    void updateBlockSuggestions();
+
+    // Chip click in Blocks mode: the span becomes a user block with the
+    // position smart-default kind (no picker) and is appended to the queue,
+    // so clicking suggestions in the wanted order writes the arrangement.
+    void addBlockFromSuggestion (int idx);
+
+    // Sesja 120 (DEV-097) — live junction quality before Assemble: the
+    // per-junction pools (BlockCompatWiring.h, the scorer Assemble uses) on
+    // a worker thread; seam pills show "~q" when the result lands and still
+    // matches the current queue (generation counter). The joint resolution
+    // at Assemble may pick a lower candidate, so the pill is an estimate.
+    void refreshBlockJunctionPreview();
+
+    // Shared tail of every "new block" path (drag + picker, chip click):
+    // insert sorted, shift queue indices past the insertion point (the old
+    // push_back + sort silently re-pointed queue entries), optionally queue
+    // it, persist, refresh, invalidate the remix.
+    void appendUserBlock (reamix::ui::UserBlock b, bool queueIt);
+
     // ADR-050 Filozofia A — every mode switch (manual click OR auto-flip)
     // resets the waveform back to Source variant + clears selection + resets
     // slider target to origSec. Each mode operates on the original audio,
@@ -481,6 +506,14 @@ private:
     std::vector<reamix::remix::LoopSpot> loopSpotSuggestions_;
     juce::String                         lastLoopSpotKey_;
 
+    // Sesja 120 (DEV-097) — Blocks suggestions shown as chips (chip index ==
+    // vector index, chronological), change key, preview generation and the
+    // current minimum block length (one measured bar once the grid is known).
+    std::vector<reamix::remix::LoopSpot> blockSuggestions_;
+    juce::String                         lastBlockSuggestKey_;
+    std::atomic<int>                     blockPreviewGen_ { 0 };
+    double                               minBlockSec_     { 0.5 };
+
     // Snapshot of selectedRange_ at the moment a Region remix completed —
     // restored when the user clicks the "↺ Edit region" overlay to return to
     // editing mode (Source variant + scrim re-shown). Plan A — sesja 60.
@@ -551,7 +584,11 @@ private:
         std::vector<int>                   userBlocksQueue;
         std::vector<int>                   junctionVariations;
     };
-    std::map<juce::String, BlocksSessionState> blocksSessionByPath_;
+    // Sesja 120 (DEV-097): keyed by ItemKey (path + effective GUID) like
+    // lastModeByPath_, so two items on the same file keep separate marks;
+    // post-Insert clips still hit because BlocksGroupTracker canonicalises
+    // their GUID to the original.
+    std::map<ItemKey, BlocksSessionState> blocksSessionByItem_;
 
     // DEV-034 (sesja 63b) — per-source-path in-memory snapshot of the last
     // Region remix shown in the UI. Stores the region bounds AND the target
@@ -698,7 +735,7 @@ private:
     // Returns true when a hit was restored. Used by applySelectedItem to
     // recover a session when re-attaching to a previously-seen sourcePath
     // (same item, different item with same source, or post-Insert clip).
-    bool restoreBlocksSession (const juce::String& sourcePath);
+    bool restoreBlocksSession (const ItemKey& key);
 
     // Persist userBlocks_ → P_EXT for the currently-attached item AND
     // snapshot to in-memory session cache. ADR-052 — no-op when item GUID

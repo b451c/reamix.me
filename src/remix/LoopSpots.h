@@ -38,6 +38,19 @@ std::vector<LoopSpot> extractLoopSpots(
     const std::map<std::pair<int, int>, TransitionCandidate>& candidates,
     const double* beat_times, int n_beats, int bar_beats);
 
+// Sesja 120 (DEV-097) - section suggestions for Block Assembly. Every
+// bar-aligned pair of the whole-track pool, backward OR forward, names two
+// beats that are interchangeable phase points: a backward pair (from -> to,
+// to < from) repeats the span [to, from + 1), a forward pair (from -> to,
+// to > from) skips the span [from + 1, to). Either way the span between the
+// two cut points is a self-contained section whose start and end are known-
+// clean cut points, so it is offered as a proposed block. Same LoopSpot
+// record (from_beat / to_beat keep the pair; the span is [min, max) in
+// beats), same best-first order. Adjacent pairs (empty span) are dropped.
+std::vector<LoopSpot> extractSectionSpans(
+    const std::map<std::pair<int, int>, TransitionCandidate>& candidates,
+    const double* beat_times, int n_beats, int bar_beats);
+
 struct LoopSpotFilter
 {
     // Inclusive time window the whole span must lie in (item-relative
@@ -49,6 +62,7 @@ struct LoopSpotFilter
     double min_quality  = 0.5;   // WaveformView Medium bucket floor
     double min_span_sec = 6.0;   // Region minimum (ReaperBridge getItemRegion)
     int    max_bars     = 16;    // longer repeats are sections, not spots
+    int    min_bars     = 0;     // sesja 120: Blocks suggestions want whole sections (>= 4)
     int    max_count    = 5;     // chips shown
 };
 

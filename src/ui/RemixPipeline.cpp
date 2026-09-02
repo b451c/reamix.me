@@ -1,6 +1,7 @@
 #include "ui/RemixPipeline.h"
 #include "remix/BeatGrid.h"   // ADR-115 E5 (sesja 115)
 #include "RegionCostWiring.h"  // ADR-115 E11 (sesja 117)
+#include "BlockCompatWiring.h"  // sesja 120 (DEV-097)
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -214,173 +215,55 @@ void RemixPipeline::run()
             if (bt.size() < 2)
                 throw std::runtime_error ("Bundle has < 2 beats — Block Assembly not possible");
 
-            // Helper: nearest beat index for a given time. Uses lower_bound to
-            // find the first beat at or after t; corrects to nearest.
-            auto nearestBeatIdx = [&] (double t) -> int
-            {
-                auto it = std::lower_bound (bt.begin(), bt.end(), t);
-                if (it == bt.begin()) return 0;
-                if (it == bt.end())   return (int) bt.size() - 1;
-                const int after = (int) std::distance (bt.begin(), it);
-                const int before = after - 1;
-                return (std::abs (bt[(std::size_t) before] - t)
-                        <= std::abs (bt[(std::size_t) after] - t)) ? before : after;
-            };
-
-            // Map UserBlocks → BlockInfo. Skip degenerate (n_beats < 2) blocks.
-            // Disambiguate display_name by counting prior occurrences per kind.
-            // Sesja 119 (DEV-095): the queue indexes userBlocks, infos is the
-            // compacted list → keep a userIdx -> infoIdx map and report drops.
-            std::vector<reamix::remix::BlockInfo> infos;
-            infos.reserve (in_.userBlocks.size());
-            std::map<int,int> kindCounts;
-            std::vector<int> infoIdxOfUser (in_.userBlocks.size(), -1);
-            std::vector<juce::String> infoDisplay;
-            int nDropped = 0;
-
-            static const std::array<const char*, 12> kKindLabels = {
-                "intro", "verse", "pre-chorus", "chorus", "post-chorus",
-                "bridge", "buildup", "drop", "breakdown", "solo", "instrumental", "outro"
-            };
-
-            for (std::size_t bi = 0; bi < in_.userBlocks.size(); ++bi)
-            {
-                const auto& ub = in_.userBlocks[bi];
-                const int sb = nearestBeatIdx (ub.startSec);
-                const int eb = nearestBeatIdx (ub.endSec);
-                if (eb - sb < 2) { ++nDropped; continue; }
-
-                reamix::remix::BlockInfo info{};
-                info.segment_idx = (int) bi;
-                const int kindInt = (int) ub.kind;
-                info.label = (kindInt >= 0 && kindInt < (int) kKindLabels.size())
-                                ? kKindLabels[(std::size_t) kindInt]
-                                : "unknown";
-                const int n = ++kindCounts[kindInt];
-                info.display_name = info.label;
-                if (n > 1) info.display_name += " " + std::to_string (n);
-                info.start_beat = sb;
-                info.end_beat   = eb;
-                info.start_sec  = bt[(std::size_t) sb];
-                info.end_sec    = bt[(std::size_t) eb];
-                info.n_beats    = eb - sb;
-                info.duration_sec = info.end_sec - info.start_sec;
-                info.cluster_id = kindInt;
-                infoIdxOfUser[bi] = (int) infos.size();
-                infoDisplay.push_back (ub.labelOverride.has_value() && ub.labelOverride->isNotEmpty()
-                                           ? *ub.labelOverride : juce::String (info.label));
-                infos.push_back (info);
-            }
-
+            // Map UserBlocks -> BlockInfo (nearest beat; blocks shorter than
+            // 2 beats dropped) and remap the queue through userIdx -> infoIdx
+            // (DEV-095 sesja 119). Shared with the live junction preview
+            // (BlockCompatWiring.h, sesja 120).
+            const BlockInfoMap bmap = mapUserBlocksToInfos (in_.userBlocks, bt);
+            const auto& infos = bmap.infos;
             if (infos.size() < 2)
                 throw std::runtime_error ("Block Assembly needs at least 2 valid blocks");
 
-            // Build BlockCompatInputs — mirror RegionCost wiring for shared
-            // signals (boundary waveforms, edge features, etc).
-            reamix::remix::BlockCompatInputs bin{};
-            bin.v2_scoring = in_.v2_scoring;   // ADR-115 v2 scoring
-            bin.blocks    = infos.data();
-            bin.n_blocks  = (int) infos.size();
-            bin.beat_times = bt.data();
-            bin.n_beats    = (int) bt.size();
-            bin.features   = bundle.feat.features.data();
-            bin.n_features = bundle.feat.nFeat;
-
-            const auto& bw = bundle.feat.boundaryWaveforms;
-            if (! bw.empty() && bundle.tc.n_beats > 0)
-            {
-                bin.boundary_waveforms   = bw.data();
-                bin.n_boundary_waveforms = bundle.tc.n_beats;
-                bin.n_samples_per_bnd    =
-                    (int) (bw.size() / (std::size_t) bundle.tc.n_beats);
-                bin.waveform_sample_rate = kAnalysisSampleRate;
-            }
-
-            bin.edge_rms_start  = bundle.feat.edgeRmsStart.empty() ? nullptr : bundle.feat.edgeRmsStart.data();
-            bin.edge_rms_end    = bundle.feat.edgeRmsEnd.empty()   ? nullptr : bundle.feat.edgeRmsEnd.data();
-            bin.edge_features_start = bundle.feat.edgeFeaturesStart.empty() ? nullptr
-                                       : reinterpret_cast<const float*> (bundle.feat.edgeFeaturesStart.data());
-            bin.edge_features_end   = bundle.feat.edgeFeaturesEnd.empty()   ? nullptr
-                                       : reinterpret_cast<const float*> (bundle.feat.edgeFeaturesEnd.data());
-            bin.n_edge_features     = bundle.feat.edgeFeaturesStart.empty() ? 0 : bundle.feat.nFeat;
-
-            bin.rms_energy        = bundle.feat.rmsEnergy.empty()        ? nullptr : bundle.feat.rmsEnergy.data();
-            bin.spectral_centroid = bundle.feat.spectralCentroid.empty() ? nullptr : bundle.feat.spectralCentroid.data();
-            bin.vocal_activity    = bundle.feat.vocalActivity.empty()    ? nullptr : bundle.feat.vocalActivity.data();
-            // FIX-IN-PORT (sesja 71, ADR-059) — onset-sustain penalty for
-            // Block Assembly, missing in Python `block_assembly.py`. Null in
-            // parity tests preserves Python ground truth; non-null here
-            // activates the fix in production. See dev-028-lessons.md.
-            bin.onset_strength    = bundle.feat.onsetStrength.empty()    ? nullptr : bundle.feat.onsetStrength.data();
-            // ADR-088 sesja 98 — vocal phrase boundary signals.
-            bin.edge_vocal_onset_start = bundle.feat.edgeVocalOnsetStart.empty() ? nullptr
-                                                                                : bundle.feat.edgeVocalOnsetStart.data();
-            bin.edge_vocal_release_end = bundle.feat.edgeVocalReleaseEnd.empty() ? nullptr
-                                                                                : bundle.feat.edgeVocalReleaseEnd.data();
-            // Sesja 119 (DEV-096) — edge-resolution vocal activity for the
-            // shared vocal penalty (same inputs Region passes).
-            bin.edge_vocal_activity_start = bundle.feat.edgeVocalActivityStart.empty() ? nullptr
-                                                                                       : bundle.feat.edgeVocalActivityStart.data();
-            bin.edge_vocal_activity_end   = bundle.feat.edgeVocalActivityEnd.empty() ? nullptr
-                                                                                     : bundle.feat.edgeVocalActivityEnd.data();
-
-            bin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
-            bin.n_downbeats = (int) gridDownbeats.size();
-            bin.time_signature = gridBarBeats;
-
-            // Sesja 119 (DEV-096): every "bar-ish" beat constant derives from
-            // the measured bar (ADR-115 E5) instead of the 4/4 literals. The
-            // drift penalty is normalised by two bars (= the old W=8 at 4/4).
-            const int barBeats = std::max (1, gridBarBeats);
-            bin.search_window_beats   = 2 * barBeats;
-            bin.drift_penalty_weight  = in_.driftPenaltyWeight;
-
-            // ADR-058 — calibration weight override (sesja 71). nullptr →
-            // kDefaultQualityWeights → preserves production baseline + parity.
-            bin.quality_weights       = in_.qualityWeightsOverride.has_value()
-                ? &(*in_.qualityWeightsOverride)
-                : nullptr;
-
-            // ADR-081 (sesja 96) — β-model candidate-space expansion. Filter
-            // queue first (used by lazy compute in β-mode). Default
-            // block_assembly_beta=false preserves legacy ±W path.
-            // DEV-095 (sesja 119): remap the queue through the userIdx ->
-            // infoIdx map so a dropped short block cannot shift the others.
             std::vector<int> validQueue;
             validQueue.reserve (in_.userBlocksQueue.size());
             int nSkippedQueue = 0;
             for (int q : in_.userBlocksQueue)
             {
-                if (q >= 0 && q < (int) infoIdxOfUser.size() && infoIdxOfUser[(std::size_t) q] >= 0)
-                    validQueue.push_back (infoIdxOfUser[(std::size_t) q]);
+                if (q >= 0 && q < (int) bmap.infoIdxOfUser.size() && bmap.infoIdxOfUser[(std::size_t) q] >= 0)
+                    validQueue.push_back (bmap.infoIdxOfUser[(std::size_t) q]);
                 else
                     ++nSkippedQueue;
             }
             if (validQueue.size() < 2)
                 throw std::runtime_error ("Queue has fewer than 2 valid blocks");
-            if (nDropped > 0 || nSkippedQueue > 0)
+            if (bmap.nDropped > 0 || nSkippedQueue > 0)
                 out.warningMessage = juce::String (nSkippedQueue) + " queued block"
                                    + (nSkippedQueue == 1 ? "" : "s")
                                    + " shorter than 2 beats skipped";
             for (std::size_t k = 0; k + 1 < validQueue.size(); ++k)
-                blockJunctionLabels.emplace_back (infoDisplay[(std::size_t) validQueue[k]],
-                                                  infoDisplay[(std::size_t) validQueue[k + 1]]);
+                blockJunctionLabels.emplace_back (bmap.display[(std::size_t) validQueue[k]],
+                                                  bmap.display[(std::size_t) validQueue[k + 1]]);
 
+            // Build BlockCompatInputs - shared wiring (signals, grid, beta
+            // constants), then the per-run policy fields.
+            reamix::remix::BlockCompatInputs bin{};
+            fillBlockCompatInputs (bin, bundle, gridDownbeats, gridBarBeats);
+            bin.v2_scoring = in_.v2_scoring;   // ADR-115 v2 scoring
+            bin.blocks     = infos.data();
+            bin.n_blocks   = (int) infos.size();
+            bin.drift_penalty_weight  = in_.driftPenaltyWeight;
+            // ADR-058 - calibration weight override (sesja 71). nullptr ->
+            // kDefaultQualityWeights -> preserves production baseline + parity.
+            bin.quality_weights       = in_.qualityWeightsOverride.has_value()
+                ? &(*in_.qualityWeightsOverride)
+                : nullptr;
+            // ADR-081 (sesja 96) - beta-model candidate-space expansion.
+            // Default block_assembly_beta=false preserves legacy +-W path.
             bin.block_assembly_beta = in_.block_assembly_beta;
             bin.block_energy_gate   = in_.block_energy_gate;   // sesja 119
-            // β-fields below have no effect when block_assembly_beta=false.
-            // Sesja-69 captured design + ADR-081 sketch, in measured bars
-            // (sesja 119): outside window 2 bars, min jump / top-K separation /
-            // short-block threshold 1 bar.
-            bin.fragment_penalty_weight    = 0.03;
-            bin.short_block_threshold_beats= barBeats;
-            bin.top_k_min_separation_beats = barBeats;
-            bin.outside_window_beats       = 2 * barBeats;
-            bin.min_jump_beats             = barBeats;
-            bin.downbeat_only_splices      = true;
-            bin.block_sequence_lazy        = true;
-            bin.block_sequence             = validQueue.empty() ? nullptr : validQueue.data();
-            bin.n_block_sequence           = (int) validQueue.size();
+            bin.block_sequence      = validQueue.data();
+            bin.n_block_sequence    = (int) validQueue.size();
+            const int barBeats      = std::max (1, gridBarBeats);
 
             const auto compat = reamix::remix::computeBlockCompatibility (bin);
 
@@ -864,6 +747,7 @@ void RemixPipeline::run()
             float quality   = 0.0f;
             float energyDb  = 0.0f;
             int   junction  = -1;
+            int   fallback  = 0;
             auto it = path.transition_metadata.find (tr);
             if (it != path.transition_metadata.end())
             {
@@ -873,7 +757,11 @@ void RemixPipeline::run()
                 if (eit != it->second.end()) energyDb = (float) eit->second;
                 auto jit = it->second.find ("junction_idx");
                 if (jit != it->second.end()) junction = (int) jit->second;
+                auto fit = it->second.find ("junction_fallback");   // sesja 119 DEV-094
+                if (fit != it->second.end()) fallback = (int) fit->second;
             }
+            out.transitionFallbacks.push_back (fallback);
+            out.transitionJunctions.push_back (junction);
             out.transitionFromBeats.push_back (fb);
             out.transitionToBeats.push_back (tb);
             out.transitionQualities.push_back (quality);

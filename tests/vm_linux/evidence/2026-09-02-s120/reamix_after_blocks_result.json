@@ -1,0 +1,66 @@
+[
+ {
+  "tag": "reamix_after_blocks_run1",
+  "media_len": 220.05551020408163,
+  "chips1": [
+   [
+    284,
+    313
+   ],
+   [
+    339,
+    370
+   ],
+   [
+    451,
+    489
+   ]
+  ],
+  "chips2": [],
+  "pext1": null,
+  "pext2": null,
+  "chip_wait_s": 24.8,
+  "pext1_raw": "",
+  "reaper_alive_after": false,
+  "green": false
+ },
+ {
+  "tag": "reamix_after_blocks_run2",
+  "media_len": 220.05551020408163,
+  "chips1": [
+   [
+    284,
+    313
+   ],
+   [
+    339,
+    370
+   ],
+   [
+    451,
+    489
+   ]
+  ],
+  "chips2": [
+   [
+    284,
+    313
+   ],
+   [
+    377,
+    407
+   ],
+   [
+    414,
+    445
+   ]
+  ],
+  "pext1": null,
+  "pext2": null,
+  "chip_wait_s": 24.7,
+  "pext1_raw": "",
+  "pext2_raw": "",
+  "reaper_alive_after": false,
+  "green": false
+ }
+]

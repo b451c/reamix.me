@@ -1,4 +1,6 @@
 #include "MainComponent.h"
+#include "BlockCompatWiring.h"   // sesja 120 (DEV-097)
+#include "SpliceQualityBands.h"  // sesja 120 (DEV-099)
 
 #include <algorithm>
 #include <cmath>
@@ -1467,9 +1469,16 @@ MainComponent::MainComponent()
                                  + juce::String (cr.transitionToBeats  [(std::size_t) idx])});
 
         d.qbarPct = quality;
-        if (quality > 0.7f)      d.qbarColour = reamix::theme::Good;
-        else if (quality >= 0.5f) d.qbarColour = reamix::theme::Warn;
-        else                      d.qbarColour = reamix::theme::Bad;
+        {
+            using Q = reamix::ui::WaveformView::SpliceQuality;
+            const bool fb = (std::size_t) idx < cr.transitionFallbacks.size()
+                         && cr.transitionFallbacks[(std::size_t) idx] != 0;
+            const Q bucket = reamix::ui::bucketQuality (quality,
+                                 appMode_ == reamix::ui::ModeTabs::Mode::Blocks
+                                     ? reamix::ui::kBlocksQualityBands : reamix::ui::kPathQualityBands, fb);
+            d.qbarColour = bucket == Q::Good ? reamix::theme::Good
+                         : bucket == Q::Medium ? reamix::theme::Warn : reamix::theme::Bad;
+        }
 
         d.hint = juce::String::fromUTF8 ("Click to audition \xc2\xb7 Right-click for options");
         tooltip_.setData (std::move (d));
@@ -1716,10 +1725,11 @@ MainComponent::MainComponent()
             else
                 cs = blk.endSec;         // partial left
         }
-        if (ce - cs < 0.5)
+        if (ce - cs < minBlockSec_ - 1e-6)
         {
-            statusBar_.setNotice (juce::String::fromUTF8 (
-                "Block too small after clamp \xe2\x80\x94 try a larger range"));
+            statusBar_.setNotice (minBlockSec_ > 0.5
+                ? juce::String::fromUTF8 ("Block shorter than one bar \xe2\x80\x94 try a larger range")
+                : juce::String::fromUTF8 ("Block too small after clamp \xe2\x80\x94 try a larger range"));
             return;
         }
         const double clampedStart = cs;
@@ -1745,16 +1755,7 @@ MainComponent::MainComponent()
             b.endSec       = clampedEnd;
             b.kind         = kind;
             b.customKindId = customKindId;
-            userBlocks_.push_back (b);
-            std::sort (userBlocks_.begin(), userBlocks_.end(),
-                       [](const auto& a, const auto& z)
-                       { return a.startSec < z.startSec; });
-            persistUserBlocks();
-            refreshBlockAssemblyUi();
-            clearCurrentRemix(); // userBlocks changed → existing remix stale
-            if (userBlocksQueue_.size() >= 2)
-                blockAssemblyPanel_.setDirty (true);
-
+            appendUserBlock (b, /*queueIt=*/false);
             statusBar_.setText (juce::String::fromUTF8 (
                 "Block added \xe2\x80\x94 ") + juce::String ((int) userBlocks_.size())
                 + (userBlocks_.size() == 1 ? " block" : " blocks"));
@@ -1841,6 +1842,11 @@ MainComponent::MainComponent()
     // poll does not treat it as a new user selection.
     waveformView_.onLoopSpotClicked = [this] (int idx)
     {
+        if (appMode_ == reamix::ui::ModeTabs::Mode::Blocks)   // sesja 120: chip = proposed block
+        {
+            addBlockFromSuggestion (idx);
+            return;
+        }
         if (idx < 0 || idx >= (int) loopSpotSuggestions_.size()) return;
         const auto spot = loopSpotSuggestions_[(std::size_t) idx];
 
@@ -2072,9 +2078,12 @@ MainComponent::MainComponent()
         d.rows.push_back ({ "drift",
                             juce::String (sp.driftBeats, 1) + " beats" });
         d.qbarPct    = juce::jlimit (0.0f, 1.0f, sp.qualityScore);
-        d.qbarColour = (sp.qualityScore >= 0.7f) ? juce::Colour (0xFF44CC44)
-                       : (sp.qualityScore >= 0.5f) ? juce::Colour (0xFFCCCC44)
-                                                    : juce::Colour (0xFFCC4444);
+        {
+            using Q = reamix::ui::WaveformView::SpliceQuality;
+            const Q bucket = reamix::ui::bucketQuality (sp.qualityScore, reamix::ui::kBlocksQualityBands);
+            d.qbarColour = bucket == Q::Good ? juce::Colour (0xFF44CC44)
+                         : bucket == Q::Medium ? juce::Colour (0xFFCCCC44) : juce::Colour (0xFFCC4444);
+        }
         d.hint       = juce::String::fromUTF8 (
             "Splice picked by algorithm within your block's flexibility window");
         tooltip_.setData (d);
@@ -3192,6 +3201,12 @@ void MainComponent::applyAnalysisToUi (const reamix::ui::AnalysisBundle& bundle,
                               i < bundle.beatIsDownbeat.size() ? bundle.beatIsDownbeat[i] : false });
     waveformView_.setBeats (std::move (wvBeats));
 
+    // Sesja 120 (DEV-097/098): minimum block = one measured bar; lengths in
+    // bars on the Blocks panel.
+    minBlockSec_ = bundle.barSec > 0.0 ? bundle.barSec : 0.5;
+    waveformView_.setMinBlockSec (minBlockSec_);
+    blockAssemblyPanel_.setBarSec (bundle.barSec);
+
     waveformView_.setAnalyzed (true);
 
     // ADR-051 § Consequence #5 — post-Analyze with features unlocks Blocks
@@ -3289,9 +3304,13 @@ void MainComponent::applyRemixToUi (const reamix::ui::RemixOutput& remix)
         reamix::ui::WaveformView::SpliceMarker m;
         m.timeSec      = remix.transitionTimesSec[i];
         m.qualityScore = q;
-        m.quality      = (q > 0.7f) ? reamix::ui::WaveformView::SpliceQuality::Good
-                       : (q >= 0.5f) ? reamix::ui::WaveformView::SpliceQuality::Medium
-                                     : reamix::ui::WaveformView::SpliceQuality::Bad;
+        // Sesja 120 (DEV-099): colour bands per mode; an authored-boundary
+        // fallback junction is always red.
+        const bool fallback = i < remix.transitionFallbacks.size() && remix.transitionFallbacks[i] != 0;
+        m.quality      = reamix::ui::bucketQuality (q,
+                             appMode_ == reamix::ui::ModeTabs::Mode::Blocks
+                                 ? reamix::ui::kBlocksQualityBands : reamix::ui::kPathQualityBands,
+                             fallback);
         m.fromBeat     = (i < remix.transitionFromBeats.size()) ? remix.transitionFromBeats[i] : -1;
         m.toBeat       = (i < remix.transitionToBeats.size())   ? remix.transitionToBeats[i]   : -1;
         m.fromLabel    = (i < remix.transitionFromLabels.size()) ? remix.transitionFromLabels[i] : juce::String();
@@ -3377,11 +3396,22 @@ void MainComponent::applyRemixToUi (const reamix::ui::RemixOutput& remix)
         lastBlockSplices_ = splices;
         waveformView_.setUserBlockSplices (std::move (splices));
 
-        // Drive seam-pill colors from the same quality scores.
-        std::vector<float> seamQ;
-        seamQ.reserve (remix.transitionQualities.size());
-        for (float q : remix.transitionQualities) seamQ.push_back (q);
-        blockAssemblyPanel_.setSeamQualities (seamQ);
+        // Drive seam pills by JUNCTION (sesja 120): a junction without a
+        // transition is a continuation (nothing cut) = 100 %; a junction
+        // spliced at the authored boundary is flagged (always red).
+        const int nJ = std::max (0, (int) userBlocksQueue_.size() - 1);
+        std::vector<float> seamQ ((std::size_t) nJ, 1.0f);
+        std::vector<int>   seamFb ((std::size_t) nJ, 0);
+        for (std::size_t i = 0; i < remix.transitionQualities.size(); ++i)
+        {
+            int j = i < remix.transitionJunctions.size() ? remix.transitionJunctions[i] : -1;
+            if (j < 0 || j >= nJ) j = (int) i;          // legacy path: transition order
+            if (j < 0 || j >= nJ) continue;
+            seamQ [(std::size_t) j] = remix.transitionQualities[i];
+            seamFb[(std::size_t) j] = i < remix.transitionFallbacks.size() ? remix.transitionFallbacks[i] : 0;
+        }
+        ++blockPreviewGen_;   // drop any pre-Assemble estimate still in flight
+        blockAssemblyPanel_.setSeamQualities (seamQ, /*estimated=*/false, seamFb);
     }
     else
     {
@@ -3937,6 +3967,7 @@ void MainComponent::recomputeRegionState()
                                                 : std::vector<reamix::ui::UserBlock>{});
     blockAssemblyPanel_.setQueue      (inBlocks ? userBlocksQueue_
                                                 : std::vector<int>{});
+    updateBlockSuggestions();   // sesja 120: after the Region chips so Blocks chips win the bar
     if (! inBlocks)
         waveformView_.setShowEditArrangementButton (false);
 
@@ -4222,7 +4253,9 @@ void MainComponent::applySelectedItem (const juce::String& name,
     // the cached state — it is at least as fresh as P_EXT (every mutation
     // writes to both). Miss falls back to P_EXT load + fresh queue/
     // variations (the existing sesja-61 behavior).
-    if (restoreBlocksSession (sourcePath))
+    // Sesja 120 (DEV-097): cache keyed by (path, effective GUID); the P_EXT
+    // payload now carries the queue + variations too (UserBlocksState).
+    if (restoreBlocksSession (currentItemKey()))
     {
         // Re-persist immediately so the now-current item's P_EXT mirrors
         // the restored state (covers BUG-18: post-Insert clip P_EXT is
@@ -4231,14 +4264,15 @@ void MainComponent::applySelectedItem (const juce::String& name,
         {
             void* live = reamix::reaper::findItemByGuid (currentItemGuid_);
             if (live != nullptr)
-                reamix::reaper::saveUserBlocks (live, userBlocks_);
+                reamix::reaper::saveUserBlocks (live, { userBlocks_, userBlocksQueue_, junctionVariations_ });
         }
     }
     else
     {
-        userBlocks_      = reamix::reaper::loadUserBlocks (itemPtr);
-        userBlocksQueue_.clear(); // queue is per-session, not persisted v1.
-        junctionVariations_.clear();
+        auto st = reamix::reaper::loadUserBlocks (itemPtr);
+        userBlocks_         = std::move (st.blocks);
+        userBlocksQueue_    = std::move (st.queue);
+        junctionVariations_ = std::move (st.variations);
     }
     blockAssemblyPanel_.setDirty (false);
     refreshBlockAssemblyUi();
@@ -4321,6 +4355,9 @@ void MainComponent::applySelectedItem (const juce::String& name,
     tooltip_.hide();
     waveformView_.setSegments ({});
     waveformView_.setBeats    ({});
+    minBlockSec_ = 0.5;
+    waveformView_.setMinBlockSec (minBlockSec_);
+    blockAssemblyPanel_.setBarSec (0.0);
     waveformView_.setHasSource (true);
     waveformView_.setAnalyzed (false);
     waveformView_.repaint();
@@ -4660,6 +4697,9 @@ void MainComponent::applyEmptyState()
     tooltip_.hide();
     waveformView_.setSegments ({});
     waveformView_.setBeats    ({});
+    minBlockSec_ = 0.5;
+    waveformView_.setMinBlockSec (minBlockSec_);
+    blockAssemblyPanel_.setBarSec (0.0);
     waveformView_.setHasSource (false);
     waveformView_.setAnalyzed (false);
     waveformView_.repaint();
@@ -4718,7 +4758,7 @@ void MainComponent::handleBlocksJunctionAction (int junctionIdx, int chosen)
             junctionVariations_[(std::size_t) junctionIdx] =
                 (junctionVariations_[(std::size_t) junctionIdx] + 1) % 5; // BLOCK_TOP_K = 5
             blockAssemblyPanel_.setJunctionVariations (junctionVariations_);
-            cacheBlocksSession();
+            persistUserBlocks();   // sesja 120: variations live in P_EXT too
 
             if (wasClean)
             {
@@ -4747,7 +4787,7 @@ void MainComponent::handleBlocksJunctionAction (int junctionIdx, int chosen)
             {
                 junctionVariations_[(std::size_t) junctionIdx] = 0;
                 blockAssemblyPanel_.setJunctionVariations (junctionVariations_);
-                cacheBlocksSession();
+                persistUserBlocks();   // sesja 120
 
                 if (wasClean)
                 {
@@ -4809,6 +4849,12 @@ void MainComponent::invalidateBlocksAssembledOutput()
     clearCurrentRemix();
     tmpWavPath_.clear();
     transportBar_.setState (reamix::ui::TransportState::Idle);
+
+    // Sesja 120: the Assemble seams are gone with the output; show the live
+    // estimate for the current arrangement instead (every mutation path
+    // ends here, whatever its order relative to refreshBlockAssemblyUi).
+    blockAssemblyPanel_.setSeamQualities ({});
+    refreshBlockJunctionPreview();
 }
 
 void MainComponent::cacheBlocksSession()
@@ -4821,13 +4867,13 @@ void MainComponent::cacheBlocksSession()
     s.userBlocks         = userBlocks_;
     s.userBlocksQueue    = userBlocksQueue_;
     s.junctionVariations = junctionVariations_;
-    blocksSessionByPath_[currentSourcePath_] = std::move (s);
+    blocksSessionByItem_[currentItemKey()] = std::move (s);   // sesja 120: per item
 }
 
-bool MainComponent::restoreBlocksSession (const juce::String& sourcePath)
+bool MainComponent::restoreBlocksSession (const ItemKey& key)
 {
-    auto it = blocksSessionByPath_.find (sourcePath);
-    if (it == blocksSessionByPath_.end()) return false;
+    auto it = blocksSessionByItem_.find (key);
+    if (it == blocksSessionByItem_.end()) return false;
     userBlocks_         = it->second.userBlocks;
     userBlocksQueue_    = it->second.userBlocksQueue;
     junctionVariations_ = it->second.junctionVariations;
@@ -4857,7 +4903,7 @@ void MainComponent::persistUserBlocks()
     if (currentItemGuid_.isEmpty()) return;
     void* live = reamix::reaper::findItemByGuid (currentItemGuid_);
     if (live == nullptr) return;
-    reamix::reaper::saveUserBlocks (live, userBlocks_);
+    reamix::reaper::saveUserBlocks (live, { userBlocks_, userBlocksQueue_, junctionVariations_ });
 }
 
 void MainComponent::centerAlertWindowOverPlugin (juce::AlertWindow* aw)
@@ -5193,10 +5239,202 @@ void MainComponent::refreshBlockAssemblyUi()
         waveformView_.setUserBlocks (userBlocks_);
 
     // ADR-052 (sesja 63 BUG-17/18) — every UI refresh that follows a
-    // mutation snapshots state into the in-memory session cache. Cheap
-    // (3 vector copies) and idempotent — caching the just-restored
-    // state on item-attach is a no-op identity write.
-    cacheBlocksSession();
+    // mutation snapshots state into the in-memory session cache. Sesja 120:
+    // the queue + variations are part of the P_EXT payload, so the refresh
+    // persists too (idempotent identity write on attach), then re-derives
+    // the suggestion chips and the live junction preview.
+    persistUserBlocks();
+    updateBlockSuggestions();
+    refreshBlockJunctionPreview();
+}
+
+void MainComponent::appendUserBlock (reamix::ui::UserBlock b, bool queueIt)
+{
+    // Insert sorted by start and shift every queue index at or past the
+    // insertion point, so existing arrangement entries keep pointing at
+    // the same blocks.
+    const int pos = (int) std::count_if (userBlocks_.begin(), userBlocks_.end(),
+                                         [&] (const auto& x) { return x.startSec < b.startSec; });
+    userBlocks_.insert (userBlocks_.begin() + pos, std::move (b));
+    for (int& q : userBlocksQueue_)
+        if (q >= pos) ++q;
+    if (queueIt) userBlocksQueue_.push_back (pos);
+
+    clearCurrentRemix();                     // userBlocks changed -> existing remix stale
+    if (userBlocksQueue_.size() >= 2)
+    {
+        invalidateBlocksAssembledOutput();   // stale seams / markers (audit item 6)
+        blockAssemblyPanel_.setDirty (true);
+    }
+    refreshBlockAssemblyUi();                // persists (blocks + queue), chips, preview
+}
+
+void MainComponent::updateBlockSuggestions()
+{
+    using Mode = reamix::ui::ModeTabs::Mode;
+    using Chip = reamix::ui::WaveformView::LoopSpotChip;
+
+    const reamix::ui::AnalysisBundle* bundle = nullptr;
+    if (appMode_ == Mode::Blocks && currentSourcePath_.isNotEmpty())
+        if (auto it = analysisBundles_.find (currentSourcePath_);
+            it != analysisBundles_.end() && it->second != nullptr && it->second->loopSpotsBuilt)
+            bundle = it->second.get();
+    if (bundle == nullptr)
+    {
+        // Region / Duration own the chips (updateLoopSpotSuggestions).
+        blockSuggestions_.clear();
+        lastBlockSuggestKey_.clear();
+        return;
+    }
+
+    juce::String key = juce::String::toHexString ((juce::pointer_sized_int) bundle) + "|";
+    for (const auto& ub : userBlocks_)
+        key += juce::String (ub.startSec, 3) + "-" + juce::String (ub.endSec, 3) + ";";
+    if (key == lastBlockSuggestKey_) return;
+    lastBlockSuggestKey_ = key;
+    lastLoopSpotKey_.clear();   // Region re-derives its chips when its tab comes back
+
+    // Spans that do not overlap a user block (already-marked material is
+    // not proposed again).
+    constexpr double kEps = 1e-3;
+    std::vector<reamix::remix::LoopSpot> free;
+    free.reserve (bundle->sectionSpans.size());
+    for (const auto& sp : bundle->sectionSpans)
+    {
+        bool overlaps = false;
+        for (const auto& ub : userBlocks_)
+            if (sp.start_sec < ub.endSec - kEps && ub.startSec < sp.end_sec - kEps) { overlaps = true; break; }
+        if (! overlaps) free.push_back (sp);
+    }
+
+    reamix::remix::LoopSpotFilter filter;
+    filter.min_quality = reamix::ui::kBlocksQualityBands.medium;   // amber or better
+    filter.min_bars    = 4;      // whole sections, not loop spots
+    filter.max_bars    = 32;
+    filter.max_count   = 6;
+    blockSuggestions_ = reamix::remix::suggestLoopSpots (free, filter);
+    std::sort (blockSuggestions_.begin(), blockSuggestions_.end(),
+               [] (const auto& a, const auto& z) { return a.start_sec < z.start_sec; });
+
+    std::vector<Chip> chips;
+    chips.reserve (blockSuggestions_.size());
+    for (const auto& sp : blockSuggestions_)
+    {
+        Chip c;
+        c.startSec   = sp.start_sec;
+        c.endSec     = sp.end_sec;
+        c.quality    = reamix::ui::bucketQuality ((float) sp.quality, reamix::ui::kBlocksQualityBands);
+        const juce::String bars = juce::String (sp.bars) + (sp.bars == 1 ? " BAR" : " BARS");
+        c.label      = juce::String::fromUTF8 ("+ ") + bars + juce::String::fromUTF8 (" \xc2\xb7 ")
+                     + juce::String (juce::roundToInt (sp.quality * 100.0)) + "%";
+        c.shortLabel = juce::String::fromUTF8 ("+ ") + bars;
+        chips.push_back (std::move (c));
+    }
+    waveformView_.setLoopSpots (std::move (chips));
+}
+
+void MainComponent::addBlockFromSuggestion (int idx)
+{
+    if (idx < 0 || idx >= (int) blockSuggestions_.size()) return;
+    if (currentSourceDurationSec_ <= 0.0) return;
+    const auto sp = blockSuggestions_[(std::size_t) idx];
+    for (const auto& ub : userBlocks_)
+        if (sp.start_sec < ub.endSec && ub.startSec < sp.end_sec)
+        {
+            statusBar_.setNotice (juce::String::fromUTF8 (
+                "Suggested block overlaps an existing block"));
+            return;
+        }
+    reamix::ui::UserBlock b;
+    b.startSec = sp.start_sec;
+    b.endSec   = sp.end_sec;
+    b.kind     = reamix::ui::smartKindForPosition (sp.start_sec, currentSourceDurationSec_);
+    appendUserBlock (b, /*queueIt=*/true);
+    statusBar_.setText (juce::String::fromUTF8 ("Block added and queued \xe2\x80\x94 ")
+        + juce::String (sp.bars) + (sp.bars == 1 ? " bar" : " bars")
+        + juce::String::fromUTF8 (" \xc2\xb7 click the tile to change its kind"));
+}
+
+void MainComponent::refreshBlockJunctionPreview()
+{
+    const int gen = ++blockPreviewGen_;     // invalidates any result in flight
+    if (appMode_ != reamix::ui::ModeTabs::Mode::Blocks || userBlocksQueue_.size() < 2) return;
+    if (blockAssemblyPanel_.seamQualitiesAreReal()) return;   // Assemble result already on the pills
+    auto it = analysisBundles_.find (currentSourcePath_);
+    if (it == analysisBundles_.end() || it->second == nullptr || ! it->second->gridBuilt) return;
+
+    reamix::ui::AnalysisBundlePtr bundle = it->second;
+    const std::vector<reamix::ui::UserBlock> blocks = userBlocks_;
+    const std::vector<int> queue = userBlocksQueue_;
+    // Same weight override the Assemble kick applies (Tone slider + advanced panel).
+    std::optional<reamix::remix::QualityWeights> weights;
+    {
+        reamix::remix::QualityWeights w = currentQualityWeights();
+        const auto ap = currentAuditionParams();
+        if (ap.tone > 0.0) w.harmonic_vs_timbre = ap.tone;
+        if (! reamix::ui::qualityWeightsAtDefault (w)) weights = w;
+    }
+    juce::Component::SafePointer<MainComponent> self (this);
+
+    juce::Thread::launch ([self, gen, bundle, blocks, queue, weights]()
+    {
+        const int nJ = (int) queue.size() - 1;
+        std::vector<float> q ((std::size_t) nJ, -1.0f);
+        std::vector<int>   fb ((std::size_t) nJ, 0);
+        try
+        {
+            const reamix::ui::BlockInfoMap bmap = reamix::ui::mapUserBlocksToInfos (blocks, bundle->beatTimes);
+            std::vector<int> seq, qpos;
+            for (std::size_t k = 0; k < queue.size(); ++k)
+            {
+                const int u = queue[k];
+                if (u >= 0 && u < (int) bmap.infoIdxOfUser.size() && bmap.infoIdxOfUser[(std::size_t) u] >= 0)
+                {
+                    seq.push_back (bmap.infoIdxOfUser[(std::size_t) u]);
+                    qpos.push_back ((int) k);
+                }
+            }
+            if (seq.size() >= 2 && bmap.infos.size() >= 2)
+            {
+                reamix::remix::BlockCompatInputs bin{};
+                reamix::ui::fillBlockCompatInputs (bin, *bundle, bundle->gridDownbeats, bundle->barBeats);
+                bin.v2_scoring           = true;                       // production defaults (RemixPipeline::Input)
+                bin.blocks               = bmap.infos.data();
+                bin.n_blocks             = (int) bmap.infos.size();
+                bin.drift_penalty_weight = reamix::remix::BLOCK_DRIFT_PENALTY_WEIGHT;
+                bin.quality_weights      = weights.has_value() ? &(*weights) : nullptr;
+                bin.block_assembly_beta  = true;
+                bin.block_energy_gate    = false;
+                bin.block_sequence       = seq.data();
+                bin.n_block_sequence     = (int) seq.size();
+                const auto compat = reamix::remix::computeBlockCompatibility (bin);
+                const int n = compat.n;
+                for (std::size_t k = 0; k + 1 < seq.size(); ++k)
+                {
+                    const int j = qpos[k];                     // junction after queue position k
+                    if (j < 0 || j >= nJ) continue;
+                    const std::size_t idx2 = (std::size_t) seq[k] * (std::size_t) n + (std::size_t) seq[k + 1];
+                    if (! compat.pools.empty())
+                    {
+                        const auto& pool = compat.pools[idx2];
+                        if (pool.empty()) { q[(std::size_t) j] = 0.0f; fb[(std::size_t) j] = 1; }
+                        else                q[(std::size_t) j] = (float) pool.front().quality;
+                    }
+                    else if (idx2 < compat.quality.size())
+                        q[(std::size_t) j] = (float) compat.quality[idx2];
+                }
+            }
+        }
+        catch (...) { /* pills stay grey */ }
+
+        juce::MessageManager::callAsync ([self, gen, q, fb]()
+        {
+            if (self == nullptr) return;
+            if (gen != self->blockPreviewGen_.load()) return;   // queue changed meanwhile
+            if (self->blockAssemblyPanel_.seamQualitiesAreReal()) return;
+            self->blockAssemblyPanel_.setSeamQualities (q, /*estimated=*/true, fb);
+        });
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────

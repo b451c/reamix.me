@@ -2107,6 +2107,30 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_block_assembly_beta
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_user_blocks_state — sesja 120 (DEV-097) self-validation. Block
+  # Assembly P_EXT payload v2 (blocks + queue + variations) round trip, v1
+  # bare-array forward compat, queue validation, sorted-on-read invariant.
+  add_executable(test_user_blocks_state
+    tests/parity/test_user_blocks_state.cpp
+  )
+  target_include_directories(test_user_blocks_state PRIVATE src)
+  target_link_libraries(test_user_blocks_state PRIVATE juce::juce_core juce::juce_graphics)
+  target_compile_definitions(test_user_blocks_state PRIVATE
+    JUCE_STANDALONE_APPLICATION=0
+    JUCE_MODAL_LOOPS_PERMITTED=0
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
+  )
+  if(MSVC)
+    target_compile_options(test_user_blocks_state PRIVATE /W3)
+  else()
+    target_compile_options(test_user_blocks_state PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  endif()
+  add_test(NAME user_blocks_state
+           COMMAND test_user_blocks_state
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_dev_calibration_persistence — sesja 98 (ADR-087 STATUS UPDATE 1)
   # self-validation. Sesja 106 (ADR-098): perceptual mapping tests removed
   # + schema bumped v1→v2 + testLegacyV1RecordLoads added. Sesja 107

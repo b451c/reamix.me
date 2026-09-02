@@ -124,6 +124,75 @@ inline std::vector<UserBlock> deserializeUserBlocks (const juce::String& json)
     return out;
 }
 
+// Sesja 120 (DEV-097) — the whole Block Assembly state of an item: blocks +
+// arrangement queue + per-junction variations, so a project reopen brings
+// the arrangement back, not only the marks. P_EXT payload v2 is an object
+//   {"v":2,"blocks":[...],"queue":[0,2,1],"var":[0,1]}
+// and the reader still accepts the v1 bare array (blocks only, queue empty).
+// Queue entries index `blocks`; entries out of range are dropped on read.
+struct UserBlocksState
+{
+    std::vector<UserBlock> blocks;
+    std::vector<int>       queue;
+    std::vector<int>       variations;   // size = max(0, queue.size() - 1)
+};
+
+inline juce::String serializeUserBlocksState (const UserBlocksState& st)
+{
+    if (st.blocks.empty()) return {};
+    auto* obj = new juce::DynamicObject();
+    obj->setProperty ("v", 2);
+    juce::Array<juce::var> blocks;
+    for (const auto& b : st.blocks) blocks.add (userBlockToVar (b));
+    obj->setProperty ("blocks", juce::var (blocks));
+    juce::Array<juce::var> queue;
+    for (int q : st.queue) queue.add (q);
+    obj->setProperty ("queue", juce::var (queue));
+    juce::Array<juce::var> vars;
+    for (int v : st.variations) vars.add (v);
+    obj->setProperty ("var", juce::var (vars));
+    return juce::JSON::toString (juce::var (obj), true);
+}
+
+inline UserBlocksState deserializeUserBlocksState (const juce::String& json)
+{
+    UserBlocksState st;
+    if (json.isEmpty()) return st;
+    const juce::var v = juce::JSON::parse (json);
+    if (v.isArray())                       // v1 payload: blocks only
+    {
+        st.blocks = deserializeUserBlocks (json);
+        return st;
+    }
+    if (! v.isObject()) return st;
+
+    const juce::var blocks = v.getProperty ("blocks", juce::var());
+    if (blocks.isArray())
+    {
+        for (int i = 0; i < blocks.size(); ++i)
+            if (auto b = userBlockFromVar (blocks[i]); b.has_value())
+                st.blocks.push_back (*b);
+        // The queue indexes the SORTED block list, so sort exactly as the
+        // writer (userBlocks_ is kept sorted by start) before validating.
+        std::stable_sort (st.blocks.begin(), st.blocks.end(),
+                          [](const UserBlock& a, const UserBlock& b) { return a.startSec < b.startSec; });
+    }
+    const juce::var queue = v.getProperty ("queue", juce::var());
+    if (queue.isArray())
+        for (int i = 0; i < queue.size(); ++i)
+        {
+            const int q = (int) queue[i];
+            if (q >= 0 && q < (int) st.blocks.size()) st.queue.push_back (q);
+        }
+    const juce::var vars = v.getProperty ("var", juce::var());
+    const int nJunctions = std::max (0, (int) st.queue.size() - 1);
+    st.variations.assign ((std::size_t) nJunctions, 0);
+    if (vars.isArray())
+        for (int i = 0; i < vars.size() && i < nJunctions; ++i)
+            st.variations[(std::size_t) i] = std::max (0, (int) vars[i]);
+    return st;
+}
+
 // Smart-default kind by position within an item: Intro at first 15 %,
 // Outro at last 15 %, Verse otherwise. ADR-051 § Premium-feel #3.
 inline reamix::theme::SegmentKind smartKindForPosition (double startSec, double itemDurationSec) noexcept

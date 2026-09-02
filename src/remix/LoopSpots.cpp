@@ -39,6 +39,39 @@ std::vector<LoopSpot> extractLoopSpots(
     return out;
 }
 
+std::vector<LoopSpot> extractSectionSpans(
+    const std::map<std::pair<int, int>, TransitionCandidate>& candidates,
+    const double* beat_times, int n_beats, int bar_beats)
+{
+    std::vector<LoopSpot> out;
+    if (beat_times == nullptr || n_beats < 2) return out;
+    const int bb = std::max(1, bar_beats);
+    const double last_step = beat_times[n_beats - 1] - beat_times[n_beats - 2];
+
+    for (const auto& kv : candidates) {
+        const int from = kv.first.first;
+        const int to   = kv.first.second;
+        if (to < 0 || from < 0 || from >= n_beats || to > n_beats) continue;
+        const int a = std::min(to, from + 1);           // span start (beat index)
+        const int b = std::max(to, from + 1);           // span end, exclusive
+        if (b - a < 1) continue;                        // adjacent pair: no section
+        LoopSpot s;
+        s.from_beat = from;
+        s.to_beat   = to;
+        s.quality   = kv.second.quality_score;
+        s.start_sec = beat_times[a];
+        s.end_sec   = (b < n_beats) ? beat_times[b] : beat_times[n_beats - 1] + last_step;
+        s.bars      = std::max(1, (int) std::lround((double) (b - a) / (double) bb));
+        out.push_back(s);
+    }
+    std::sort(out.begin(), out.end(), [](const LoopSpot& a, const LoopSpot& b) {
+        if (a.quality != b.quality) return a.quality > b.quality;
+        if (a.start_sec != b.start_sec) return a.start_sec < b.start_sec;
+        return a.end_sec < b.end_sec;
+    });
+    return out;
+}
+
 std::vector<LoopSpot> suggestLoopSpots(const std::vector<LoopSpot>& all,
                                        const LoopSpotFilter&        f)
 {
@@ -48,6 +81,7 @@ std::vector<LoopSpot> suggestLoopSpots(const std::vector<LoopSpot>& all,
         if (s.quality < f.min_quality) continue;
         if (s.end_sec - s.start_sec < f.min_span_sec) continue;
         if (s.bars > f.max_bars) continue;
+        if (s.bars < f.min_bars) continue;
         if (s.start_sec < f.window_start_sec - f.window_eps_sec) continue;
         if (s.end_sec   > f.window_end_sec   + f.window_eps_sec) continue;
         bool overlaps = false;

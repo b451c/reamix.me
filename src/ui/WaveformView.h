@@ -324,8 +324,17 @@ public:
         juce::String  label;        // "LOOP · 4 BARS · 82%" (wide chip)
         juce::String  shortLabel;   // "4 BARS" (narrow chip)
     };
+    // Sesja 120 (DEV-097): in Blocks mode the same chips carry proposed
+    // blocks (section spans of the whole-track pool); a chip click then
+    // becomes a block through MainComponent. Chips paint under user tiles
+    // and never overlap them (MainComponent filters).
     void setLoopSpots (std::vector<LoopSpotChip>);
     std::function<void (int idx)> onLoopSpotClicked;
+
+    // Sesja 120 (DEV-097): minimum block length for marking / edge drags,
+    // in seconds. MainComponent sets one measured bar once the grid is
+    // known; 0.5 s (about one beat) until then.
+    void setMinBlockSec (double sec) noexcept { minBlockSec_ = std::max (0.05, sec); }
 
     // Verdict pill centred over the region span at the canvas top ("LOOP ·
     // 4 BARS · 82%" / "NO CLEAN LOOP IN THIS SELECTION"). Painted from the
@@ -430,6 +439,13 @@ private:
     // kSpliceHitToleranceX pixels of cursorX, or -1 if none.
     int  spliceHitTest    (int cursorX) const;
     void updateHoveredSplice (int newIdx, juce::Point<int> screenPos);
+
+    // Sesja 120 (DEV-097/098): block edges snap to the nearest downbeat of
+    // the cleaned grid whenever downbeats exist (the engine keeps whole
+    // measured bars and searches bar-aligned cuts, so a block edge between
+    // downbeats only shifts by up to half a bar at Assemble). Falls back to
+    // snapTimeToBeats when no downbeat is known.
+    double snapBlockEdge (double t) const;
 
     // ADR-051 — snap a time t to nearest beat / downbeat per snapMode_.
     // Returns t unchanged when SnapMode::Off or beats_ empty. Pure-function
@@ -667,7 +683,7 @@ private:
     int                 hoveredUserBlockIdx_      { -1 };
 
     static constexpr int    kBoundaryHitPx        = 6;
-    static constexpr double kMinBlockSec          = 0.5;
+    double                  minBlockSec_          { 0.5 };   // sesja 120: one bar once known
 
     // Algorithm-resolved splice points for current arrangement (sesja 61,
     // phase E). Empty in non-Blocks modes or before RemixPipeline runs.

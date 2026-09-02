@@ -87,6 +87,14 @@ struct RemixOutput
     std::vector<float>        transitionEnergyDiffsDb; // dB
     std::vector<juce::String> transitionFromLabels;
     std::vector<juce::String> transitionToLabels;
+    // Sesja 120 (DEV-099): 1 when a Blocks junction found no clean cut and
+    // was spliced at the authored boundary ("junction_fallback" metadata,
+    // sesja 119 DEV-094); 0 otherwise. Drives the red marker / pill.
+    std::vector<int>          transitionFallbacks;
+    // Sesja 120: Blocks junction index of each transition ("junction_idx"
+    // metadata; -1 in Duration / Region) so the seam pills map by junction
+    // and not by transition order (a continuation junction has no cut).
+    std::vector<int>          transitionJunctions;
 
     // Per-key tmp WAV file path. Empty when not yet rendered or render
     // failed. RemixCache eviction deletes the file at this path.

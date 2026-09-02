@@ -811,7 +811,7 @@ RegionInsertResult insertRegionRemixClips (const RegionInsertSpec& spec)
 // GetSetMediaItemInfo_String (REAPER-2026-04-27-115301.ips, sesja 61).
 constexpr const char* kPExtBlocksKey = "P_EXT:reamix_blocks";
 
-std::vector<reamix::ui::UserBlock> loadUserBlocks (void* itemPtr)
+reamix::ui::UserBlocksState loadUserBlocks (void* itemPtr)
 {
 #if REAMIX_WITH_REAPER_IO
     if (itemPtr == nullptr || ! GetSetMediaItemInfo_String)
@@ -825,24 +825,21 @@ std::vector<reamix::ui::UserBlock> loadUserBlocks (void* itemPtr)
                                        buf, false))
         return {};
 
-    return reamix::ui::deserializeUserBlocks (juce::String::fromUTF8 (buf));
+    return reamix::ui::deserializeUserBlocksState (juce::String::fromUTF8 (buf));
 #else
     (void) itemPtr;
     return {};
 #endif
 }
 
-void saveUserBlocks (void* itemPtr,
-                     const std::vector<reamix::ui::UserBlock>& blocks)
+void saveUserBlocks (void* itemPtr, const reamix::ui::UserBlocksState& state)
 {
 #if REAMIX_WITH_REAPER_IO
     if (itemPtr == nullptr || ! GetSetMediaItemInfo_String)
         return;
 
     // Empty vector → write empty string so a previously-stored value is cleared.
-    const juce::String json = blocks.empty()
-        ? juce::String()
-        : reamix::ui::serializeUserBlocks (blocks);
+    const juce::String json = reamix::ui::serializeUserBlocksState (state);
 
     // GetSetMediaItemInfo_String with setNewValue=true reads the buffer; size
     // it dynamically to (jsonSize+1, min 1 KB) so REAPER's internal copy
@@ -857,7 +854,7 @@ void saveUserBlocks (void* itemPtr,
                                 buf.data(), true);
 #else
     (void) itemPtr;
-    (void) blocks;
+    (void) state;
 #endif
 }
 

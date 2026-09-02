@@ -949,8 +949,8 @@ void WaveformView::paintSegBar (juce::Graphics& g)
     if (segments_.empty() && userBlocks_.empty() && ! segBarDragging_)
     {
         paintDownbeatAnchors (g, bar);
-        if (! blockMarkingEnabled_) paintLoopSpots (g, bar);   // ADR-115 E11
-        if (blockMarkingEnabled_)
+        paintLoopSpots (g, bar);   // ADR-115 E11; Blocks suggestions sesja 120
+        if (blockMarkingEnabled_ && loopSpots_.empty())
         {
             const double tMs   = (double) juce::Time::getMillisecondCounter();
             const double phase = std::fmod (tMs, 1200.0) / 1200.0;
@@ -1035,7 +1035,7 @@ void WaveformView::paintSegBar (juce::Graphics& g)
     // Provisional drag preview paints last so it sits ON TOP of the placed tiles.
     // Splice lines paint OVER tiles (algorithm's resolved cuts visible above
     // user-authored intent) so user can see drift at a glance.
-    if (! blockMarkingEnabled_)         paintLoopSpots        (g, bar);   // ADR-115 E11
+    paintLoopSpots (g, bar);   // ADR-115 E11; Blocks suggestions (sesja 120) paint under the tiles
     if (! userBlocks_.empty())          paintUserBlocks       (g, bar);
     if (! userBlockSplices_.empty())    paintUserBlockSplices (g, bar);
     if (segBarDragging_)                paintMarkPreview      (g, bar);
@@ -1059,7 +1059,7 @@ void WaveformView::paintSegBar (juce::Graphics& g)
     // DEV-055 sesja 100c — alpha pulse so the hint catches a first-time user's
     // eye. Period 1.2 s; alpha 0.45–0.85 envelope. Timer-driven repaint via
     // segBarHintActive_ flag (re-armed in setBlockMarkingEnabled / setUserBlocks).
-    if (blockMarkingEnabled_ && userBlocks_.empty() && ! segBarDragging_)
+    if (blockMarkingEnabled_ && userBlocks_.empty() && ! segBarDragging_ && loopSpots_.empty())
     {
         const double tMs    = (double) juce::Time::getMillisecondCounter();
         const double phase  = std::fmod (tMs, 1200.0) / 1200.0;     // 0..1
@@ -1225,10 +1225,9 @@ void WaveformView::paintMarkPreview (juce::Graphics& g, juce::Rectangle<int> bar
 
     double a = std::min (segBarDragStartSec_, segBarDragCurrentSec_);
     double b = std::max (segBarDragStartSec_, segBarDragCurrentSec_);
-    if (snapMode_ != SnapMode::Off)
     {
-        const double sa = snapTimeToBeats (a);
-        const double sb = snapTimeToBeats (b);
+        const double sa = snapBlockEdge (a);   // sesja 120: block edges live on downbeats
+        const double sb = snapBlockEdge (b);
         if (sa < sb) { a = sa; b = sb; }
     }
 
@@ -1480,6 +1479,20 @@ double WaveformView::snapTimeToBeats (double t) const
         const double d = std::abs (bt.time - t);
         if (d < bestD) { bestD = d; bestT = bt.time; }
     }
+    return bestT;
+}
+
+double WaveformView::snapBlockEdge (double t) const
+{
+    double bestT = t;
+    double bestD = std::numeric_limits<double>::infinity();
+    for (const auto& bt : beats_)
+    {
+        if (! bt.isDownbeat) continue;
+        const double d = std::abs (bt.time - t);
+        if (d < bestD) { bestD = d; bestT = bt.time; }
+    }
+    if (std::isinf (bestD)) return snapTimeToBeats (t);
     return bestT;
 }
 
@@ -1981,9 +1994,16 @@ void WaveformView::mouseMove (const juce::MouseEvent& e)
 
     // ADR-115 E11 — loop-spot chip hover (Source variant, Region mode).
     int newLoopSpot = -1;
-    if (variant_ == Variant::Source && ! blockMarkingEnabled_ && ! loopSpots_.empty()
+    if (variant_ == Variant::Source && ! loopSpots_.empty()
         && segBarArea().contains (pos))
-        newLoopSpot = loopSpotHitTest (pos);
+    {
+        // Sesja 120: in Blocks mode a block edge / tile under the cursor wins.
+        bool dummyStart = false;
+        const bool onBlock = blockMarkingEnabled_
+                          && (userBlockBoundaryHitTest (pos, &dummyStart) >= 0
+                              || userBlockHitTest (pos) >= 0);
+        if (! onBlock) newLoopSpot = loopSpotHitTest (pos);
+    }
     if (newLoopSpot != hoveredLoopSpotIdx_)
     {
         hoveredLoopSpotIdx_ = newLoopSpot;
@@ -2084,9 +2104,15 @@ void WaveformView::mouseDown (const juce::MouseEvent& e)
     if (! (insideCanvas || insideSegBar)) return;
 
     // ADR-115 E11 (sesja 117) — loop-spot chip click (Region mode segBar).
-    if (insideSegBar && ! blockMarkingEnabled_ && ! loopSpots_.empty())
+    // Sesja 120 — same chips propose blocks in Blocks mode; a block edge or
+    // tile under the cursor keeps priority over the chip.
+    if (insideSegBar && ! loopSpots_.empty() && ! e.mods.isPopupMenu())
     {
-        const int spot = loopSpotHitTest (pos);
+        bool dummyStart = false;
+        const bool onBlock = blockMarkingEnabled_
+                          && (userBlockBoundaryHitTest (pos, &dummyStart) >= 0
+                              || userBlockHitTest (pos) >= 0);
+        const int spot = onBlock ? -1 : loopSpotHitTest (pos);
         if (spot >= 0)
         {
             if (onLoopSpotClicked) onLoopSpotClicked (spot);
@@ -2137,7 +2163,7 @@ void WaveformView::mouseDown (const juce::MouseEvent& e)
         {
             const auto& b = userBlocks_[(std::size_t) boundaryIdx];
             // Clamp range: previous neighbour's end (or 0) ↔ next
-            // neighbour's start (or item duration). kMinBlockSec guards
+            // neighbour's start (or item duration). minBlockSec_ guards
             // against collapsing the dragged block; the OPPOSITE edge
             // also acts as a clamp so the block preserves a minimum width.
             const double prevEnd  = (boundaryIdx > 0)
@@ -2169,8 +2195,8 @@ void WaveformView::mouseDown (const juce::MouseEvent& e)
                     const double nbNextStart = (sharedIdx + 1 < (int) userBlocks_.size())
                         ? userBlocks_[(std::size_t) (sharedIdx + 1)].startSec
                         : viewStartSec_ + viewDurationSec_;
-                    extendedClampMin = b.startSec    + kMinBlockSec;
-                    extendedClampMax = nb.endSec     - kMinBlockSec;
+                    extendedClampMin = b.startSec    + minBlockSec_;
+                    extendedClampMax = nb.endSec     - minBlockSec_;
                     // Also clamp against B's next neighbour (no overlap).
                     extendedClampMax = std::min (extendedClampMax, nbNextStart);
                 }
@@ -2186,8 +2212,8 @@ void WaveformView::mouseDown (const juce::MouseEvent& e)
                     const double pbPrevEnd = (sharedIdx > 0)
                         ? userBlocks_[(std::size_t) (sharedIdx - 1)].endSec
                         : 0.0;
-                    extendedClampMin = pb.startSec   + kMinBlockSec;
-                    extendedClampMax = b.endSec      - kMinBlockSec;
+                    extendedClampMin = pb.startSec   + minBlockSec_;
+                    extendedClampMax = b.endSec      - minBlockSec_;
                     extendedClampMin = std::max (extendedClampMin, pbPrevEnd);
                 }
             }
@@ -2210,8 +2236,8 @@ void WaveformView::mouseDown (const juce::MouseEvent& e)
             {
                 segBarBoundarySharedBlockIdx_ = -1;
                 segBarBoundaryClampMin_ = isStart ? prevEnd
-                                                    : (b.startSec + kMinBlockSec);
-                segBarBoundaryClampMax_ = isStart ? (b.endSec - kMinBlockSec)
+                                                    : (b.startSec + minBlockSec_);
+                segBarBoundaryClampMax_ = isStart ? (b.endSec - minBlockSec_)
                                                     : nextStart;
             }
             // Keep ew-resize cursor active during drag.
@@ -2497,9 +2523,9 @@ void WaveformView::mouseUp (const juce::MouseEvent& e)
                std::abs (newEdge - segBarBoundaryClampMin_) < kTouchEps
             || std::abs (newEdge - segBarBoundaryClampMax_) < kTouchEps;
 
-        if (! touchingNeighbour && snapMode_ != SnapMode::Off)
+        if (! touchingNeighbour)
         {
-            const double snapped = snapTimeToBeats (newEdge);
+            const double snapped = snapBlockEdge (newEdge);   // sesja 120
             // Only accept snap targets STRICTLY inside the gap. If the
             // nearest beat sits on the neighbour's boundary (or beyond),
             // keep the raw cursor position so user-released-mid-gap
@@ -2527,7 +2553,7 @@ void WaveformView::mouseUp (const juce::MouseEvent& e)
         repaint (segBarArea());
 
         if (idx >= 0
-            && std::abs (newEnd - newStart) >= kMinBlockSec
+            && std::abs (newEnd - newStart) >= minBlockSec_
             && onUserBlockBoundariesChanged)
         {
             onUserBlockBoundariesChanged (idx, newStart, newEnd);
@@ -2536,7 +2562,7 @@ void WaveformView::mouseUp (const juce::MouseEvent& e)
         {
             const double sharedStart = sharedIsStart ? newEdge : sharedFixed;
             const double sharedEnd   = sharedIsStart ? sharedFixed : newEdge;
-            if (std::abs (sharedEnd - sharedStart) >= kMinBlockSec)
+            if (std::abs (sharedEnd - sharedStart) >= minBlockSec_)
                 onUserBlockBoundariesChanged (sharedIdx, sharedStart, sharedEnd);
         }
         return;
@@ -2556,9 +2582,8 @@ void WaveformView::mouseUp (const juce::MouseEvent& e)
         double       newStart   = segBarMidDragLiveStart_;
 
         constexpr double kTouchEps = 1e-9;
-        if (snapMode_ != SnapMode::Off)
         {
-            const double snapped = snapTimeToBeats (newStart);
+            const double snapped = snapBlockEdge (newStart);   // sesja 120
             const double snappedEnd = snapped + duration;
             const bool touchingNeighbour =
                    std::abs (snapped     - segBarMidDragClampMinStart_) < kTouchEps
@@ -2578,7 +2603,7 @@ void WaveformView::mouseUp (const juce::MouseEvent& e)
         setMouseCursor (juce::MouseCursor::NormalCursor);
         repaint (segBarArea());
 
-        if (idx >= 0 && duration >= kMinBlockSec && onUserBlockBoundariesChanged)
+        if (idx >= 0 && duration >= minBlockSec_ && onUserBlockBoundariesChanged)
             onUserBlockBoundariesChanged (idx, newStart, newEnd);
         return;
     }
@@ -2597,14 +2622,14 @@ void WaveformView::mouseUp (const juce::MouseEvent& e)
         {
             double a = std::min (segBarDragStartSec_, segBarDragCurrentSec_);
             double b = std::max (segBarDragStartSec_, segBarDragCurrentSec_);
-            if (snapMode_ != SnapMode::Off)
             {
-                const double sa = snapTimeToBeats (a);
-                const double sb = snapTimeToBeats (b);
+                const double sa = snapBlockEdge (a);   // sesja 120: block edges live on downbeats
+                const double sb = snapBlockEdge (b);
                 if (sa < sb) { a = sa; b = sb; }
             }
-            // Drop micro-marks (< 1 beat ≈ 0.5 s) — likely accidental flicks.
-            if (b - a >= 0.5 && onMarkBlock)
+            // Drop marks shorter than the minimum block (one bar once the
+            // grid is known) — MainComponent reports the reason.
+            if (b - a >= minBlockSec_ && onMarkBlock)
                 onMarkBlock (a, b, e.getScreenPosition());
         }
         else if (! wasDrag && segBarDragStartedOnBlock_ && segBarDragStartBlockIdx_ >= 0)

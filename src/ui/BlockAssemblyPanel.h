@@ -69,7 +69,21 @@ public:
     // queue.size() - 1. Empty → seams render in neutral gray (pre-analysis
     // state). Phase J populates from BlockAssembly::computeBlockCompatibility
     // post-Analyze.
-    void setSeamQualities (std::vector<float> qualities);
+    // Sesja 120 (DEV-097/099): `estimated` = pre-Assemble preview from the
+    // junction pool (pill shows "~74%"); `fallbacks` (size = qualities) = 1
+    // when the junction found no clean cut and sits on the authored boundary
+    // (always red). Bands per SpliceQualityBands.h.
+    void setSeamQualities (std::vector<float> qualities,
+                           bool estimated = false,
+                           std::vector<int> fallbacks = {});
+
+    // True when the pills show an Assemble result (not the pre-Assemble
+    // estimate); the live preview never overwrites those.
+    bool seamQualitiesAreReal() const noexcept { return ! seamEstimated_ && ! seamQualities_.empty(); }
+
+    // Sesja 120 (DEV-097): measured bar length in seconds (0 = unknown ->
+    // lengths shown as M:SS). With it, cards / tiles / header show bars.
+    void setBarSec (double sec);
 
     // ADR-051 phase G — junction variation index per junction (0 = primary
     // top-1 splice, 1+ = re-rolled to k-th alternative). Size = queue.size()
@@ -268,6 +282,9 @@ private:
     const reamix::ui::CustomKindRegistry* customKindRegistry_ { nullptr };
     std::vector<int>                   queue_;
     std::vector<float>                 seamQualities_;        // size = queue_.size() - 1; empty pre-analysis
+    std::vector<int>                   seamFallbacks_;        // sesja 120, parallel to seamQualities_
+    bool                               seamEstimated_ { false };
+    double                             barSec_        { 0.0 };
     std::vector<int>                   junctionVariations_;   // size = queue_.size() - 1; phase G
     bool                               dirty_       { false };
     bool                               assembleBusy_ { false };  // sesja 64

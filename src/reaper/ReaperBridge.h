@@ -7,7 +7,7 @@
 #include <optional>
 #include <vector>
 
-namespace reamix::ui { struct UserBlock; }
+namespace reamix::ui { struct UserBlock; struct UserBlocksState; }
 
 // ReaperBridge — query + mutation layer between JUCE UI and REAPER host state.
 //
@@ -298,10 +298,10 @@ RegionInsertResult insertRegionRemixClips (const RegionInsertSpec& spec);
 // Note: key uses underscore not dot — matches SneakPeak (P_EXT:SneakPeak_Dynamics)
 // and Lua RemixTool (P_EXT:RemixTool); a sesja-61 dot variant crashed REAPER.
 
-std::vector<reamix::ui::UserBlock> loadUserBlocks (void* itemPtr);
-
-void saveUserBlocks (void* itemPtr,
-                     const std::vector<reamix::ui::UserBlock>& blocks);
+// Sesja 120 (DEV-097): the payload carries blocks + queue + variations
+// (UserBlocksState, v2 object; v1 bare arrays still read).
+reamix::ui::UserBlocksState loadUserBlocks (void* itemPtr);
+void saveUserBlocks (void* itemPtr, const reamix::ui::UserBlocksState& state);
 
 // Sesja 100b — DEV-049 splice markers + render region.
 //

@@ -148,6 +148,39 @@ int main()
     picks = suggestLoopSpots(all, f);
     CHECK(picks.size() == 1 && isPair(picks[0], 31, 16), "sub-eps cut still contains B");
 
+    std::printf("[7] section spans (sesja 120, Blocks suggestions)\n");
+    // Every pair becomes the span between its two cut points, forward pairs
+    // included: G (7 -> 24) skips [8, 24) = 8 s .. 12 s, 4 bars.
+    const auto spans = extractSectionSpans(pool, bt.data(), kBeats, kBarBeats);
+    CHECK(spans.size() == 8, "all 8 pairs become spans (forward kept)");
+    CHECK(!spans.empty() && isPair(spans[0], 7, 24), "best first = G (q 0.95)");
+    for (const auto& s : spans) {
+        if (isPair(s, 7, 24)) {
+            CHECK(std::abs(s.start_sec - 4.0) < 1e-9 && std::abs(s.end_sec - 12.0) < 1e-9,
+                  "G span = [4, 12) s (beats 8 .. 24)");
+            CHECK(s.bars == 4, "G = 4 bars");
+        }
+        if (isPair(s, 15, 0))
+            CHECK(std::abs(s.start_sec - 0.0) < 1e-9 && std::abs(s.end_sec - 8.0) < 1e-9,
+                  "A span unchanged as a section span");
+    }
+    LoopSpotFilter sf;
+    sf.min_bars  = 4;     // whole sections only
+    sf.max_bars  = 32;
+    sf.max_count = 8;
+    auto sections = suggestLoopSpots(spans, sf);
+    CHECK(sections.size() == 2, "min_bars 4 + greedy non-overlap -> 2 sections");
+    CHECK(sections.size() == 2 && isPair(sections[0], 7, 24), "section 1 = G [4, 12)");
+    CHECK(sections.size() == 2 && isPair(sections[1], 55, 40), "section 2 = H [20, 28) (A, B, C, E overlap G)");
+    for (const auto& p : sections) {
+        CHECK(!isPair(p, 11, 8),  "D (1 bar) filtered by min_bars");
+        CHECK(!isPair(p, 15, 0),  "A overlaps G -> rejected");
+        CHECK(!isPair(p, 63, 0),  "E (16 bars) overlaps everything after G");
+    }
+    { std::map<std::pair<int, int>, TransitionCandidate> adj;
+      adj[{7, 8}] = cand(7, 8, 0.9);
+      CHECK(extractSectionSpans(adj, bt.data(), kBeats, kBarBeats).empty(), "adjacent pair -> no span"); }
+
     std::printf("[6] empty inputs\n");
     CHECK(extractLoopSpots({}, bt.data(), kBeats, kBarBeats).empty(), "no candidates -> no spots");
     CHECK(extractLoopSpots(pool, nullptr, 0, kBarBeats).empty(), "no beats -> no spots");

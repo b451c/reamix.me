@@ -1,5 +1,6 @@
 #include "BlockAssemblyPanel.h"
 #include "KindDisplay.h"
+#include "SpliceQualityBands.h"
 
 #include <algorithm>
 #include <limits>
@@ -17,6 +18,18 @@ namespace
         const int m = totalSec / 60;
         const int s = totalSec % 60;
         return juce::String (m) + ":" + juce::String (s).paddedLeft ('0', 2);
+    }
+
+    // Sesja 120 (DEV-097): block lengths in bars once the bar is measured.
+    int barsFor (double sec, double barSec)
+    {
+        return barSec > 0.0 ? std::max (1, (int) std::lround (sec / barSec)) : 0;
+    }
+    juce::String formatLength (double sec, double barSec)
+    {
+        const int bars = barsFor (sec, barSec);
+        if (bars <= 0) return formatMSS (sec);
+        return juce::String (bars) + (bars == 1 ? " BAR" : " BARS");
     }
 } // namespace
 
@@ -39,16 +52,29 @@ void BlockAssemblyPanel::setUserBlocks (std::vector<reamix::ui::UserBlock> b)
 
 void BlockAssemblyPanel::setQueue (std::vector<int> q)
 {
+    // Sesja 120: a changed queue makes the seam qualities stale (they were
+    // computed for the previous junctions) - drop them until the next
+    // preview / Assemble pushes fresh ones.
+    if (q != queue_) { seamQualities_.clear(); seamFallbacks_.clear(); }
     queue_ = std::move (q);
     if (hoveredQueueTileIdx_ >= (int) queue_.size()) hoveredQueueTileIdx_ = -1;
     if (hoveredSeamIdx_ >= (int) queue_.size() - 1)  hoveredSeamIdx_      = -1;
     repaint();
 }
 
-void BlockAssemblyPanel::setSeamQualities (std::vector<float> q)
+void BlockAssemblyPanel::setSeamQualities (std::vector<float> q, bool estimated,
+                                           std::vector<int> fallbacks)
 {
     seamQualities_ = std::move (q);
+    seamFallbacks_ = std::move (fallbacks);
+    seamEstimated_ = estimated;
     repaint (queueRowArea());
+}
+
+void BlockAssemblyPanel::setBarSec (double sec)
+{
+    barSec_ = sec > 0.0 ? sec : 0.0;
+    repaint();
 }
 
 void BlockAssemblyPanel::setJunctionVariations (std::vector<int> v)
@@ -312,6 +338,8 @@ void BlockAssemblyPanel::paint (juce::Graphics& g)
                      ? juce::String::fromUTF8 ("\xE2\x80\x94")  // em-dash
                      : juce::String ((int) queue_.size())
                        + (queue_.size() == 1 ? " block \xC2\xB7 " : " blocks \xC2\xB7 ")
+                       + (barSec_ > 0.0 ? juce::String (barsFor (totalDur, barSec_)) + " bars \xC2\xB7 "
+                                        : juce::String())
                        + formatMSS (totalDur));
 
     // Sesja-61 close UX fix — Assemble button (premium pill, Accent-tinted
@@ -395,7 +423,7 @@ void BlockAssemblyPanel::paintPaletteRow (juce::Graphics& g,
         g.setColour (Fg4);
         g.setFont (uiFont (fs::Sm, 400));
         g.drawText (juce::String::fromUTF8 (
-            "Drag on the section bar below to mark your first block"),
+            "Click a suggested block in the section bar below, or drag there to mark your own"),
             area, juce::Justification::centred, false);
         return;
     }
@@ -458,7 +486,7 @@ void BlockAssemblyPanel::paintPaletteRow (juce::Graphics& g,
         const double dur = std::max (0.0, b.endSec - b.startSec);
         g.setColour (Fg2);
         g.setFont (monoFont (fs::Xs, 500));
-        g.drawText (formatMSS (dur),
+        g.drawText (formatLength (dur, barSec_),
                     rect.reduced (8, 6).removeFromBottom (rect.getHeight() / 2 - 2),
                     juce::Justification::bottomLeft, false);
 
@@ -587,7 +615,7 @@ void BlockAssemblyPanel::paintQueueRow (juce::Graphics& g,
             const double dur = std::max (0.0, b.endSec - b.startSec);
             g.setColour (juce::Colour::fromFloatRGBA (1.0f, 1.0f, 1.0f, 0.8f));
             g.setFont (monoFont (fs::Xs, 500));
-            g.drawText (formatMSS (dur),
+            g.drawText (formatLength (dur, barSec_),
                         rect.reduced (4, 4).removeFromBottom (rect.getHeight() / 2 - 2),
                         juce::Justification::bottomLeft, true);
         }
@@ -602,13 +630,21 @@ void BlockAssemblyPanel::paintQueueRow (juce::Graphics& g,
         const float quality = (j < (int) seamQualities_.size())
             ? seamQualities_[(std::size_t) j] : -1.0f;
 
-        // Quality color: green > 0.65, yellow >= 0.4, red < 0.4. Neutral
-        // gray when quality is unknown (pre-analysis).
+        // Quality colour per SpliceQualityBands.h (Blocks bands, sesja 120);
+        // an authored-boundary fallback is always red. Neutral grey when
+        // the quality is unknown (no analysis yet).
+        const bool fallback = (j < (int) seamFallbacks_.size()) && seamFallbacks_[(std::size_t) j] != 0;
         juce::Colour pillColour;
-        if (quality < 0.0f)        pillColour = Fg3;
-        else if (quality > 0.65f)  pillColour = juce::Colour (0xFF44CC44);
-        else if (quality >= 0.40f) pillColour = juce::Colour (0xFFCCCC44);
-        else                       pillColour = juce::Colour (0xFFCC4444);
+        if (quality < 0.0f) pillColour = Fg3;
+        else
+        {
+            switch (bucketQuality (quality, kBlocksQualityBands, fallback))
+            {
+                case WaveformView::SpliceQuality::Good:   pillColour = juce::Colour (0xFF44CC44); break;
+                case WaveformView::SpliceQuality::Medium: pillColour = juce::Colour (0xFFCCCC44); break;
+                case WaveformView::SpliceQuality::Bad:    pillColour = juce::Colour (0xFFCC4444); break;
+            }
+        }
 
         const bool isHovered = (j == hoveredSeamIdx_);
         const auto bgColour = isHovered ? pillColour.brighter (0.30f) : pillColour;
@@ -621,7 +657,7 @@ void BlockAssemblyPanel::paintQueueRow (juce::Graphics& g,
         // Quality % label or "—" when unknown.
         const juce::String label = (quality < 0.0f)
             ? juce::String::fromUTF8 ("\xE2\x80\x94")
-            : juce::String ((int) std::round (quality * 100.0f)) + "%";
+            : (seamEstimated_ ? "~" : "") + juce::String ((int) std::round (quality * 100.0f)) + "%";
 
         g.setColour (juce::Colours::white.withAlpha (quality < 0.0f ? 0.6f : 0.95f));
         g.setFont (monoFont (fs::Xs, 700));

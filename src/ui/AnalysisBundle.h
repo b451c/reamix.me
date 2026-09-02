@@ -85,6 +85,19 @@ struct AnalysisBundle
     std::vector<reamix::remix::LoopSpot> loopSpots;
     int                                  loopSpotsBarBeats { 4 };
     bool                                 loopSpotsBuilt    { false };
+
+    // ── Section suggestions + cleaned grid (sesja 120, DEV-097/098) ───
+    // `sectionSpans` = every bar-aligned pair of the same whole-track pool
+    // as the span between its two cut points (LoopSpots::extractSectionSpans,
+    // best first) - proposed blocks for Block Assembly. `gridDownbeats` /
+    // `barBeats` / `barSec` = the ADR-115 E5 cleaned grid the engine uses
+    // (LoopSpotsBuilder::ensureBeatGrid, rebuilt after a cache hit; also
+    // rewrites `beatIsDownbeat` so the UI ticks match the engine, DEV-098).
+    std::vector<reamix::remix::LoopSpot> sectionSpans;
+    std::vector<double>                  gridDownbeats;
+    int                                  barBeats  { 4 };
+    double                               barSec    { 0.0 };   // measured bar length, 0 = unknown
+    bool                                 gridBuilt { false };
 };
 
 using AnalysisBundlePtr = std::shared_ptr<AnalysisBundle>;

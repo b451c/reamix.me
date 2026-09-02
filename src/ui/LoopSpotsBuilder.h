@@ -19,4 +19,10 @@ namespace reamix::ui
 
 void ensureLoopSpots (AnalysisBundle& bundle);
 
+// Sesja 120 (DEV-098): cleaned beat grid (ADR-115 E5) stored on the bundle -
+// on-grid downbeats, measured bar in beats and seconds - and `beatIsDownbeat`
+// rebuilt from it so the section-bar ticks, block snapping and the bar labels
+// agree with the engine. Idempotent; called by ensureLoopSpots.
+void ensureBeatGrid (AnalysisBundle& bundle);
+
 } // namespace reamix::ui
