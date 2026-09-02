@@ -59,7 +59,7 @@ private:
     juce::String notice_;              // non-empty → short-lived accent notice
     bool         busy_    { false };
     float        animPhase_ { 0.0f };  // [0..1) drives loading line + spinner rotation
-    juce::String version_ { "v1.0.7" };
+    juce::String version_ { "v2.0.0-dev" };   // sesja 115: dev builds between v1.0.7 and the v2.0.0 release show a distinct label (update checker keeps kCurrentVersion)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StatusBar)
 };
