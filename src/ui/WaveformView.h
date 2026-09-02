@@ -329,6 +329,7 @@ public:
         // Bad); `minor` = a hidden clean-cut span inside a section, painted
         // as a thin quality strip along the bottom of the bar.
         std::optional<reamix::theme::SegmentKind> kind;
+        juce::String  tinyLabel;    // "CHO" - last resort on a narrow chip (sesja 121)
         std::optional<SpliceQuality> startQuality;
         std::optional<SpliceQuality> endQuality;
         bool minor { false };

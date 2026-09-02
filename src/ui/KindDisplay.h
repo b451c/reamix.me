@@ -31,6 +31,28 @@ struct KindDisplay
     juce::Colour color;
 };
 
+// Sesja 121: 3-4 letter form for chips too narrow for the full name.
+inline juce::String kindAbbreviation (reamix::theme::SegmentKind k)
+{
+    using K = reamix::theme::SegmentKind;
+    switch (k)
+    {
+        case K::Intro:        return "INT";
+        case K::Verse:        return "VRS";
+        case K::PreChorus:    return "PRE";
+        case K::Chorus:       return "CHO";
+        case K::PostChorus:   return "POST";
+        case K::Bridge:       return "BRG";
+        case K::Buildup:      return "BLD";
+        case K::Drop:         return "DROP";
+        case K::Breakdown:    return "BRK";
+        case K::Solo:         return "SOLO";
+        case K::Instrumental: return "INST";
+        case K::Outro:        return "OUT";
+        default:              return {};
+    }
+}
+
 inline juce::String builtinKindLabel (reamix::theme::SegmentKind k)
 {
     using SK = reamix::theme::SegmentKind;

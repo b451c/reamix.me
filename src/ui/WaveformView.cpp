@@ -357,6 +357,13 @@ void WaveformView::paintLoopSpots (juce::Graphics& g, juce::Rectangle<int> bar)
             arr2.addLineOfText (chipFont, c.shortLabel, 0.0f, 0.0f);
             if (arr2.getBoundingBox (0, -1, false).getWidth() + 8.0f <= rect.getWidth())
                 text = c.shortLabel;
+            else if (c.tinyLabel.isNotEmpty())
+            {
+                juce::GlyphArrangement arr3;
+                arr3.addLineOfText (chipFont, c.tinyLabel, 0.0f, 0.0f);
+                if (arr3.getBoundingBox (0, -1, false).getWidth() + 6.0f <= rect.getWidth())
+                    text = c.tinyLabel;
+            }
         }
         if (text.isNotEmpty())
         {
@@ -871,10 +878,12 @@ void WaveformView::paintCanvas (juce::Graphics& g)
             if (xPx >= canvas.getRight()) break;
 
             juce::Colour c = defaultColour;
-            // ADR-045 — segment tint is data-driven; segments_ is non-empty
-            // only in Block Assembly mode (phase-6 step 8). Auto modes
-            // (post-ADR-044) supply zero segments → no tint, no toggle.
-            if (! segments_.empty())
+            // ADR-045 — segment tint is data-driven. Sesja 121: the model
+            // sections fill segments_ in every mode, so the tint is gated to
+            // Blocks mode - in Duration / Region the waveform keeps its own
+            // colour and the quality-coloured splice markers / loop chips
+            // stay readable.
+            if (! segments_.empty() && blockMarkingEnabled_)
             {
                 const double tSrc = viewStartSec_
                                     + (bin + 0.5) * (viewDurationSec_ / std::max (nBins, 1));
@@ -1052,7 +1061,9 @@ void WaveformView::paintSegBar (juce::Graphics& g)
         const int   cellW  = juce::roundToInt (xEnd) - cellX;
         if (cellW <= 0) continue;
 
-        g.setColour (segmentColour (s.kind));
+        // Sesja 121: outside Blocks mode the cells are context only (muted),
+        // the quality chips on top carry the signal.
+        g.setColour (segmentColour (s.kind).withAlpha (blockMarkingEnabled_ ? 1.0f : 0.38f));
         g.fillRect (cellX, bar.getY(), cellW, bar.getHeight());
 
         // plugin.css:358 — right border rgba(0,0,0,0.35); skip last cell.

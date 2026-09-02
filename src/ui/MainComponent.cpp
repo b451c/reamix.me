@@ -5363,6 +5363,7 @@ void MainComponent::updateBlockSuggestions()
             const juce::String bars = juce::String (sp.bars) + (sp.bars == 1 ? " BAR" : " BARS");
             c.label      = name + juce::String::fromUTF8 (" \xc2\xb7 ") + bars;
             c.shortLabel = name;
+            c.tinyLabel  = reamix::ui::kindAbbreviation (s.kind);
             chips.push_back (std::move (c));
         }
 
