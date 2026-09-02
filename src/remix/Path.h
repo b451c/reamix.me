@@ -56,6 +56,13 @@ struct RemixPath
     int                                                           duration_beats = 0;
     std::vector<std::pair<int, int>>                              transitions;
     std::map<std::pair<int, int>, std::map<std::string, double>>  transition_metadata;
+    // DEV-109 (sesja 123) — Block Assembly only: the junction index of
+    // transitions[i] (queue slot i -> i+1). transition_metadata is keyed by
+    // beat pair, so the same block queued twice after the same neighbour
+    // shares one metadata entry and its "junction_idx" keeps only the last
+    // occurrence; this parallel vector keeps every occurrence. Empty on
+    // the Duration / Region paths.
+    std::vector<int>                                              transition_junctions;
 };
 
 } // namespace reamix::remix

@@ -51,6 +51,10 @@ public:
         // into RemixOutput.itemGuid so handleRemixComplete builds the same
         // composite cache key kickRemixPipeline used for the lookup.
         juce::String          itemGuid;
+        // DEV-101 (sesja 123) — echoed into RemixOutput (see there).
+        int                   uiMode             { -1 };
+        juce::uint64          blocksHash         { 0 };
+        juce::uint64          qualityWeightsHash { 0 };
         double                targetDurationSec  { 0.0 };
         std::optional<double> regionStartSec;    // session 59 wires RegionPanel
         std::optional<double> regionEndSec;

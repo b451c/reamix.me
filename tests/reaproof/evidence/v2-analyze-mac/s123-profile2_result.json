@@ -1,0 +1,12 @@
+[
+ {
+  "tag": "s123-profile2_run1",
+  "ok": true,
+  "item_len": 293.82666666666665,
+  "cache_hit": true,
+  "analyze_seconds": 240.6,
+  "window_alive": true,
+  "waveform_present": true,
+  "reaper_alive": true
+ }
+]

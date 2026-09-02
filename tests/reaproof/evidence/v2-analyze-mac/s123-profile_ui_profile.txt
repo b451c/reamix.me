@@ -1,0 +1,6 @@
+0.0	ensureLoopSpots(disk cache hit)	138.4
+0.5	kickRemixPipeline	0.2
+0.7	timerCallback	676.3
+0.8	stall(tick gap)	676.5
+163.4	applyRemixToUi	0.1
+163.5	handleRemixComplete	0.2

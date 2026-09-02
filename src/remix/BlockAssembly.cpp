@@ -573,6 +573,7 @@ RemixPath assembleBlocksJoint(const std::vector<int>&        seq,
             if (first_beat != last_beat + 1) {
                 const auto& jc = P[static_cast<std::size_t>(b - 1)][static_cast<std::size_t>(choice[static_cast<std::size_t>(b - 1)])];
                 path.transitions.emplace_back(last_beat, first_beat);
+                path.transition_junctions.push_back(b - 1);   // DEV-109
                 total_cost += edit_length_jump_scale * (1.0 - jc.c.quality);
                 auto& meta = path.transition_metadata[{last_beat, first_beat}];
                 meta["quality_score"]       = jc.c.quality;
@@ -1306,6 +1307,7 @@ assembleBlocks(const std::vector<int>&              block_sequence,
 
             if (first_beat != last_beat + 1) {
                 path.transitions.emplace_back(last_beat, first_beat);
+                path.transition_junctions.push_back(seq_idx - 1);   // DEV-109
 
                 int junc_k = variation;
                 if (junction_variations != nullptr) {

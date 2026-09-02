@@ -35,6 +35,13 @@ void SettingsPopover::setSnapRegion (SnapRegion r)
     repaint();
 }
 
+void SettingsPopover::setSectionMarkersAuto (bool s)
+{
+    if (sectionMarkersAuto_ == s) return;
+    sectionMarkersAuto_ = s;
+    repaint();
+}
+
 void SettingsPopover::setInsertSpliceMarkers (bool s)
 {
     if (insertSpliceMarkers_ == s) return;
@@ -98,6 +105,8 @@ void SettingsPopover::hideMe()
     beatsRowPressed_        = false;
     snapRowHover_           = false;
     snapRowPressed_         = false;
+    sectionRowHover_        = false;
+    sectionRowPressed_      = false;
     insertSpliceRowHover_   = false;
     insertSpliceRowPressed_ = false;
     insertRegionRowHover_   = false;
@@ -120,13 +129,13 @@ void SettingsPopover::resized()
 
 int SettingsPopover::computeBodyHeight()
 {
-    // DISPLAY section: Show beats + Snap region.
+    // DISPLAY section: Show beats + Snap region + Section markers (DEV-111).
     // INSERT section (sesja 100b DEV-049): Splice markers + Render region.
     // WINDOW section: Dock toggle + Advanced... (ADR-097 sesja 107).
     // CACHE section (ADR-053): Stats row + Clear/Reveal button row.
     return kPadding
          + (kTitleH + kTitleMargB)
-         + kBeatsRowH + kRowGap + kSnapRowH
+         + kBeatsRowH + kRowGap + kSnapRowH + kRowGap + kSectionRowH
          + kSectionGap
          + (kTitleH + kTitleMargB) + kInsertRowH + kRowGap + kInsertRowH
          + kSectionGap
@@ -151,6 +160,8 @@ void SettingsPopover::layOutHitRegions()
     beatsRowRect_ = inner.removeFromTop (kBeatsRowH);
     inner.removeFromTop (kRowGap);
     snapRowRect_  = inner.removeFromTop (kSnapRowH);
+    inner.removeFromTop (kRowGap);
+    sectionRowRect_ = inner.removeFromTop (kSectionRowH);
 
     inner.removeFromTop (kSectionGap);
 
@@ -303,6 +314,37 @@ void SettingsPopover::paint (juce::Graphics& g)
         g.setColour (snapRegion_ == SnapRegion::Off ? Fg2 : Accent);
         g.setFont (uiFont (fs::Md, 500));
         g.drawText (stateText, valueArea,
+                    juce::Justification::centredRight, true);
+    }
+
+    // ── Section markers row (DEV-111, sesja 123) ──
+    inner.removeFromTop (kRowGap);
+    inner.removeFromTop (kSectionRowH);
+    {
+        juce::Colour bg     = Bg4;
+        juce::Colour bgEdge = Line;
+        if (sectionRowPressed_)   { bg = Bg3; bgEdge = LineStrong; }
+        else if (sectionRowHover_) { bg = Bg5; bgEdge = LineStrong; }
+
+        const auto rowf = sectionRowRect_.toFloat();
+        g.setColour (bg);
+        g.fillRoundedRectangle (rowf, r::R3);
+        g.setColour (bgEdge);
+        g.drawRoundedRectangle (rowf.reduced (0.5f), r::R3, 1.0f);
+
+        constexpr int kGutter = 10;
+        const auto labelArea = sectionRowRect_.withTrimmedLeft (kGutter)
+                                              .withTrimmedRight (kGutter + 80);
+        g.setColour (Fg1);
+        g.setFont (uiFont (fs::Md, 500));
+        g.drawText ("Section markers", labelArea,
+                    juce::Justification::centredLeft, true);
+
+        const auto valueArea = sectionRowRect_.withTrimmedRight (kGutter)
+                                              .withTrimmedLeft (sectionRowRect_.getWidth() - 90);
+        g.setColour (sectionMarkersAuto_ ? Accent : Fg2);
+        g.setFont (uiFont (fs::Md, 500));
+        g.drawText (sectionMarkersAuto_ ? "Auto" : "Off", valueArea,
                     juce::Justification::centredRight, true);
     }
 
@@ -473,6 +515,12 @@ void SettingsPopover::mouseDown (const juce::MouseEvent& e)
         repaint (snapRowRect_);
         return;
     }
+    if (sectionRowRect_.contains (p))
+    {
+        sectionRowPressed_ = true;
+        repaint (sectionRowRect_);
+        return;
+    }
     if (insertSpliceRowRect_.contains (p))
     {
         insertSpliceRowPressed_ = true;
@@ -561,6 +609,22 @@ void SettingsPopover::mouseUp (const juce::MouseEvent& e)
         else
         {
             repaint (snapRowRect_);
+        }
+        return;
+    }
+    if (sectionRowPressed_)
+    {
+        const bool fire = sectionRowRect_.contains (p);
+        sectionRowPressed_ = false;
+        if (fire)
+        {
+            sectionMarkersAuto_ = ! sectionMarkersAuto_;
+            repaint();
+            if (onSectionMarkersToggled) onSectionMarkersToggled (sectionMarkersAuto_);
+        }
+        else
+        {
+            repaint (sectionRowRect_);
         }
         return;
     }
@@ -665,6 +729,13 @@ void SettingsPopover::mouseMove (const juce::MouseEvent& e)
         repaint (snapRowRect_);
     }
 
+    const bool overSection = sectionRowRect_.contains (p);
+    if (overSection != sectionRowHover_)
+    {
+        sectionRowHover_ = overSection;
+        repaint (sectionRowRect_);
+    }
+
     const bool overSplice = insertSpliceRowRect_.contains (p);
     if (overSplice != insertSpliceRowHover_)
     {
@@ -707,7 +778,7 @@ void SettingsPopover::mouseMove (const juce::MouseEvent& e)
         repaint (cacheRevealRect_);
     }
 
-    setMouseCursor ((overBeats || overSnap || overDock || overAdvanced
+    setMouseCursor ((overBeats || overSnap || overSection || overDock || overAdvanced
                        || overClear || overReveal)
                         ? juce::MouseCursor::PointingHandCursor
                         : juce::MouseCursor::NormalCursor);
@@ -742,6 +813,13 @@ void SettingsPopover::mouseExit (const juce::MouseEvent&)
         snapRowHover_   = false;
         snapRowPressed_ = false;
         repaint (snapRowRect_);
+        dirty = true;
+    }
+    if (sectionRowHover_ || sectionRowPressed_)
+    {
+        sectionRowHover_   = false;
+        sectionRowPressed_ = false;
+        repaint (sectionRowRect_);
         dirty = true;
     }
     if (insertSpliceRowHover_ || insertSpliceRowPressed_)

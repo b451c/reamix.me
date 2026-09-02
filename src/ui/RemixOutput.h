@@ -69,6 +69,15 @@ struct RemixOutput
     // from RemixPipeline::Input. handleRemixComplete uses it to match the
     // kickRemixPipeline lookup key. Default 0 = bit-exact baseline.
     juce::uint64 auditionHash { 0 };
+    // DEV-101 (sesja 123) — identity of the kick: the UI mode the remix was
+    // computed for (ModeTabs::Mode as int, -1 = harness / parity) and the
+    // two cache-key hashes taken at kick time. handleRemixComplete stores
+    // under exactly this key and applies the result to the UI only when
+    // the mode still matches, so an auto Duration remix landing after a
+    // tab switch never paints the Blocks / Region tab.
+    int          uiMode             { -1 };
+    juce::uint64 blocksHash         { 0 };
+    juce::uint64 qualityWeightsHash { 0 };
 
     // Remix metadata (stage 6+7).
     int                 nTransitions    { 0 };

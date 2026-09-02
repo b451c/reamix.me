@@ -132,6 +132,9 @@ void RemixPipeline::run()
     RemixOutput out;
     out.sourcePath     = in_.bundle ? in_.bundle->sourcePath : juce::String();
     out.itemGuid       = in_.itemGuid; // ADR-056 (sesja 66) echo for composite cache key
+    out.uiMode             = in_.uiMode;             // DEV-101 (sesja 123)
+    out.blocksHash         = in_.blocksHash;
+    out.qualityWeightsHash = in_.qualityWeightsHash;
     out.targetSec      = in_.targetDurationSec;
     out.regionStartSec = in_.regionStartSec.value_or (0.0);
     out.regionEndSec   = in_.regionEndSec.value_or (0.0);
@@ -740,15 +743,19 @@ void RemixPipeline::run()
         out.transitionFromLabels.reserve (path.transitions.size());
         out.transitionToLabels.reserve (path.transitions.size());
 
-        for (const auto& tr : path.transitions)
+        for (std::size_t ti = 0; ti < path.transitions.size(); ++ti)
         {
+            const auto& tr = path.transitions[ti];
             const int fb = tr.first;
             const int tb = tr.second;
             float quality   = 0.0f;
             float energyDb  = 0.0f;
             float overlap   = 0.0f;
             int   anchor    = 0;
-            int   junction  = -1;
+            // DEV-109 (sesja 123): per-occurrence junction index when the
+            // Blocks path carries it; the beat-pair metadata is the fallback.
+            int   junction  = ti < path.transition_junctions.size()
+                              ? path.transition_junctions[ti] : -1;
             int   fallback  = 0;
             auto it = path.transition_metadata.find (tr);
             if (it != path.transition_metadata.end())
@@ -758,7 +765,7 @@ void RemixPipeline::run()
                 auto eit = it->second.find ("energy_diff_db");
                 if (eit != it->second.end()) energyDb = (float) eit->second;
                 auto jit = it->second.find ("junction_idx");
-                if (jit != it->second.end()) junction = (int) jit->second;
+                if (junction < 0 && jit != it->second.end()) junction = (int) jit->second;
                 auto fit = it->second.find ("junction_fallback");   // sesja 119 DEV-094
                 if (fit != it->second.end()) fallback = (int) fit->second;
                 auto oit = it->second.find ("resolved_overlap_sec");   // DEV-087

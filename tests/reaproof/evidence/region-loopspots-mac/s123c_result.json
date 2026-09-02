@@ -1,0 +1,86 @@
+[
+ {
+  "tag": "s123c_whole_run1",
+  "ok": true,
+  "item_len": 293.82666666666665,
+  "cache_hit": true,
+  "analyze_seconds": 6.6,
+  "tabs": [
+   [
+    45.5,
+    41.0
+   ],
+   [
+    111.0,
+    32.0
+   ],
+   [
+    208.0,
+    30.0
+   ]
+  ],
+  "region_tab_x": 111.0,
+  "chips": [
+   [
+    16.0,
+    50.0
+   ],
+   [
+    126.0,
+    166.0
+   ],
+   [
+    232.0,
+    251.0
+   ],
+   [
+    488.0,
+    567.0
+   ]
+  ],
+  "chips_present": true,
+  "chip_row_client_y": 413.0,
+  "time_selection_after_click": "6.496;16.756",
+  "selection_ok": true,
+  "verdict_px": {
+   "good": 1132,
+   "warn": 0,
+   "bad": 0
+  },
+  "verdict_ok": true,
+  "reaper_alive": true
+ },
+ {
+  "tag": "s123c_verse_run1",
+  "ok": true,
+  "item_len": 293.82666666666665,
+  "cache_hit": true,
+  "analyze_seconds": 6.5,
+  "cases": {
+   "verse": {
+    "verdict_px": {
+     "good": 0,
+     "warn": 0,
+     "bad": 1659
+    },
+    "chips": [],
+    "ok": true
+   },
+   "intro": {
+    "verdict_px": {
+     "good": 0,
+     "warn": 1052,
+     "bad": 0
+    },
+    "chips": [
+     [
+      192.0,
+      201.0
+     ]
+    ],
+    "ok": true
+   }
+  },
+  "reaper_alive": true
+ }
+]

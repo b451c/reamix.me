@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "ui/UiProfile.h"   // DEV-102 (sesja 123)
 #include "BlockCompatWiring.h"   // sesja 120 (DEV-097)
 #include "SpliceQualityBands.h"  // sesja 120 (DEV-099)
 
@@ -363,8 +364,13 @@ MainComponent::MainComponent()
             const juce::String s = juce::String::fromUTF8 (rawReplace);
             insertReplaceOriginalEnabled_ = (s == "1");
         }
+        // DEV-111 sesja 123 — load "Section markers: Auto / Off".
+        const char* rawSections = GetExtState ("reamix.me", "section_markers");
+        if (rawSections != nullptr && rawSections[0] != '\0')
+            sectionMarkersAuto_ = (juce::String::fromUTF8 (rawSections) == "1");
     }
 #endif
+    waveformView_.setShowSections (sectionMarkersAuto_);
 
     // ADR-092 sesja 100c — load custom kind registry from REAPER ExtState.
     // Empty / missing key = empty registry (user has not added any customs
@@ -432,6 +438,7 @@ MainComponent::MainComponent()
             waveformView_.setPeaksProvider (peaksProvider_.get());
             waveformView_.setSpliceMarkers ({});
             waveformView_.setEditPlan ({});
+            pushSourceBeats();   // DEV-105
             clearCurrentRemix();
             tmpWavPath_ = currentSourcePath_;
             transportBar_.setState (analysisState_ == AnalysisState::Complete
@@ -607,7 +614,10 @@ MainComponent::MainComponent()
         // Analysis complete but no remix yet, remix is for a different target,
         // or remix region bounds don't match current selection → kick
         // RemixPipeline + queue Insert followup.
+        // DEV-101 (sesja 123) — a remix computed for another mode is stale
+        // for this tab even when target + region happen to match.
         if (! currentRemix_.has_value()
+            || ! currentRemixMode_.has_value() || *currentRemixMode_ != appMode_
             || ! remixMatchesTarget (*currentRemix_, currentTarget)
             || ! remixMatchesRegion (*currentRemix_, effectiveRegion))
         {
@@ -1226,6 +1236,18 @@ MainComponent::MainComponent()
         if (currentSourcePath_.isNotEmpty())
             targetByPathMode_[currentItemKey()][oldMode] = durationPanel_.getTarget();
 
+        // DEV-101 (sesja 123) — a slider drag still inside its debounce
+        // window belongs to the outgoing mode; fired after the switch it
+        // would kick a remix under the new mode's key.
+        if (sliderDebounceTimer_) sliderDebounceTimer_->cancel();
+
+        // DEV-104 (sesja 123) — a selection is a per-mode gesture: Space
+        // played only the Duration drag window in Blocks. The Region
+        // restore branch below re-applies its own snapshot.
+        selectedRange_.reset();
+        chipRegion_.reset();
+        waveformView_.clearSelection();
+
         appMode_ = m;
         regionFromAuto_ = false;
         lastRespectedTimeSelection_ = reamix::reaper::getTimeSelection();
@@ -1302,6 +1324,13 @@ MainComponent::MainComponent()
             resetMaterialView();
 
         recomputeRegionState();
+
+        // DEV-110 (sesja 123) — the status line is per mode (the Region
+        // text used to survive under the Blocks tab).
+        if (! restored && m == reamix::ui::ModeTabs::Mode::Duration)
+            statusBar_.setText ("Duration mode - set the target length");
+        else if (! restored && m == reamix::ui::ModeTabs::Mode::Blocks)
+            statusBar_.setText ("Block Assembly - click a section or drag to mark a block");
 
         // DEV-052 (sesja 100b) — discoverability hint when user enters
         // Region mode with a valid (≥ 6 s) time-selection. Drag-select on
@@ -1455,6 +1484,20 @@ MainComponent::MainComponent()
         const auto& cr = *currentRemix_;
         if (idx >= (int) cr.transitionFromBeats.size())
         {
+            // DEV-108 (sesja 123) — a splice without scoring metadata
+            // (Region fallback path) still gets an honest tooltip.
+            if (idx < (int) cr.transitionTimesSec.size())
+            {
+                reamix::ui::Tooltip::Data d;
+                d.title = juce::String::fromUTF8 ("Splice");
+                d.rows.push_back ({"quality", "unscored - fallback loop"});
+                d.qbarPct    = 0.0f;
+                d.qbarColour = reamix::theme::Bad;
+                tooltip_.setData (std::move (d));
+                const auto local = getLocalPoint (nullptr, screenPos);
+                tooltip_.showAt ({ local.x - 90, std::max (4, local.y - 140) });
+                return;
+            }
             tooltip_.hide();
             return;
         }
@@ -1528,6 +1571,7 @@ MainComponent::MainComponent()
             // persisted state so the popover paints the current values.
             settingsPopover_.setInsertSpliceMarkers (insertSpliceMarkersEnabled_);
             settingsPopover_.setInsertRenderRegion  (insertRenderRegionEnabled_);
+            settingsPopover_.setSectionMarkersAuto  (sectionMarkersAuto_);   // DEV-111
             // ADR-053 — refresh cache stats on every show (changes since
             // last open: new analyses cached, user cleared elsewhere).
             settingsPopover_.setCacheStats (
@@ -1584,6 +1628,24 @@ MainComponent::MainComponent()
         if (onShowBeatsToggled) onShowBeatsToggled (yes);
     };
 
+    // DEV-111 (sesja 123) — Section markers Auto / Off. Persist, hide /
+    // show the automatic layers on the waveform, then re-derive the chips
+    // for the current mode (the change keys are dropped so the 100 ms
+    // poll rebuilds them once).
+    settingsPopover_.onSectionMarkersToggled = [this] (bool automatic)
+    {
+        sectionMarkersAuto_ = automatic;
+#if REAMIX_WITH_REAPER_IO
+        if (SetExtState)
+            SetExtState ("reamix.me", "section_markers", automatic ? "1" : "0", true);
+#endif
+        waveformView_.setShowSections (automatic);
+        clearSectionBarChips();
+        recomputeRegionState();
+        statusBar_.setNotice (automatic ? "Section markers: automatic"
+                                        : "Section markers off - mark blocks by hand");
+    };
+
     // Sesja 100b (DEV-049) — Insert decoration toggles. Persist to
     // ExtState immediately so toggle state survives plugin reload.
     settingsPopover_.onInsertSpliceMarkersToggled = [this] (bool yes)
@@ -1628,6 +1690,7 @@ MainComponent::MainComponent()
         //      under the scrim, not the remix output (user-reported "I see
         //      source waveform but preview keeps playing the first remix").
         previewController_.stop();
+        waveformView_.setPlayhead (std::nullopt);
         tooltip_.hide();
         tmpWavPath_ = currentSourcePath_;
 
@@ -1636,6 +1699,7 @@ MainComponent::MainComponent()
             waveformView_.setPeaksProvider (peaksProvider_.get());
         waveformView_.setSpliceMarkers ({});
         waveformView_.setEditPlan ({});
+        pushSourceBeats();   // DEV-105
         if (lastRegionSelection_.has_value())
         {
             waveformView_.setSelection (*lastRegionSelection_);
@@ -1679,11 +1743,21 @@ MainComponent::MainComponent()
     // throughout — variant flip is purely visual.
     waveformView_.onEditArrangementClicked = [this]
     {
+        // DEV-103 (sesja 123) — same three cleanups as onEditRegionClicked:
+        // the preview must not keep playing the remix WAV the view leaves,
+        // the tooltip referenced a marker of that view, and the next click
+        // in the waveform previews the source.
+        previewController_.stop();
+        waveformView_.setPlayhead (std::nullopt);
+        tooltip_.hide();
+        tmpWavPath_ = currentSourcePath_;
+
         waveformView_.setVariant (reamix::ui::WaveformView::Variant::Source);
         if (peaksProvider_)
             waveformView_.setPeaksProvider (peaksProvider_.get());
         waveformView_.setSpliceMarkers ({});
         waveformView_.setEditPlan ({});
+        pushSourceBeats();   // DEV-105
         waveformView_.setShowEditArrangementButton (false);
 
         // Sesja 65 — abandon the assembled remix so the symmetric peek-
@@ -2771,6 +2845,7 @@ void MainComponent::handleAnalysisComplete (juce::String workerPath,
                                             reamix::ui::AnalysisBundlePtr bundle,
                                             juce::String error)
 {
+    reamix::ui::UiProfile::Scope prof ("handleAnalysisComplete");
     lastAnalyzeProgress_.erase (workerPath);
     lastAnalyzeStage_.erase (workerPath);
     if (activeAnalyzePath_ == workerPath) activeAnalyzePath_.clear();
@@ -2812,8 +2887,15 @@ void MainComponent::handleAnalysisComplete (juce::String workerPath,
     // best-effort: failure (disk full / permission) leaves user with the
     // in-memory bundle as before — next session falls back to fresh
     // Analyze, no functional regression.
+    // DEV-102 (sesja 123) — serialize + write on a worker: the bundle is
+    // immutable once analysis completes (no message-thread writer exists),
+    // save() is best-effort, and the write was 50-200 ms here on the mac,
+    // seconds on the VM.
     if (bundle != nullptr)
-        reamix::ui::AnalysisDiskCache::save (*bundle);
+    {
+        auto keep = bundle;
+        juce::Thread::launch ([keep] { reamix::ui::AnalysisDiskCache::save (*keep); });
+    }
 
     // Sesja 60 — flip Analyze button label to "Analyze Again" when the bundle
     // belongs to the currently-shown source. (When workerPath != currentSourcePath_
@@ -2837,7 +2919,10 @@ void MainComponent::handleAnalysisComplete (juce::String workerPath,
     if (auto picked = reamix::reaper::getSelectedItem())
         itemName = picked->name;
 
-    applyAnalysisToUi (*bundle, itemName, /*fromCache=*/false);
+    {
+        reamix::ui::UiProfile::Scope prof ("applyAnalysisToUi");
+        applyAnalysisToUi (*bundle, itemName, /*fromCache=*/false);
+    }
 
     // Drain followup queue per Lua start_analysis (remix_operations.lua:286
     // followup_after_analysis dispatch).
@@ -2862,6 +2947,7 @@ void MainComponent::handleAnalysisComplete (juce::String workerPath,
 
 void MainComponent::kickRemixPipeline (const PendingRemixOp& op)
 {
+    reamix::ui::UiProfile::Scope prof ("kickRemixPipeline");
     if (currentSourcePath_.isEmpty()) return;
     auto bundleIt = analysisBundles_.find (currentSourcePath_);
     if (bundleIt == analysisBundles_.end() || bundleIt->second == nullptr) return;
@@ -2968,6 +3054,10 @@ void MainComponent::kickRemixPipeline (const PendingRemixOp& op)
     reamix::ui::RemixPipeline::Input in;
     in.bundle              = bundleIt->second;
     in.itemGuid            = currentItemGuid_;  // ADR-056 (sesja 66)
+    // DEV-101 (sesja 123) — the kick identity travels with the job.
+    in.uiMode              = (int) appMode_;
+    in.blocksHash          = cacheKey.blocksHash;
+    in.qualityWeightsHash  = cacheKey.qualityWeightsHash;
     in.targetDurationSec   = op.targetSec;
     in.regionStartSec      = op.regionStartSec;
     in.regionEndSec        = op.regionEndSec;
@@ -3062,6 +3152,7 @@ void MainComponent::kickRemixPipeline (const PendingRemixOp& op)
 
 void MainComponent::handleRemixComplete (reamix::ui::RemixOutput out)
 {
+    reamix::ui::UiProfile::Scope prof ("handleRemixComplete");
     // Sesja 64 — clear deferred busy state (spinner + loading line) at entry,
     // before stale-source guard or error branch can short-circuit. setError
     // wins over busy in StatusBar paint so the error path below still renders
@@ -3099,28 +3190,34 @@ void MainComponent::handleRemixComplete (reamix::ui::RemixOutput out)
         out.blockedTransitions, out.variation);
     cacheKey.auditionHash = out.auditionHash;  // ADR-083 sesja 92
 
-    // DEV-079 sesja 101 + ADR-097 sesja 107 — close storage/lookup desync.
-    // Lookup paths set qualityWeightsHash from currentQualityWeights(); the
-    // storage path mirrors the same assignment so storage key matches lookup
-    // key when user has moved any advanced weight slider.
-    cacheKey.qualityWeightsHash = reamix::ui::hashQualityWeights (currentQualityWeights());
-
-    // Sesja 65 — Blocks-mode storage MUST also include blocksHash so the
-    // key matches kickRemixPipeline's lookup key. Without this, every
-    // Assemble result was stored under blocksHash=0 while lookups used
-    // blocksHash=H → cache always missed for Blocks. Pre-existing bug
-    // surfaced by sesja-65 cross-mode tab restore (where Blocks tab
-    // re-entry after a Duration peek silently lost the assembled remix).
-    if (appMode_ == reamix::ui::ModeTabs::Mode::Blocks)
-    {
-        const juce::uint64 h = computeBlocksHash();
-        if (h != 0) cacheKey.blocksHash = h;
-    }
+    // DEV-101 (sesja 123) — the storage key is the kick-time key echoed by
+    // the job (quality-weights hash + Blocks hash), never the LIVE mode /
+    // sliders: a Duration remix landing under the Blocks tab used to be
+    // stored under the Blocks arrangement's key and came back from
+    // tryRestoreModeRemix (Blocks) as the assembly.
+    cacheKey.qualityWeightsHash = out.qualityWeightsHash;
+    if (out.blocksHash != 0) cacheKey.blocksHash = out.blocksHash;
 
     const juce::String evicted = remixCache_.insert (cacheKey, out);
     if (evicted.isNotEmpty()) juce::File (evicted).deleteFile();
 
     if (! showing) return;
+
+    // DEV-101 — the result belongs to the mode it was kicked for. Cached
+    // above, so the tab it belongs to restores it on its next click; the
+    // current tab keeps its own material. An Insert queued for that remix
+    // is dropped with it (Insert never fires for another mode's output).
+    if (out.uiMode >= 0 && out.uiMode != (int) appMode_)
+    {
+        tryDifferentSnapshot_.reset();
+        followupAfterAnalysis_.reset();
+        const auto mode = (reamix::ui::ModeTabs::Mode) out.uiMode;
+        const juce::String tab = mode == reamix::ui::ModeTabs::Mode::Region ? "Region"
+                               : mode == reamix::ui::ModeTabs::Mode::Blocks ? "Blocks"
+                                                                            : "Duration";
+        statusBar_.setNotice ("Remix ready on the " + tab + " tab");
+        return;
+    }
 
     // Sesja 64 BUG-3 — Try different splice "exhausted" detection. Compare
     // clips against pre-kick snapshot; if identical, variation cycle has
@@ -3240,6 +3337,7 @@ void MainComponent::applyAnalysisToUi (const reamix::ui::AnalysisBundle& bundle,
 
 void MainComponent::applyRemixToUi (const reamix::ui::RemixOutput& remix)
 {
+    reamix::ui::UiProfile::Scope prof ("applyRemixToUi");
     // Sesja 65 BUG-21 — stop in-flight preview when the underlying WAV is
     // about to change. Without this, slider-driven Region (or Duration /
     // Blocks) recompute leaves the previous tmp WAV playing in PreviewController
@@ -3321,8 +3419,12 @@ void MainComponent::applyRemixToUi (const reamix::ui::RemixOutput& remix)
         m.timeSec      = remix.transitionTimesSec[i];
         m.qualityScore = q;
         // Sesja 120 (DEV-099): colour bands per mode; an authored-boundary
-        // fallback junction is always red.
-        const bool fallback = i < remix.transitionFallbacks.size() && remix.transitionFallbacks[i] != 0;
+        // fallback junction is always red. DEV-108 (sesja 123): so is a
+        // splice the engine never scored (Region fallback path: jumps with
+        // no transitions / metadata) - red with an "unscored" tooltip
+        // instead of a silent 0 %.
+        const bool fallback = (i < remix.transitionFallbacks.size() && remix.transitionFallbacks[i] != 0)
+                            || remix.transitionQualities.empty();
         m.quality      = reamix::ui::bucketQuality (q,
                              appMode_ == reamix::ui::ModeTabs::Mode::Blocks
                                  ? reamix::ui::kBlocksQualityBands : reamix::ui::kPathQualityBands,
@@ -3447,6 +3549,17 @@ void MainComponent::applyRemixToUi (const reamix::ui::RemixOutput& remix)
 
 void MainComponent::timerCallback()
 {
+    // DEV-102 profile: a gap between two 100 ms ticks is a message-thread
+    // stall (paint or handler); logged with the gap length.
+    if (reamix::ui::UiProfile::enabled())
+    {
+        static double lastTick = 0.0;
+        const double now = reamix::ui::UiProfile::nowMs();
+        if (lastTick > 0.0 && now - lastTick > 250.0)
+            reamix::ui::UiProfile::mark ("stall(tick gap)", now - lastTick);
+        lastTick = now;
+    }
+    reamix::ui::UiProfile::Scope profTick ("timerCallback", 20.0);
     reapStoppedWorkers();
 
     if (previewController_.isPlaying())
@@ -3805,9 +3918,21 @@ void MainComponent::resetMaterialView()
     // currentRemix_ is NOT reset — the cached remix output stays available
     // (e.g. for Insert if user hits it without re-targeting). Only the
     // *visible* state is reverted.
+    //
+    // DEV-103 (sesja 123) — "visible" includes what Space / click-to-seek
+    // play: the preview stops and points back at the source, otherwise
+    // the Blocks tab shows the source waveform while Preview plays the
+    // Duration remix (playback started in Duration kept running).
+    previewController_.stop();
+    waveformView_.setPlayhead (std::nullopt);
+    tmpWavPath_ = currentSourcePath_;
+    transportBar_.setState (analysisState_ == AnalysisState::Complete
+                              ? reamix::ui::TransportState::Ready
+                              : reamix::ui::TransportState::Idle);
     waveformView_.setVariant (reamix::ui::WaveformView::Variant::Source);
     waveformView_.setSpliceMarkers ({});
     waveformView_.setEditPlan ({});
+    pushSourceBeats();   // DEV-105
     waveformView_.clearSelection();
     waveformView_.setShowEditRegionButton (false);
     selectedRange_.reset();
@@ -3818,6 +3943,77 @@ void MainComponent::resetMaterialView()
     if (currentSourceDurationSec_ > 0.0)
         durationPanel_.setTarget (currentSourceDurationSec_);
     tooltip_.hide();
+}
+
+void MainComponent::startDiskRestore (const juce::String& sourcePath)
+{
+    diskRestorePath_ = sourcePath;
+    juce::Component::SafePointer<MainComponent> self (this);
+    juce::Thread::launch ([self, sourcePath]
+    {
+        auto bundle = reamix::ui::AnalysisDiskCache::tryLoad (sourcePath);
+        if (bundle != nullptr)
+            reamix::ui::ensureLoopSpots (*bundle);
+        juce::MessageManager::callAsync ([self, sourcePath, bundle]
+        {
+            if (self != nullptr)
+                self->handleDiskRestoreComplete (sourcePath, bundle);
+        });
+    });
+}
+
+void MainComponent::handleDiskRestoreComplete (const juce::String& sourcePath,
+                                               reamix::ui::AnalysisBundlePtr bundle)
+{
+    if (diskRestorePath_ == sourcePath) diskRestorePath_.clear();
+    if (bundle != nullptr)
+    {
+        analysisBundles_[sourcePath] = bundle;
+        diskRestoredPaths_.insert (sourcePath);
+    }
+    else
+    {
+        diskRestoreMissed_.insert (sourcePath);
+    }
+
+    if (currentSourcePath_ != sourcePath) return;   // user moved on; the bundle waits in memory
+
+    // Re-attach on the next poll tick with fresh item data (name, GUID,
+    // durations): the poll sees an empty previous path and calls
+    // applySelectedItem, which now takes the in-memory hit path with its
+    // full restore logic (target, Region snapshot, Blocks session).
+    if (analysisState_ == AnalysisState::Analyzing
+        && ! (activeAnalyzePath_ == sourcePath && analyzePipeline_ != nullptr))
+        analysisState_ = AnalysisState::Idle;
+    sourcePanel_.setAnalyzing (false, 0.0);
+    prevSourcePath_.clear();
+    prevItemGuid_.clear();
+}
+
+void MainComponent::pushSourceBeats()
+{
+    std::vector<reamix::ui::WaveformView::Beat> wvBeats;
+    if (auto it = analysisBundles_.find (currentSourcePath_);
+        it != analysisBundles_.end() && it->second != nullptr)
+    {
+        const auto& bundle = *it->second;
+        wvBeats.reserve (bundle.beatTimes.size());
+        for (std::size_t i = 0; i < bundle.beatTimes.size(); ++i)
+            wvBeats.push_back ({ bundle.beatTimes[i],
+                                 i < bundle.beatIsDownbeat.size() ? bundle.beatIsDownbeat[i] : false });
+    }
+    waveformView_.setBeats (std::move (wvBeats));
+}
+
+void MainComponent::clearSectionBarChips()
+{
+    loopSpotSuggestions_.clear();
+    blockSuggestions_.clear();
+    blockSuggestionKinds_.clear();
+    lastLoopSpotKey_.clear();
+    lastBlockSuggestKey_.clear();
+    waveformView_.setLoopSpots ({});
+    waveformView_.setSelectionVerdict ({}, std::nullopt, 0.0, 0.0);
 }
 
 void MainComponent::updateLoopSpotSuggestions (const std::optional<reamix::reaper::ItemRegion>& region)
@@ -3832,7 +4028,10 @@ void MainComponent::updateLoopSpotSuggestions (const std::optional<reamix::reape
             it != analysisBundles_.end() && it->second != nullptr && it->second->loopSpotsBuilt)
             bundle = it->second.get();
 
-    juce::String key;
+    // DEV-110 (sesja 123) — "none" is a real key: the first tick without a
+    // bundle (Duration tab, item without loop spots) clears whatever chips
+    // the previous owner left, then the poll is idle again.
+    juce::String key ("none");
     if (bundle != nullptr)
     {
         key = juce::String::toHexString ((juce::pointer_sized_int) bundle) + "|";
@@ -3842,6 +4041,7 @@ void MainComponent::updateLoopSpotSuggestions (const std::optional<reamix::reape
     }
     if (key == lastLoopSpotKey_) return;
     lastLoopSpotKey_ = key;
+    lastBlockSuggestKey_.clear();   // Blocks re-derives its chips when its tab comes back
 
     loopSpotSuggestions_.clear();
     std::vector<Chip>  chips;
@@ -3897,6 +4097,14 @@ void MainComponent::updateLoopSpotSuggestions (const std::optional<reamix::reape
         }
     }
 
+    // DEV-111 — markers off: no chips (and no clickable index); the verdict
+    // on the user's own selection is not an automatic layer and stays.
+    if (! sectionMarkersAuto_)
+    {
+        chips.clear();
+        loopSpotSuggestions_.clear();
+    }
+
     waveformView_.setLoopSpots (std::move (chips));
     waveformView_.setSelectionVerdict (verdict, verdictQuality,
                                        region.has_value() ? region->startSec : 0.0,
@@ -3922,6 +4130,7 @@ void MainComponent::mirrorRegionToReaper (double startSec, double endSec)
 
 void MainComponent::recomputeRegionState()
 {
+    reamix::ui::UiProfile::Scope prof ("recomputeRegionState", 20.0);
     using Mode = reamix::ui::ModeTabs::Mode;
 
     // Resolve the effective region from current state.
@@ -3990,7 +4199,14 @@ void MainComponent::recomputeRegionState()
     currentRegion_ = region;
 
     // ADR-115 E11 — loop-spot chips (+ verdict pill inside a selection).
-    updateLoopSpotSuggestions (region);
+    // DEV-110 (sesja 123) — exactly one chip owner per mode: Blocks derives
+    // its section chips, the other modes the loop spots; each owner clears
+    // the other's change key so a tab switch rebuilds once. (Both used to
+    // run every tick and the Blocks set survived under Duration.)
+    if (appMode_ == Mode::Blocks)
+        updateBlockSuggestions();
+    else
+        updateLoopSpotSuggestions (region);
 
     // Push to ModeTabs — keep mode + AUTO flag in sync.
     modeTabs_.setMode (appMode_);
@@ -4015,7 +4231,6 @@ void MainComponent::recomputeRegionState()
                                                 : std::vector<reamix::ui::UserBlock>{});
     blockAssemblyPanel_.setQueue      (inBlocks ? userBlocksQueue_
                                                 : std::vector<int>{});
-    updateBlockSuggestions();   // sesja 120: after the Region chips so Blocks chips win the bar
     if (! inBlocks)
         waveformView_.setShowEditArrangementButton (false);
 
@@ -4170,6 +4385,9 @@ void MainComponent::applySelectedItem (const juce::String& name,
     // restores the previous item's selection scrim). The conditional
     // lastRegionByPath_ restore further down overrides these defaults
     // when the new source has its own snapshot.
+    // DEV-106 (sesja 123) — the persist guard below must read the mode
+    // the outgoing item was in, not the value the reset just wrote.
+    const auto outgoingMode     = appMode_;
     appMode_                    = reamix::ui::ModeTabs::Mode::Duration;
     regionFromAuto_             = false;
     currentRegion_.reset();
@@ -4190,7 +4408,7 @@ void MainComponent::applySelectedItem (const juce::String& name,
     // pre-update currentSourcePath_/currentItemGuid_). currentItemPtr_/
     // currentItemGuid_ are updated to the NEW item below.
     if (currentSourcePath_.isNotEmpty()
-        && appMode_ == reamix::ui::ModeTabs::Mode::Duration)
+        && outgoingMode == reamix::ui::ModeTabs::Mode::Duration)
         targetByPath_[currentItemKey()] = durationPanel_.getTarget();
 
     // ADR-049 — for remix-grouped items the duration baseline is the source
@@ -4415,6 +4633,7 @@ void MainComponent::applySelectedItem (const juce::String& name,
     tooltip_.hide();
     waveformView_.setSegments ({});
     waveformView_.setBeats    ({});
+    clearSectionBarChips();   // DEV-110
     minBlockSec_ = 0.5;
     waveformView_.setMinBlockSec (minBlockSec_);
     blockAssemblyPanel_.setBarSec (0.0);
@@ -4449,25 +4668,28 @@ void MainComponent::applySelectedItem (const juce::String& name,
     {
         resolvedBundle = bundleHit->second;
     }
-    else
+    else if (diskRestoreMissed_.count (sourcePath) == 0
+             && reamix::ui::AnalysisDiskCache::cacheFileForSource (sourcePath).existsAsFile())
     {
-        // ADR-053 (sesja 63 BUG-19 follow-up) — try the persistent disk
-        // cache before falling through to "Ready to analyze". Cross-project
-        // sticky: a track analyzed in any prior plugin session is restored
-        // here without DSP. tryLoad re-decodes audio from the source file
-        // (~1-2 s for FLAC) and returns nullptr on missing / version-
-        // mismatch / source-file-changed → user just re-clicks Analyze.
-        if (auto disk = reamix::ui::AnalysisDiskCache::tryLoad (sourcePath))
-        {
-            // ADR-115 E11 — the loop-spot map is not cached on disk
-            // (format 6 unchanged); ~0.4 s per 5 min of audio, same
-            // message-thread stall class as tryLoad's own decode.
-            reamix::ui::ensureLoopSpots (*disk);
-            analysisBundles_[sourcePath] = disk;
-            resolvedBundle               = std::move (disk);
-            fromDiskCache                = true;
-        }
+        // ADR-053 (sesja 63 BUG-19 follow-up) — persistent disk cache before
+        // "Ready to analyze": a track analyzed in any prior plugin session
+        // is restored without DSP. tryLoad re-decodes audio from the source
+        // file (~1-2 s for FLAC) and the loop-spot map is rebuilt (ADR-115
+        // E11, ~0.4 s per 5 min) - DEV-102 (sesja 123): both on a worker
+        // now; this attach shows the restoring state and the completion
+        // re-attaches the item through the in-memory hit above. A nullptr
+        // (missing / version mismatch / source changed) is remembered so
+        // the user just re-clicks Analyze.
+        if (diskRestorePath_ != sourcePath) startDiskRestore (sourcePath);
+        sourcePanel_.setAnalyzing (true, 0.0, "Restoring analysis");
+        resized();
+        transportBar_.setState (reamix::ui::TransportState::Idle);
+        statusBar_.setText (juce::String::fromUTF8 ("Restoring analysis from cache \xe2\x80\xa6"));
+        analysisState_ = AnalysisState::Analyzing;
+        headerBar_.setStatusKind (reamix::ui::HeaderStatus::Analyzing);
+        return;
     }
+    fromDiskCache = diskRestoredPaths_.erase (sourcePath) > 0;
 
     if (resolvedBundle != nullptr)
     {
@@ -4757,6 +4979,7 @@ void MainComponent::applyEmptyState()
     tooltip_.hide();
     waveformView_.setSegments ({});
     waveformView_.setBeats    ({});
+    clearSectionBarChips();   // DEV-110
     minBlockSec_ = 0.5;
     waveformView_.setMinBlockSec (minBlockSec_);
     blockAssemblyPanel_.setBarSec (0.0);
@@ -4902,6 +5125,7 @@ void MainComponent::invalidateBlocksAssembledOutput()
     waveformView_.setVariant (reamix::ui::WaveformView::Variant::Source);
     waveformView_.setShowEditArrangementButton (false);
     waveformView_.setPeaksProviderPreserveView (peaksProvider_.get());
+    pushSourceBeats();   // DEV-105
 
     // Drop the cached remix output + tmp WAV pointer. Insert / Preview
     // call sites guard against nullopt currentRemix_; transport flips back
@@ -5331,6 +5555,7 @@ void MainComponent::appendUserBlock (reamix::ui::UserBlock b, bool queueIt)
 
 void MainComponent::updateBlockSuggestions()
 {
+    reamix::ui::UiProfile::Scope prof ("updateBlockSuggestions", 5.0);
     using Mode = reamix::ui::ModeTabs::Mode;
     using Chip = reamix::ui::WaveformView::LoopSpotChip;
 
@@ -5339,11 +5564,24 @@ void MainComponent::updateBlockSuggestions()
         if (auto it = analysisBundles_.find (currentSourcePath_);
             it != analysisBundles_.end() && it->second != nullptr && it->second->loopSpotsBuilt)
             bundle = it->second.get();
-    if (bundle == nullptr)
+    if (bundle == nullptr || ! sectionMarkersAuto_)
     {
-        // Region / Duration own the chips (updateLoopSpotSuggestions).
         blockSuggestions_.clear();
-        lastBlockSuggestKey_.clear();
+        blockSuggestionKinds_.clear();
+        if (appMode_ != Mode::Blocks)
+        {
+            // Region / Duration own the chips (updateLoopSpotSuggestions).
+            lastBlockSuggestKey_.clear();
+        }
+        else if (lastBlockSuggestKey_ != "none")
+        {
+            // DEV-110 / DEV-111 (sesja 123) — Blocks without a chip source
+            // (no bundle yet, markers off): clear once, then idle.
+            lastBlockSuggestKey_ = "none";
+            lastLoopSpotKey_.clear();
+            waveformView_.setLoopSpots ({});
+            waveformView_.setSelectionVerdict ({}, std::nullopt, 0.0, 0.0);
+        }
         return;
     }
 
@@ -5353,6 +5591,7 @@ void MainComponent::updateBlockSuggestions()
     if (key == lastBlockSuggestKey_) return;
     lastBlockSuggestKey_ = key;
     lastLoopSpotKey_.clear();   // Region re-derives its chips when its tab comes back
+    waveformView_.setSelectionVerdict ({}, std::nullopt, 0.0, 0.0);   // DEV-110: no Region pill in Blocks
 
     // Spans that do not overlap a user block (already-marked material is
     // not proposed again).

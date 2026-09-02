@@ -180,6 +180,28 @@ private:
     // independent of any pending un-inserted edits from another mode.
     void resetMaterialView();
 
+    // DEV-102 (sesja 123) — disk-cache restore off the message thread. The
+    // decode + loop-spot map (0.7 s Billie Jean on the mac, seconds on the
+    // aarch64 VM) ran inside the 100 ms poll tick; now a worker loads the
+    // bundle, the panel shows "Restoring analysis" meanwhile, and the next
+    // poll tick re-attaches the item through the in-memory hit path.
+    void startDiskRestore (const juce::String& sourcePath);
+    void handleDiskRestoreComplete (const juce::String& sourcePath,
+                                    reamix::ui::AnalysisBundlePtr bundle);
+    juce::String           diskRestorePath_;     // worker in flight for this source
+    std::set<juce::String> diskRestoreMissed_;   // tryLoad returned nullptr: do not retry
+    std::set<juce::String> diskRestoredPaths_;   // for the "restored from disk cache" notice
+
+    // DEV-105 (sesja 123) — re-push the source-time beat grid whenever the
+    // waveform returns to the Source variant (applyRemixToUi remaps beats
+    // to remix time and WaveformView::setVariant keeps them on purpose).
+    void pushSourceBeats();
+
+    // DEV-110 (sesja 123) — drop every suggestion chip + the verdict pill
+    // and both change keys (item switch, empty state, markers toggle) so a
+    // stale chip set never stays clickable over another item / mode.
+    void clearSectionBarChips();
+
     // Sesja 65 — single-call clear for currentRemix_ + currentRemixMode_.
     // Use everywhere instead of bare currentRemix_.reset() so the mode
     // tag never desyncs from the optional payload.
@@ -483,6 +505,11 @@ private:
     // basePositionSec so the remix sits right after the source on the
     // same track. Persisted to ExtState `insert_replace_original`.
     bool insertReplaceOriginalEnabled_ { true };
+
+    // DEV-111 (sesja 123) — Settings "Section markers: Auto / Off". Off hides
+    // the model sections, the kind tint and every suggestion chip so the
+    // user can mark blocks by hand. Persisted to ExtState `section_markers`.
+    bool sectionMarkersAuto_ { true };
 
     // ── Mode + region state (sesja 60, step 6) ───────────────────
     // Three-mode UX per user decision: user picks the mode by clicking a tab

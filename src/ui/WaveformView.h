@@ -151,6 +151,13 @@ public:
     // toggle; default ON (changed from session-50 default OFF).
     void setShowBeats       (bool);
     bool getShowBeats       () const noexcept { return showBeats_; }
+    // DEV-111 (sesja 123) — Settings DISPLAY "Section markers: Auto / Off".
+    // Off hides every automatic layer: section cells + labels, the Blocks
+    // canvas kind tint and the suggestion chips (MainComponent stops
+    // pushing chips). User tiles, drag-mark, boundary drag, splice lines
+    // and downbeat anchors stay.
+    void setShowSections    (bool);
+    bool getShowSections    () const noexcept { return showSections_; }
 
     // DEV-022 / ADR-041 — gates the canvas between "loaded but not yet
     // analyzed" (faint silhouette + overlay text) and "analyzed"
@@ -549,6 +556,9 @@ private:
     // control. Segment tint is now data-driven (active iff segments_ is
     // non-empty, i.e. Block Assembly mode); no toggle.
     bool showBeats_ = true;
+    // DEV-111 — false = the automatic section layers are hidden.
+    bool showSections_ = true;
+    bool sectionsVisible() const noexcept { return showSections_ && ! segments_.empty(); }
 
     // DEV-022 / ADR-041 — false until analysis completes. When false:
     //   canvas peaks render at kBarOpacityPreAnalyze (0.25) instead of the

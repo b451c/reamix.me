@@ -20,7 +20,10 @@
 // Why no other sections (ADR-043 § Consequences gate):
 //   - "Show segments" toggle: ADR-044 makes auto-mode segments empty (no
 //     labels), and Block Assembly (phase-6 step 8) renders user labels by
-//     mode — a toggle would have no useful values either way.
+//     mode — a toggle would have no useful values either way. Superseded
+//     by DEV-111 (sesja 123): the section model fills the bar in every
+//     mode, so "Section markers: Auto / Off" lets the user hide every
+//     automatic layer and mark blocks by hand.
 //   - Shortcuts list: TransportBar already renders Space/Enter/Esc as kbd
 //     chips on the buttons themselves.
 //   - Model-manager: deferred to phase-7 per ADR-043.
@@ -61,6 +64,11 @@ public:
     // Off → Beats → Downbeats → Off. State 1:1 maps to WaveformView::SnapMode.
     enum class SnapRegion { Off, Beats, Downbeats };
     void setSnapRegion (SnapRegion);
+
+    // DEV-111 (sesja 123) — DISPLAY "Section markers" cycler: Auto (model
+    // sections + suggestion chips + kind tint) / Off (manual marking only).
+    void setSectionMarkersAuto (bool);
+    std::function<void(bool)> onSectionMarkersToggled;
 
     // Splice flexibility (Tight/Medium/Loose) cycler removed sesja 68
     // ADR-057. Geometric audit + Test 1+2 listening confirmed the
@@ -133,6 +141,11 @@ private:
     bool       snapRowHover_     = false;
     bool       snapRowPressed_   = false;
 
+    // DEV-111 — Section markers cycler state. Default Auto.
+    bool       sectionMarkersAuto_  = true;
+    bool       sectionRowHover_     = false;
+    bool       sectionRowPressed_   = false;
+
     // Sesja 100b — DEV-049 INSERT section state. Both default ON
     // (matches user smoke choice — feature should be visible from
     // first Insert without hunting for the toggle).
@@ -149,6 +162,7 @@ private:
     bool                 advancedBtnPressed_ = false;
     juce::Rectangle<int> beatsRowRect_;
     juce::Rectangle<int> snapRowRect_;
+    juce::Rectangle<int> sectionRowRect_;       // DEV-111
     juce::Rectangle<int> insertSpliceRowRect_;
     juce::Rectangle<int> insertRegionRowRect_;
 
@@ -175,6 +189,7 @@ private:
     static constexpr int kBtnH        = 30;
     static constexpr int kBeatsRowH   = 30;  // matches kBtnH so row metrics align
     static constexpr int kSnapRowH    = 30;  // sesja 60 — Snap region cycler row
+    static constexpr int kSectionRowH = 30;  // DEV-111 — Section markers cycler row
     static constexpr int kInsertRowH  = 30;  // sesja 100b — DEV-049 toggles share row metric
     static constexpr int kRowGap      = 6;   // gap between adjacent rows in same section
     static constexpr int kSectionGap  = 12;  // visual separation DISPLAY ↔ WINDOW

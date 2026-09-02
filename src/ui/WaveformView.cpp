@@ -1,4 +1,5 @@
 #include "WaveformView.h"
+#include "ui/UiProfile.h"   // DEV-102 (sesja 123)
 #include <cstdint>
 #include "LookAndFeelReamix.h"
 #include "KindDisplay.h"
@@ -365,6 +366,12 @@ void WaveformView::paintLoopSpots (juce::Graphics& g, juce::Rectangle<int> bar)
                     text = c.tinyLabel;
             }
         }
+        // DEV-110 — a user tile painted over the chip owns the label.
+        double tileCovered = 0.0;
+        for (const auto& b : userBlocks_)
+            tileCovered += std::max (0.0, std::min (b.endSec, c.endSec) - std::max (b.startSec, c.startSec));
+        if (tileCovered > 0.5 * (c.endSec - c.startSec)) text.clear();
+
         if (text.isNotEmpty())
         {
             // Sesja 121: a kind chip sits on a cell of the same colour, so its
@@ -438,6 +445,13 @@ void WaveformView::setShowBeats (bool yes)
     if (showBeats_ == yes) return;
     showBeats_ = yes;
     repaint (canvasArea());
+}
+
+void WaveformView::setShowSections (bool yes)
+{
+    if (showSections_ == yes) return;
+    showSections_ = yes;
+    repaint();
 }
 
 void WaveformView::setAnalyzed (bool yes)
@@ -564,6 +578,7 @@ void WaveformView::ensurePeaks()
 
 void WaveformView::paint (juce::Graphics& g)
 {
+    reamix::ui::UiProfile::Scope prof ("WaveformView::paint", 30.0);
     // plugin.css:287-291 .rx-wave-well { background: var(--rx-bg-2); border-radius: 4px }.
     // MainComponent (parent) paints Bg1 behind us (MainComponent.cpp:756), so
     // filling Bg1 under the rounded Bg2 rect lets the 4 px corner radius show
@@ -883,7 +898,7 @@ void WaveformView::paintCanvas (juce::Graphics& g)
             // Blocks mode - in Duration / Region the waveform keeps its own
             // colour and the quality-coloured splice markers / loop chips
             // stay readable.
-            if (! segments_.empty() && blockMarkingEnabled_)
+            if (sectionsVisible() && blockMarkingEnabled_)
             {
                 const double tSrc = viewStartSec_
                                     + (bin + 0.5) * (viewDurationSec_ / std::max (nBins, 1));
@@ -1017,7 +1032,7 @@ void WaveformView::paintSegBar (juce::Graphics& g)
     // DEV-055 sesja 100c — Blocks-mode coach mark renders even when
     // segments_ AND userBlocks_ are both empty (was being hidden by the
     // early return below). Empty-state IS the most-needs-hint scenario.
-    if (segments_.empty() && userBlocks_.empty() && ! segBarDragging_)
+    if (! sectionsVisible() && userBlocks_.empty() && ! segBarDragging_)
     {
         paintDownbeatAnchors (g, bar);
         paintLoopSpots (g, bar);   // ADR-115 E11; Blocks suggestions sesja 120
@@ -1047,7 +1062,36 @@ void WaveformView::paintSegBar (juce::Graphics& g)
 
     const double viewEnd = viewStartSec_ + viewDurationSec_;
 
-    for (std::size_t i = 0; i < segments_.size() && ! segments_.empty(); ++i)
+    // DEV-110 (sesja 123) — one label owner per pixel span: a section cell
+    // paints its name in the first chip-free stretch of the cell wide
+    // enough for the text (full-size chips only: Region loop chips, Blocks
+    // kind chips), and drops it when no such stretch exists - the chip
+    // carries the label there. Same rule in every mode, so a cell without
+    // a chip keeps its name in Blocks too, and a narrow 2-bar chip under
+    // the left-aligned name no longer paints through the text.
+    auto chipFreeLabelX = [this, &bar, viewEnd] (int cellX, int cellW, float textW) -> std::optional<int>
+    {
+        std::vector<std::pair<int,int>> blocked;
+        for (const auto& c : loopSpots_)
+        {
+            if (c.minor || c.endSec <= viewStartSec_ || c.startSec >= viewEnd) continue;
+            const int x0 = (int) timeToX (std::max (c.startSec, viewStartSec_), bar.getX(), bar.getWidth());
+            const int x1 = (int) timeToX (std::min (c.endSec,   viewEnd),       bar.getX(), bar.getWidth());
+            if (x1 > cellX && x0 < cellX + cellW) blocked.emplace_back (x0, x1);
+        }
+        std::sort (blocked.begin(), blocked.end());
+        const int need = (int) std::ceil (textW) + 10;   // plugin.css:353 - 5 px padding each side
+        int freeFrom = cellX;
+        for (const auto& b : blocked)
+        {
+            if (b.first - freeFrom >= need) return freeFrom + 5;
+            freeFrom = std::max (freeFrom, b.second);
+        }
+        if (cellX + cellW - freeFrom >= need) return freeFrom + 5;
+        return std::nullopt;
+    };
+
+    for (std::size_t i = 0; sectionsVisible() && i < segments_.size(); ++i)
     {
         const auto& s = segments_[i];
         if (s.end <= viewStartSec_ || s.start >= viewEnd) continue;
@@ -1074,8 +1118,7 @@ void WaveformView::paintSegBar (juce::Graphics& g)
         }
 
         // plugin.css:359 — label only when cell is wide enough to read.
-        // Sesja 121: in Blocks mode the section chips carry the label.
-        if (cellW > 40 && ! (blockMarkingEnabled_ && ! loopSpots_.empty()))
+        if (cellW > 40)
         {
             // Normalize "pre-chorus" → "PRE CHORUS" like primitives.jsx:184.
             juce::String label;
@@ -1095,13 +1138,19 @@ void WaveformView::paintSegBar (juce::Graphics& g)
                 case SegmentKind::Outro:        label = "OUTRO";        break;
                 case SegmentKind::NumKinds:     break;
             }
-            g.setColour (labelColour);
-            g.setFont (cellFont);
-            // plugin.css:353 — 0 5px horizontal padding inside the cell.
-            g.drawText (label,
-                        cellX + 5, bar.getY(),
-                        std::max (0, cellW - 10), bar.getHeight(),
-                        juce::Justification::centredLeft, false);
+            juce::GlyphArrangement arr;
+            arr.addLineOfText (cellFont, label, 0.0f, 0.0f);
+            const float textW = arr.getBoundingBox (0, -1, false).getWidth();
+            if (const auto labelX = chipFreeLabelX (cellX, cellW, textW))
+            {
+                g.setColour (labelColour);
+                g.setFont (cellFont);
+                // plugin.css:353 — 0 5px horizontal padding inside the cell.
+                g.drawText (label,
+                            *labelX, bar.getY(),
+                            std::max (0, cellX + cellW - *labelX - 5), bar.getHeight(),
+                            juce::Justification::centredLeft, false);
+            }
         }
     }
 
