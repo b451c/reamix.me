@@ -400,6 +400,7 @@ struct TransitionCostResult
     bool repetition_prior_active  = false;
     int  repetition_prior_pairs   = 0;   // allowed (pre-downbeat, downbeat) pairs
     int  repetition_prior_sources = 0;   // pre-downbeat sources with >= 1 allowed target
+    int  repetition_prior_min_run = 0;   // cells required (TS = one measure, TS/2 = relaxed)
 
     // Sparse candidate map. Iteration order is lexicographic by (from, to).
     std::map<std::pair<int, int>, TransitionCandidate> candidates;

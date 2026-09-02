@@ -48,7 +48,12 @@ int main()
     expectTrue("3 -> 12 blocked (no repetition)", ! p.allowed(3, 12));
     // Coverage: allowed sources are 3 (->20), 7 (->24), 19 (->4), 23 (->8) ...
     expectTrue("active: source coverage >= 25 %", p.active);
-    std::printf("     n_allowed=%d n_sources=%d\n", p.n_allowed, p.n_sources);
+    std::printf("     n_allowed=%d n_sources=%d min_run_used=%d\n", p.n_allowed, p.n_sources, p.min_run_used);
+    // 5 allowed pairs over 8 sources < 3 per source -> relaxed to half a measure.
+    expectTrue("sparse repeats relax the rule to half a measure", p.min_run_used == ts / 2);
+    // Explicit min_run is honoured (no relax).
+    const auto pf = RepetitionPrior::fromRecurrence(R.data(), n, pre, db, ts, ts);
+    expectTrue("explicit min_run = TS keeps one full measure", pf.min_run_used == ts && pf.allowed(3, 20) && ! pf.allowed(11, 28));
 
     // Fallback: a matrix with a single tiny repeat -> too few sources -> inactive,
     // and an inactive prior allows everything.

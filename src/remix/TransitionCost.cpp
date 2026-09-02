@@ -556,6 +556,7 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
     res.repetition_prior_active  = rep_prior.active;
     res.repetition_prior_pairs   = rep_prior.n_allowed;
     res.repetition_prior_sources = rep_prior.n_sources;
+    res.repetition_prior_min_run = rep_prior.min_run_used;
 
     // ADR-066 (sesja 77): pre-compute MFCC + delta-MFCC L2 similarity matrix
     // once for per-pair `mfcc_continuity` composition inside the inner

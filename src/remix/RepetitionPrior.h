@@ -37,6 +37,7 @@ struct RepetitionPrior
     bool active    { false };
     int  n_allowed { 0 };          // allowed (i, j) pairs
     int  n_sources { 0 };          // pre-downbeat sources with >= 1 allowed target
+    int  min_run_used { 0 };       // diagonal cells required (TS = one measure; TS/2 after relax)
     std::vector<std::uint8_t> mask; // row-major n x n, 1 = allowed; empty when inactive
 
     bool allowed(int i, int j) const noexcept
@@ -52,6 +53,16 @@ struct RepetitionPrior
     // Recurrence k for the mask (RepetitionMap uses 12; denser than the
     // structure default 10, so short songs still form diagonals).
     static constexpr int kRecurrenceK = 12;
+    // Minimum diagonal run required, in measures (1.0 = one full measure of
+    // recurrence hits within the two bars around the junction).
+    static constexpr double kMinRunBars = 1.0;
+    // Sparse-repetition relax (sesja 115 listening round 2): when the
+    // one-measure rule leaves fewer than this many allowed targets per
+    // pre-downbeat source (jazz / through-composed material: Miles Davis
+    // 1.8, Periphery 1.5), the rule drops to half a measure. Below that the
+    // mask starves the DP and the user rated both engines "both bad".
+    static constexpr double kMinAllowedPerSource = 3.0;
+    static constexpr double kRelaxedMinRunBars   = 0.5;
 
     // `R` is the combined recurrence matrix [n x n] from Recurrence::build.
     // `min_run` defaults to one measure (time_signature cells).
