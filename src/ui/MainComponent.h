@@ -141,6 +141,7 @@ private:
     // RemixPipeline run when the region changed. Idempotent — safe to call
     // from any of the inputs (mode click, drag-select, timerCallback poll).
     void recomputeRegionState();
+    void mirrorRegionToReaper (double startSec, double endSec);   // DEV-093 (sesja 122)
 
     // ADR-115 E11 (sesja 117) — loop-spot suggestions for the Region tab:
     // whole-track chips without a selection, chips + verdict pill inside

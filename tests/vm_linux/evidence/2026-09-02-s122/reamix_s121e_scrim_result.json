@@ -1,0 +1,23 @@
+{
+ "tag": "reamix_s121e_scrim",
+ "green": false,
+ "media_len": 220.05551020408163,
+ "px_per_sec": 3.2719017094017095,
+ "span_px": [
+  196,
+  294
+ ],
+ "changed_cols": 129,
+ "inside_cover": 0.10101010101010101,
+ "outside_cols": 118,
+ "tint_inside": -10.555555555555555,
+ "tint_outside": -9.976890909090908,
+ "scrim_ok": false,
+ "reaper_ts_after_drag": {
+  "s": 60,
+  "e": 90
+ },
+ "expected_end": 108.33795918367346,
+ "drag_ok": false,
+ "reaper_alive_after": false
+}

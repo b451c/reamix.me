@@ -1172,6 +1172,17 @@ MainComponent::MainComponent()
         // behavior from sesja 47/48).
         if (appMode_ == reamix::ui::ModeTabs::Mode::Region)
         {
+            // DEV-093 (sesja 122) — a drag (or an edge drag of the mirrored
+            // auto-Region scrim) takes the region over from REAPER's
+            // time-selection and writes it back, exactly like a loop-spot
+            // chip click; otherwise recomputeRegionState would re-mirror
+            // REAPER's span over the user's drag.
+            if (r.has_value())
+            {
+                regionFromAuto_ = false;
+                modeTabs_.setAutoFlag (false);
+                mirrorRegionToReaper (r->startSec, r->endSec);
+            }
             recomputeRegionState();
             return;
         }
@@ -1857,16 +1868,7 @@ MainComponent::MainComponent()
         modeTabs_.setAutoFlag (false);
         selectedRange_ = sel;
         waveformView_.setSelection (sel);
-
-        if (auto item = reamix::reaper::getSelectedItem())
-        {
-            reamix::reaper::TimeSelection ts;
-            ts.startSec    = item->positionSec + spot.start_sec;
-            ts.endSec      = item->positionSec + spot.end_sec;
-            ts.durationSec = ts.endSec - ts.startSec;
-            if (reamix::reaper::setTimeSelection (ts.startSec, ts.endSec))
-                lastRespectedTimeSelection_ = ts;
-        }
+        mirrorRegionToReaper (spot.start_sec, spot.end_sec);
         recomputeRegionState();
     };
 
@@ -3900,6 +3902,23 @@ void MainComponent::updateLoopSpotSuggestions (const std::optional<reamix::reape
                                        region.has_value() ? region->endSec   : 0.0);
 }
 
+// DEV-093 (sesja 122) — write a plugin-side region (item-relative seconds)
+// into REAPER's time-selection, pre-seeded as "respected" so the 100 ms poll
+// does not treat it as a new user selection. Shared by the loop-spot chip
+// click (ADR-115 E11) and the Region-mode drag.
+void MainComponent::mirrorRegionToReaper (double startSec, double endSec)
+{
+    if (auto item = reamix::reaper::getSelectedItem())
+    {
+        reamix::reaper::TimeSelection ts;
+        ts.startSec    = item->positionSec + startSec;
+        ts.endSec      = item->positionSec + endSec;
+        ts.durationSec = ts.endSec - ts.startSec;
+        if (reamix::reaper::setTimeSelection (ts.startSec, ts.endSec))
+            lastRespectedTimeSelection_ = ts;
+    }
+}
+
 void MainComponent::recomputeRegionState()
 {
     using Mode = reamix::ui::ModeTabs::Mode;
@@ -3918,6 +3937,15 @@ void MainComponent::recomputeRegionState()
             if (picked.has_value())
                 region = reamix::reaper::getItemRegion (picked->durationSec,
                                                          picked->positionSec);
+            // DEV-093 (sesja 122) — show the auto-Region as the same scrim a
+            // drag / chip click produces (setSelection is idempotent, so the
+            // 100 ms poll costs nothing); selectedRange_ stays untouched so
+            // an edge drag hands the region over via onSelectionChanged.
+            if (region.has_value())
+                waveformView_.setSelection (
+                    reamix::ui::WaveformView::SelectionRange { region->startSec, region->endSec });
+            else
+                waveformView_.clearSelection();
         }
         else
         {
