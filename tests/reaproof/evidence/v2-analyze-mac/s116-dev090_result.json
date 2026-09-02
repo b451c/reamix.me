@@ -1,0 +1,24 @@
+[
+ {
+  "tag": "s116-dev090_run1",
+  "ok": true,
+  "item_len": 293.82666666666665,
+  "cache_hit": true,
+  "analyze_seconds": 241.0,
+  "window_alive": true,
+  "waveform_present": true,
+  "reaper_alive": true
+ },
+ {
+  "tag": "s116-dev090_run2",
+  "ok": false,
+  "item_len": 293.82666666666665,
+  "cache_hit": false,
+  "analyze_click": false,
+  "window_lost_at": 2.0,
+  "analyze_seconds": 2.0,
+  "window_alive": false,
+  "waveform_present": false,
+  "reaper_alive": true
+ }
+]
