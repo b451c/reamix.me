@@ -787,6 +787,23 @@ RegionOptimizer::regionLoopSynthesize(int    n_region,
         }
     }
 
+    // Sesja 115 diagnostic (dev only): REAMIX_REGION_DEBUG=<path> appends one
+    // line per viable (i, j) with raw_w, N_round and the chosen tuple so the
+    // loop-pair choice can be audited from the calibration harness.
+    if (const char* dbg = std::getenv("REAMIX_REGION_DEBUG")) {
+        if (FILE* f = std::fopen(dbg, "a")) {
+            std::fprintf(f, "# n_region=%d target=%d cd=%d evaluated=%d chosen=(%d,%d,N=%d) cost=%.4f\n",
+                         n_region, target_beats, cd, candidates_evaluated,
+                         chosen_i_local, chosen_j_local, chosen_N_local, best.total_cost);
+            for (int i2 = cd; i2 <= n_region - 2; ++i2)
+                for (int j2 = 0; j2 <= i2 - cd; ++j2) {
+                    const double w = rW_[static_cast<std::size_t>(i2) * n_region + j2];
+                    if (w < INF) std::fprintf(f, "%d,%d,%d,%.4f\n", entry_beat + i2, entry_beat + j2, i2 - j2, w);
+                }
+            std::fclose(f);
+        }
+    }
+
     // No viable (i, j, N) — return empty result; caller falls back to DP.
     if (chosen_i_local < 0) {
         return best;  // best.path is empty
