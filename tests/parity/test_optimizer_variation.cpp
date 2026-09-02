@@ -32,7 +32,7 @@
 
 #include "remix/Optimizer.h"
 #include "remix/TransitionCost.h"
-#include "analysis/RepetitionMap.h"
+#include "analysis/RepetitionJump.h"
 #include "analysis/StructureResult.h"
 
 #include <algorithm>

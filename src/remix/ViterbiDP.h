@@ -1,10 +1,11 @@
 #pragma once
 
+#include "analysis/RepetitionJump.h"
+
 #include <cstdint>
 #include <set>
 #include <vector>
 
-#include "analysis/RepetitionMap.h"
 
 namespace reamix::remix {
 

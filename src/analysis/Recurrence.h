@@ -75,65 +75,9 @@ public:
                         int nFeat,
                         int kNeighbors = kDefaultK);
 
-    // ---------------------------------------------------------------------
-    // findDiagonals — bar-aligned diagonal search in a recurrence submatrix.
-    //
-    // Port of `recurrence.py::find_diagonals` (L149-228, 2026-04-22). Added
-    // phase-4 session 24 for `TransitionPrescreen` which locates structurally
-    // repeated patterns near segment boundaries; the caller (prescreen)
-    // verifies the best diagonals with waveform xcorr.
-    //
-    // Algorithm:
-    //   1. Iterate 3 bar-aligned offsets: {Δ - bar, Δ, Δ + bar} where
-    //      Δ = col_start - row_start. Skip offset == 0 (self-diagonal).
-    //   2. For each offset, trace the diagonal r ∈ [max(row_start, 0),
-    //      min(row_end, n)); include (r, c=r+offset) only if
-    //      col_start ≤ c < col_end AND 0 ≤ c < n.
-    //   3. If diagonal length ≥ min_length, find the BEST contiguous run of
-    //      values above `kDiagonalThreshold` (0.1). If best run length ≥
-    //      min_length, emit (r_mid, c_mid, length, mean_similarity) where
-    //      mid = best_run_start + best_run_len // 2 (Python floor division)
-    //      relative to the trace array.
-    //   4. Sort results DESC by `length × mean_similarity`.
-    //
-    // Returns list of (r_mid, c_mid, diag_len, mean_sim) tuples. C++ signature
-    // uses a POD struct for cache-friendly flat array.
-    //
-    // Numerical parity notes:
-    //   - Python uses numpy array comparison `vals > threshold`; C++ mirrors
-    //     with direct double compare (vals are f64 R cells from build()).
-    //   - Python accumulates `run_sum` with Python double add — C++ uses
-    //     same-order f64 add. -ffp-contract=off required on test target for
-    //     bitwise parity of the mean_sim division.
-    //   - Python `range(start, stop, step)` with `stop = Δ + bar_size + 1`
-    //     and `step = bar_size` produces 3 values for bar_size ≥ 1: {Δ-bar,
-    //     Δ, Δ+bar}. Port enumerates these 3 explicitly (clearer than Python
-    //     range arithmetic).
-    //
-    // Source-of-truth: recurrence.py:149-228 (2026-04-22).
-    struct Diagonal
-    {
-        int    rMid;    // row index of diagonal midpoint
-        int    cMid;    // col index of diagonal midpoint
-        int    length;  // length in beats of the matched run
-        double meanSim; // average R value along the best run
-    };
-
-    // PARITY: recurrence.py:195 `threshold = 0.1`.
+    // PARITY: recurrence.py:195 `threshold = 0.1`. Diagonal-hit threshold on
+    // R cells; the only remaining consumer is remix/RepetitionPrior (ADR-115 E4).
     static constexpr double kDiagonalThreshold = 0.1;
-
-    // `R` is row-major [n × n] from Recurrence::Result::R. `n` is the matrix
-    // side (nBeats). Caller clamps row/col ranges; internal max/min enforce
-    // `[0, n)` bounds exactly like the Python `0 <= c < n` guard.
-    static std::vector<Diagonal>
-    findDiagonals(const double* R,
-                  int           n,
-                  int           rowStart,
-                  int           rowEnd,
-                  int           colStart,
-                  int           colEnd,
-                  int           minLength = 4,
-                  int           barSize   = 4);
 };
 
 } // namespace reamix::analysis

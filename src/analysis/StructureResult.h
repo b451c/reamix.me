@@ -7,34 +7,22 @@
 
 namespace reamix::analysis {
 
-// Unified data contract for phase-3 structure segmentation.
+// Section list of a track: the output type of `SectionClassifier::decode`
+// (sesja 121, DEV-098) and the `segments` input of TransitionCost / Region /
+// Block Assembly.
 //
-// Port of references/python-source/analysis/structure_analyzer.py L34-53
-// (`Segment` + `StructureResult` dataclasses). Introduced in session 10
-// when the dispatcher port required composing CBMSegmenter + NoveltySegmenter
-// + SegmentConsolidation outputs through one type — the three modules
-// previously carried field-near-identical local `Segment` structs, now
-// aliased to this canonical definition via `using Segment = ...;` at class
-// scope.
+// Originally the port of references/python-source/analysis/structure_analyzer.py
+// L34-53 (`Segment` + `StructureResult` dataclasses) shared by the CBM /
+// novelty / consolidation stack; that stack was skipped since ADR-044 and
+// deleted in sesja 122 (ADR-115 E6), the type stays as the contract.
 //
-// Field conventions diff vs Python:
-//   * C++ field order is primitives first, string last (idiomatic); Python
-//     uses declaration order (start, end, label, confidence, cluster_id).
-//     Field *set* + *semantics* are identical.
-//   * Python's `cluster_id: int = 0` (CPython unbounded int) maps to C++
-//     `int` — values are tiny (≤ 12 on the 10-track corpus, hard cap via
-//     `kMaxSegments=12` in SegmentConsolidation). NoveltySegmenter's
-//     `ClusterResult::clusterIds` vector stays `std::int64_t` (raw sklearn
-//     output); the cast to `int` happens at Segment construction site.
-//   * `confidence` default is 0.0 (matches Python's required-field semantics
-//     + NoveltySegmenter + SegmentConsolidation). CBMSegmenter's 0.8
-//     placeholder is set explicitly at construction (CBMSegmenter.cpp:599).
-//
-// StructureResult adds one C++-only field: `DispatchPath path`. Python
-// does not surface which branch fired (CBM vs novelty) — production code
-// infers it from `embeddings is None`. The explicit enum makes the
-// session-10 parity test a single equality check instead of a null-vs-not
-// heuristic.
+// Field conventions (kept from the port so the disk cache format and the
+// remix consumers are unchanged):
+//   * `cluster_id` is `int` (values are tiny); `confidence` defaults to 0.0.
+//   * `label` is a free string; the UI maps it through SegmentKind
+//     (AnalysisBundle::mapLabel) and `kindAbbreviation`.
+//   * `DispatchPath` is a legacy byte kept only for the disk-cache layout
+//     (always Novelty since the stack removal).
 struct Segment
 {
     double      start      = 0.0;

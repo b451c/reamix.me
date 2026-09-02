@@ -208,8 +208,8 @@ inline NpyMatrixF32 loadNpy2DFloat32(const std::string& path)
     return out;
 }
 
-// Load a 2-D int64 array stored C-order (row-major). Used by phase-3 session-5
-// CBMSegmenter parity test for cbm_bar_segments.npy (shape [n_segs, 2]).
+// Load a 2-D int64 array stored C-order (row-major). Used by the Quality
+// parity test (segment index pairs).
 struct NpyMatrixI64 {
     std::vector<std::int64_t> data;
     std::size_t rows = 0;

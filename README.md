@@ -112,7 +112,7 @@ If you can't use ReaPack:
 
 ```
 audio in  →  beat detection (beat-this ONNX)
-          →  structure segmentation (CBM, bar-level)
+          →  section classification (LinkSeg 9-class ONNX, bar-aligned)
           →  per-beat 59-dim feature vector (MFCC + chroma + spectral contrast)
           →  transition cost matrix (10 perceptual signals + hard gates)
           →  Viterbi DP finds min-cost splice path under duration / cooldown / intro-outro constraints
@@ -158,7 +158,7 @@ The repo is organized as a **port** of an earlier Python+Lua implementation. Eac
 |-------|--------|
 | 1 | Beat detection (beat-this ONNX) |
 | 2 | Feature extraction (MFCC + chroma + spectral contrast) |
-| 3 | Structure segmentation (CBM, bar-level) |
+| 3 | Section classification (LinkSeg ONNX, bar-aligned) |
 | 4 | Transition cost matrix (10 perceptual signals) |
 | 5 | Optimization + rendering (Viterbi DP + multi-band crossfade) |
 | 6 | JUCE UI (this is where the user-facing plugin lives) |
@@ -198,10 +198,10 @@ In practice this means:
 | [JUCE](https://github.com/juce-framework/JUCE) | AGPLv3 (free track) | UI framework |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) | MIT | Neural inference |
 | [beat-this](https://github.com/CPJKU/beat_this) (CPJKU, ISMIR 2024) | CC-BY-4.0 | Beat detection model (downloaded at runtime) |
+| [LinkSeg](https://github.com/morgan76/LinkSeg) (Buisson et al., ISMIR 2024) | CC-BY-4.0 | Section classifier model (9-class ONNX export, downloaded at runtime) |
 | [reaper-sdk](https://github.com/justinfrankel/reaper-sdk) | LGPL-2.1 / custom | REAPER plugin headers |
 | [WDL](https://www.cockos.com/wdl/) (SWELL) | zlib | macOS / Linux dialog layer |
 | [PocketFFT](https://gitlab.mpcdf.mpg.de/mtr/pocketfft) | BSD-3-Clause | FFT |
-| [Eigen](https://eigen.tuxfamily.org/) | MPL 2.0 | Cross-platform LAPACK fallback (non-Apple eigendecomposition) |
 | [Inter](https://github.com/rsms/inter) | SIL OFL 1.1 | UI font |
 | [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | SIL OFL 1.1 | Monospace font |
 

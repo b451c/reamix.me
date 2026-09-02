@@ -48,7 +48,7 @@
 
 #include "remix/ViterbiDP.h"
 #include "remix/SegmentData.h"
-#include "analysis/RepetitionMap.h"
+#include "analysis/RepetitionJump.h"
 #include "analysis/StructureResult.h"
 
 #include <cmath>

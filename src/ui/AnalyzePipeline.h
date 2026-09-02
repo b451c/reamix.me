@@ -17,7 +17,8 @@
 //   1. Load audio  (juce::AudioFormatManager + AudioLoader::resample)
 //   2. BeatDetector::detect(mono_22050, 22050)
 //   3. FeatureExtractor::extract(mono_22050, 22050, beats, mode)
-//   4. StructureAnalyzer::analyze(...)        — SKIPPED on auto path (ADR-044)
+//   4. SectionClassifier (stage 2b, sesja 121) fills bundle.structure;
+//      the CBM / novelty stack was removed in sesja 122 (ADR-044, E6)
 //   5. computeTransitionCosts(features + segments + ...)
 //
 // All stages run sequentially. Progress callbacks marshal to the message

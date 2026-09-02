@@ -33,16 +33,6 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/vendor/JUCE/CMakeLists.txt")
 endif()
 add_subdirectory(vendor/JUCE EXCLUDE_FROM_ALL)
 
-# Eigen (header-only, MPL 2.0). Used on non-Apple platforms as the
-# LAPACK fallback for NoveltySegmenter::symmetricEigh. macOS keeps the
-# Accelerate path. Targets linking NoveltySegmenter.cpp link this as
-# `eigen` interface library.
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/vendor/Eigen/Eigen/Eigenvalues")
-  message(FATAL_ERROR "Eigen not found. Run: git submodule update --init")
-endif()
-add_library(eigen INTERFACE)
-target_include_directories(eigen INTERFACE "${CMAKE_SOURCE_DIR}/vendor/Eigen")
-
 # ONNX Runtime
 set(ORT_DIR "${CMAKE_SOURCE_DIR}/vendor/onnxruntime")
 if(NOT EXISTS "${ORT_DIR}/include/onnxruntime_cxx_api.h")
@@ -110,7 +100,6 @@ juce_add_binary_data(reamix_font_binary SOURCES
 
 # JUCE modules
 target_link_libraries(reaper_reamix PRIVATE
-  eigen
   reamix_font_binary
   juce::juce_gui_basics
   juce::juce_gui_extra
@@ -717,35 +706,6 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_vocal_features
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-  # test_novelty_features — phase-3 step-2 parity: reamix::analysis::NoveltyFeatures
-  # (end-to-end y → 25-dim MFCC(13)+chroma(12) z-scored vstack) vs Python dump
-  # `novelty_features_25d.npy`, which mirrors structure_analyzer.py:193-210
-  # verbatim. Pure stdlib + pocketfft. ADR-019 gate: 1e-3 absolute OR 5e-7
-  # ratio (ADR-011 escape precedent).
-  add_executable(test_novelty_features
-    tests/parity/test_novelty_features.cpp
-    src/analysis/NoveltyFeatures.cpp
-    src/analysis/Mfcc.cpp
-    src/dsp/ChromaSTFT.cpp
-    src/dsp/DCT.cpp
-    src/dsp/MelSpectrogramLibrosa.cpp
-    src/dsp/PitchTrack.cpp
-    src/dsp/STFT.cpp
-  )
-  target_include_directories(test_novelty_features PRIVATE
-    src
-    ${POCKETFFT_DIR}
-    tests/parity/reference
-  )
-  if(MSVC)
-    target_compile_options(test_novelty_features PRIVATE /W3)
-  else()
-    target_compile_options(test_novelty_features PRIVATE -Wall -Wextra -Wno-unused-parameter)
-  endif()
-  add_test(NAME novelty_features_parity
-           COMMAND test_novelty_features
-           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
   # test_recurrence — phase-3 step-3 parity: reamix::analysis::Recurrence::build
   # vs recurrence.py::build_recurrence_matrix dumped as R_matrix.npy + 3
   # component aids (R_feat / R_chroma / R_homo). Consumes
@@ -768,168 +728,6 @@ if(REAMIX_BUILD_TESTS)
   endif()
   add_test(NAME recurrence_parity
            COMMAND test_recurrence
-           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-  # test_cbm_segmenter — phase-3 step-4 (session 5) parity: reamix::analysis::
-  # CBMSegmenter DP pipeline (computeBarFeatures + computeBarAutosimilarity +
-  # cbmSegment) vs cbm_segmenter.py on the 10-track phase-2 corpus. Primary
-  # gate: cbm_bar_segments exact integer match on 10/10. Intermediate diffs
-  # (bar_features, bar_times, autosim) are printed as bisection aids, not
-  # gated. Pure stdlib — no pocketfft, no librosa, no sklearn.
-  add_executable(test_cbm_segmenter
-    tests/parity/test_cbm_segmenter.cpp
-    src/analysis/CBMSegmenter.cpp
-  )
-  target_include_directories(test_cbm_segmenter PRIVATE
-    src
-    tests/parity/reference
-  )
-  if(MSVC)
-    target_compile_options(test_cbm_segmenter PRIVATE /W3)
-  else()
-    target_compile_options(test_cbm_segmenter PRIVATE -Wall -Wextra -Wno-unused-parameter)
-  endif()
-  add_test(NAME cbm_segmenter_parity
-           COMMAND test_cbm_segmenter
-           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-  # test_novelty_segmenter — phase-3 step-5 session 7 + 8 parity per ADR-021
-  # and ADR-022:
-  #   Session 7: SSM → Foote novelty → find_peaks → boundaries → segment
-  #              embeddings (pre-clustering, strict bitwise gates).
-  #   Session 8: clustering (normalized Laplacian + eigh via Accelerate LAPACK
-  #              + k-means++ + Lloyd) + labeling (_create_segments) per
-  #              ADR-022 Option A (preserve Python silhouette-bug observed
-  #              behavior). Hungarian-matched cluster_id ≥ 90 %, exact
-  #              label ≥ 90 %.
-  # Consumes NoveltyFeatures output (session 2) on one fixture + golden SSM
-  # on another. Links Apple Accelerate.framework for LAPACK `dsyevd`.
-  add_executable(test_novelty_segmenter
-    tests/parity/test_novelty_segmenter.cpp
-    src/analysis/NoveltySegmenter.cpp
-    src/analysis/NoveltyFeatures.cpp
-    src/analysis/Mfcc.cpp
-    src/dsp/ChromaSTFT.cpp
-    src/dsp/DCT.cpp
-    src/dsp/MelSpectrogramLibrosa.cpp
-    src/dsp/PitchTrack.cpp
-    src/dsp/STFT.cpp
-  )
-  target_include_directories(test_novelty_segmenter PRIVATE
-    src
-    ${POCKETFFT_DIR}
-    tests/parity/reference
-  )
-  target_link_libraries(test_novelty_segmenter PRIVATE eigen)
-  if(APPLE)
-    target_link_libraries(test_novelty_segmenter PRIVATE "-framework Accelerate")
-  endif()
-  if(MSVC)
-    target_compile_options(test_novelty_segmenter PRIVATE /W3)
-  else()
-    target_compile_options(test_novelty_segmenter PRIVATE -Wall -Wextra -Wno-unused-parameter)
-  endif()
-  add_test(NAME novelty_segmenter_parity
-           COMMAND test_novelty_segmenter
-           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-  # test_segment_consolidation — phase-3 step-7 session 9 parity per
-  # session-9 scope swap (dispatcher was planned for step 6 but calls
-  # consolidation internally → consolidation ported first). Strict
-  # bitwise gate on all 5 Segment fields × 10 tracks × 2 fixtures
-  # (CBM-path input + novelty-path input). Deterministic algorithm —
-  # no RNG, no spectral decomposition — so strict bitwise is achievable.
-  add_executable(test_segment_consolidation
-    tests/parity/test_segment_consolidation.cpp
-    src/analysis/SegmentConsolidation.cpp
-  )
-  target_include_directories(test_segment_consolidation PRIVATE
-    src
-    tests/parity/reference
-  )
-  if(MSVC)
-    target_compile_options(test_segment_consolidation PRIVATE /W3)
-  else()
-    target_compile_options(test_segment_consolidation PRIVATE -Wall -Wextra -Wno-unused-parameter)
-  endif()
-  add_test(NAME segment_consolidation_parity
-           COMMAND test_segment_consolidation
-           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-  # test_structure_analyzer — phase-3 step-6 session 10 parity: full
-  # StructureAnalyzer::analyze dispatcher per ADR-018 predicates
-  # (fastMode → novelty; !fastMode && downbeats≥4 && beatFeatures &&
-  # CBM≥5 → CBM; else → novelty fallback). Both branches run
-  # SegmentConsolidation::consolidate. 10-track corpus splits 3 CBM /
-  # 7 novelty. Gate per-track: CBM-dispatched strict bitwise on all 5
-  # Segment fields + boundaries (session-6 precedent); novelty-dispatched
-  # ADR-022 Option B — start/end bitwise, confidence L∞ ≤ 1e-6, cluster
-  # Hungarian ≥ 70 %, label exact ≥ 70 %, boundaries bitwise (session-8
-  # precedent). Links the full novelty pipeline (Mfcc/ChromaSTFT/STFT
-  # /DCT/MelSpectrogramLibrosa/PitchTrack via NoveltyFeatures; Accelerate
-  # LAPACK via NoveltySegmenter clustering).
-  add_executable(test_structure_analyzer
-    tests/parity/test_structure_analyzer.cpp
-    src/analysis/StructureAnalyzer.cpp
-    src/analysis/CBMSegmenter.cpp
-    src/analysis/NoveltyFeatures.cpp
-    src/analysis/NoveltySegmenter.cpp
-    src/analysis/SegmentConsolidation.cpp
-    src/analysis/Mfcc.cpp
-    src/dsp/ChromaSTFT.cpp
-    src/dsp/DCT.cpp
-    src/dsp/MelSpectrogramLibrosa.cpp
-    src/dsp/PitchTrack.cpp
-    src/dsp/STFT.cpp
-  )
-  target_include_directories(test_structure_analyzer PRIVATE
-    src
-    ${POCKETFFT_DIR}
-    tests/parity/reference
-  )
-  target_link_libraries(test_structure_analyzer PRIVATE eigen)
-  if(APPLE)
-    target_link_libraries(test_structure_analyzer PRIVATE "-framework Accelerate")
-  endif()
-  if(MSVC)
-    target_compile_options(test_structure_analyzer PRIVATE /W3)
-  else()
-    target_compile_options(test_structure_analyzer PRIVATE -Wall -Wextra -Wno-unused-parameter)
-  endif()
-  add_test(NAME structure_analyzer_parity
-           COMMAND test_structure_analyzer
-           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-  # test_repetition_map — phase-3 step-8 session 11 parity: full
-  # RepetitionMap::build vs Python `build_repetition_map` on the 10-track
-  # corpus. Consumes session-10 dispatched_* segments as input, computes
-  # boundary_waveforms via BeatWindows::extractWaveformSnippets (phase-2
-  # step-9 validated) on beats_cpp, calls Recurrence internally for
-  # phase-2 internal-diagonal scan. Gate: per-track n_sections_scanned /
-  # n_pairs_verified / section_pairs equal + ≥ 90 % agreement on
-  # high-confidence jumps (waveform_similarity > 0.6) with field tolerance
-  # (wf/chroma L∞ ≤ 1e-6, lag ±1); ADR-022 eminem_without_me waived.
-  # Links the full Recurrence + BeatWindows dependency chain; no Accelerate
-  # (no LAPACK path).
-  add_executable(test_repetition_map
-    tests/parity/test_repetition_map.cpp
-    src/analysis/RepetitionMap.cpp
-    src/analysis/Recurrence.cpp
-    src/analysis/BeatWindows.cpp
-    src/dsp/WaveformXcorr.cpp
-  )
-  target_include_directories(test_repetition_map PRIVATE
-    src
-    ${POCKETFFT_DIR}
-    tests/parity/reference
-  )
-  if(MSVC)
-    target_compile_options(test_repetition_map PRIVATE /W3)
-  else()
-    target_compile_options(test_repetition_map PRIVATE -Wall -Wextra -Wno-unused-parameter)
-  endif()
-  add_test(NAME repetition_map_parity
-           COMMAND test_repetition_map
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
   # test_median_filter — phase-2b unit: reamix::util::medianFilter2DReflect
@@ -1591,7 +1389,7 @@ if(REAMIX_BUILD_TESTS)
   # Session 26 corpus narrowed to billie_jean for smoke (session 27 expands
   # to full 48 cases). `-ffp-contract=off` per ADR-028 (9th reuse after
   # Quality / TransitionCost / ViterbiDP / Optimizer / RegionOptimizer /
-  # RegionCost / Prescreen / BlockAssembly — composes identical weighted-
+  # RegionCost / BlockAssembly — composes identical weighted-
   # sum chain, inherits FMA vulnerability class).
   add_executable(test_optimizer_e2e
     tests/parity/test_optimizer.cpp
@@ -1686,36 +1484,6 @@ if(REAMIX_BUILD_TESTS)
   endif()
   add_test(NAME region_optimizer_parity
            COMMAND test_region_optimizer
-           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-  # test_transition_prescreen — phase-4 session 24 parity:
-  # reamix::remix::prescreenTransitions vs
-  # Python transition_prescreen.py::prescreen_transitions.
-  # `-ffp-contract=off` per ADR-028 — 6th reuse after Quality / TransitionCost
-  # / ViterbiDP / Optimizer / RegionOptimizer. Recurrence matrix build +
-  # diagonal mean_sim accumulation + WaveformXcorr composition all hit
-  # FMA-vulnerability class.
-  add_executable(test_transition_prescreen
-    tests/parity/test_transition_prescreen.cpp
-    src/remix/TransitionPrescreen.cpp
-    src/analysis/Recurrence.cpp
-    src/dsp/WaveformXcorr.cpp
-  )
-  target_include_directories(test_transition_prescreen PRIVATE
-    src
-    tests/parity/reference
-    ${POCKETFFT_DIR}
-  )
-  if(MSVC)
-    target_compile_options(test_transition_prescreen PRIVATE /W3)
-  else()
-    target_compile_options(test_transition_prescreen PRIVATE
-      -Wall -Wextra -Wno-unused-parameter
-      -ffp-contract=off
-    )
-  endif()
-  add_test(NAME transition_prescreen_parity
-           COMMAND test_transition_prescreen
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
   # test_block_assembly — phase-4 session 24 parity:
@@ -2376,7 +2144,6 @@ if(ORT_FOUND)
     ${POCKETFFT_DIR}
   )
   target_link_libraries(warm_cache PRIVATE
-    eigen
     onnxruntime
     juce::juce_audio_formats
     juce::juce_cryptography
@@ -2406,7 +2173,7 @@ endif()
 # previously-warmed AnalysisDiskCache, runs RemixPipeline (or rebuilds TC for
 # Duration mode) per request, emits WAV + per-splice CSV. Source set extends
 # warm_cache's by adding render/* + remix/{RegionCost,RegionOptimizer,
-# Optimizer,ViterbiDP,TransitionPrescreen,BlockAssembly} + ui/RemixPipeline.
+# Optimizer,ViterbiDP,BlockAssembly} + ui/RemixPipeline.
 # Built only when ORT is available because the bundle deserialisation path
 # transitively pulls BeatDetector headers.
 if(ORT_FOUND)
@@ -2432,7 +2199,6 @@ if(ORT_FOUND)
     ${POCKETFFT_DIR}
   )
   target_link_libraries(calibration_harness PRIVATE
-    eigen
     onnxruntime
     juce::juce_audio_formats
     juce::juce_cryptography

@@ -22,8 +22,9 @@ namespace
     constexpr int kAnalysisSampleRate = 22050;
 
     // Stage-budget remap per ADR-047 § 2 — AnalyzePipeline owns its own
-    // [0.0, 1.0] progress range. Stage 4 (StructureAnalyzer) skipped per
-    // ADR-044; its budget folded into stage 5 (TransitionCost).
+    // [0.0, 1.0] progress range. The former stage 4 (CBM / novelty
+    // structure stack) was skipped per ADR-044 and deleted in sesja 122;
+    // its budget is folded into stage 5 (TransitionCost).
     constexpr double kPLoad         = 0.05;
     constexpr double kPBeatDetect   = 0.45;
     constexpr double kPFeatures     = 0.70;
@@ -278,11 +279,6 @@ void AnalyzePipeline::run()
     // file. Renderer (in RemixPipeline) uses native-rate stereoNative.
     audio.mono22050.clear();
     audio.mono22050.shrink_to_fit();
-
-    // ── Stage 4 — StructureAnalyzer (phase-3) ──────────────────────
-    // ADR-044: the old CBM / novelty stack stays SKIPPED; bundle.structure
-    // now carries the stage-2b model sections (sesja 121).
-    if (threadShouldExit()) return;
 
     // ── Stage 5 — TransitionCost (phase-4 first half) ──────────────
     postProgress ("Computing transitions", kPFeatures);

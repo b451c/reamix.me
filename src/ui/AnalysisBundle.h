@@ -64,9 +64,9 @@ struct AnalysisBundle
     // ── FeatureExtractor (stage 3) — moved in, not copied ────────────
     reamix::analysis::FeatureExtractor::Result feat;
 
-    // ── StructureAnalyzer (stage 4) ──────────────────────────────────
-    // ADR-044: empty default on auto path. Block Assembly mode (step 8,
-    // session 61) will populate user labels here.
+    // ── Sections (stage 2b, SectionClassifier) ───────────────────────
+    // Model sections (LinkSeg 9-class, sesja 121); empty when the model
+    // is unavailable. Block Assembly user blocks live in UserBlocksState.
     reamix::analysis::StructureResult structure;
 
     // ── TransitionCost (stage 5) ─────────────────────────────────────
@@ -74,8 +74,8 @@ struct AnalysisBundle
 
     // ── UI-friendly segment view ─────────────────────────────────────
     // Computed once at AnalyzePipeline completion from `structure.segments`,
-    // mapping label strings to SegmentKind enum (mapLabel helper). Empty in
-    // auto mode per ADR-044; populated when Block Assembly user labels land.
+    // mapping label strings to SegmentKind enum (mapLabel helper) and snapping
+    // to the cleaned beat grid (ensureBeatGrid). Empty without the model.
     std::vector<AnalysisSegment> uiSegments;
 
     // ── Loop-spot map (ADR-115 E11, sesja 117) ───────────────────────

@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "analysis/RepetitionMap.h"
+#include "analysis/RepetitionJump.h"
 #include "analysis/StructureResult.h"
 #include "remix/Path.h"
 #include "remix/SegmentData.h"
@@ -192,7 +192,7 @@ struct CleanOptimizerInputs
     const float* features;
     int          n_features;
 
-    // DOWNBEATS for bar-alignment gates + RepetitionMap.
+    // DOWNBEATS for bar-alignment gates.
     // `downbeats == nullptr || n_downbeats == 0` → `_compute_downbeat_arrays`
     // synthesizes `range(0, n_beats, time_signature)` (viterbi_dp.py:491).
     // `downbeat_constraint=false` would fully disable (not threaded here —

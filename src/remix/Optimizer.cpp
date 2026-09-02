@@ -7,7 +7,6 @@
 #include <string>
 #include <utility>
 
-#include "analysis/RepetitionMap.h"
 #include "analysis/StructureResult.h"
 #include "remix/SegmentData.h"
 #include "remix/TransitionCost.h"
@@ -643,7 +642,7 @@ CleanOptimizer::runDpAndBuildPath(double* W, const DpParams& params) const
 // Converts a raw beat-index path + total cost into a RemixPath with
 // transitions + per-transition metadata. Iterates consecutive path pairs,
 // emits non-sequential (j != i+1) pairs as transitions, populates metadata
-// from `candidates` map + optional `repetition_map.get_jumps_from(i)` scan.
+// from `candidates` map.
 RemixPath
 CleanOptimizer::extractRemixPath(const std::vector<std::int64_t>& path,
                                  double                            cost) const

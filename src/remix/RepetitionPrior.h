@@ -53,7 +53,7 @@ struct RepetitionPrior
     // Minimum share of pre-downbeat sources that must keep at least one
     // allowed target for the prior to stay active (fallback rule).
     static constexpr double kMinSourceCoverage = 0.25;
-    // Recurrence k for the mask (RepetitionMap uses 12; denser than the
+    // Recurrence k for the mask (the old RepetitionMap used 12; denser than the
     // structure default 10, so short songs still form diagonals).
     static constexpr int kRecurrenceK = 12;
     // Minimum diagonal run required, in measures (1.0 = one full measure of

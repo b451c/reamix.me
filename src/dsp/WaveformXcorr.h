@@ -7,9 +7,8 @@ namespace reamix::dsp {
 
 // FFT-based normalized cross-correlation of two equal-budget mono snippets.
 // Port of `waveform_xcorr` (python-source/remix/waveform_utils.py L14-53).
-// Used by:
-//   - RepetitionMap (phase-3 step 8) — bar-boundary transition verification.
-//   - Phase-4 remix transition cost scoring (future; same function).
+// Used by the phase-4 remix transition cost scoring (audio-level phase
+// alignment) and by the boundary-waveform helpers.
 //
 // Algorithm in one sentence: window both snippets around their common center,
 // compute xcorr(src, tgt) via `irfft(rfft(src) * conj(rfft(tgt)))`, restrict
