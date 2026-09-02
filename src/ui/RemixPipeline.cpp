@@ -746,6 +746,8 @@ void RemixPipeline::run()
             const int tb = tr.second;
             float quality   = 0.0f;
             float energyDb  = 0.0f;
+            float overlap   = 0.0f;
+            int   anchor    = 0;
             int   junction  = -1;
             int   fallback  = 0;
             auto it = path.transition_metadata.find (tr);
@@ -759,6 +761,9 @@ void RemixPipeline::run()
                 if (jit != it->second.end()) junction = (int) jit->second;
                 auto fit = it->second.find ("junction_fallback");   // sesja 119 DEV-094
                 if (fit != it->second.end()) fallback = (int) fit->second;
+                auto oit = it->second.find ("resolved_overlap_sec");   // DEV-087
+                if (oit != it->second.end()) overlap = (float) oit->second;
+                anchor = it->second.count ("anchor_overlap_samples") ? 1 : 0;
             }
             out.transitionFallbacks.push_back (fallback);
             out.transitionJunctions.push_back (junction);
@@ -766,6 +771,8 @@ void RemixPipeline::run()
             out.transitionToBeats.push_back (tb);
             out.transitionQualities.push_back (quality);
             out.transitionEnergyDiffsDb.push_back (energyDb);
+            out.transitionOverlapSec.push_back (overlap);
+            out.transitionAnchorAccepted.push_back (anchor);
             if (junction >= 0 && junction < (int) blockJunctionLabels.size())
             {
                 out.transitionFromLabels.push_back (blockJunctionLabels[(std::size_t) junction].first);

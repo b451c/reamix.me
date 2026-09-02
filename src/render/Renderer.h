@@ -98,6 +98,12 @@ struct RendererConfig
     double ultraShortTeaserFadeInMs     = 180.0;  // config.py:148 — teaser-fade branch override
     double ultraShortTeaserGapMs        = 60.0;   // config.py:149 — teaser-fade branch override
     double anchorImprovementThreshold   = 0.02;   // config.py:178 — anchor accept gate
+    // DEV-087 (ADR-115 E7, sesja 122): true reproduces the Python preview,
+    // which caps every crossfade at the widest band (200 ms) even when the
+    // edit plan overlaps the clips by more (anchor-accepted splices, up to
+    // ~2 beats) — preview and REAPER Insert then disagree by overlap - cap.
+    // Python-parity tests only; production overlays the whole window.
+    bool   legacyPreviewOverlapCap      = false;
     SpliceConfig splice;                          // delegated to Splice composite methods
 };
 

@@ -574,7 +574,8 @@ bool writeSplicesCsv (const juce::String& path,
     stream.truncate();
 
     stream << "splice_idx,from_beat,to_beat,from_time_sec,to_time_sec,"
-              "splice_remix_time_sec,quality,energy_diff_db,from_label,to_label\n";
+              "splice_remix_time_sec,quality,energy_diff_db,from_label,to_label,"
+              "overlap_sec,anchor\n";   // DEV-087 (sesja 122)
 
     const auto& bt = bundle.beatTimes;
     auto safeBt = [&] (int b) -> double
@@ -592,6 +593,8 @@ bool writeSplicesCsv (const juce::String& path,
         const double edb    = (i < (int) out.transitionEnergyDiffsDb.size()) ? (double) out.transitionEnergyDiffsDb[i] : 0.0;
         const auto   fromLb = (i < (int) out.transitionFromLabels.size())    ? out.transitionFromLabels[i]    : juce::String();
         const auto   toLb   = (i < (int) out.transitionToLabels.size())      ? out.transitionToLabels[i]      : juce::String();
+        const double ov     = (i < (int) out.transitionOverlapSec.size())     ? (double) out.transitionOverlapSec[i] : 0.0;
+        const int    anc    = (i < (int) out.transitionAnchorAccepted.size()) ? out.transitionAnchorAccepted[i] : 0;
 
         stream << i << ','
                << fb << ',' << tb << ','
@@ -600,7 +603,8 @@ bool writeSplicesCsv (const juce::String& path,
                << juce::String (remT,        6) << ','
                << juce::String (q,           6) << ','
                << juce::String (edb,         3) << ','
-               << fromLb << ',' << toLb << '\n';
+               << fromLb << ',' << toLb << ','
+               << juce::String (ov, 4) << ',' << anc << '\n';
     }
     return true;
 }

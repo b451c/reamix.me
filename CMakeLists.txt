@@ -1273,6 +1273,29 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_renderer
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_preview_insert_offset — sesja 122 (ADR-115 E7, DEV-087) self-validation:
+  # the WAV preview must overlay an anchor-accepted overlap exactly as the edit
+  # plan (= REAPER Insert) does — same length, same splice time, both anchored
+  # onsets on one output sample; the legacy cap reproduces the old offset.
+  add_executable(test_preview_insert_offset
+    tests/parity/test_preview_insert_offset.cpp
+    src/render/Renderer.cpp
+    src/render/Splice.cpp
+    src/render/Crossfade.cpp
+    src/render/PhaseAlign.cpp
+    src/dsp/Butterworth.cpp
+    src/dsp/SosFilt.cpp
+  )
+  target_include_directories(test_preview_insert_offset PRIVATE src)
+  if(MSVC)
+    target_compile_options(test_preview_insert_offset PRIVATE /W3)
+  else()
+    target_compile_options(test_preview_insert_offset PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  endif()
+  add_test(NAME preview_insert_offset
+           COMMAND test_preview_insert_offset
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_transition_cost — phase-4 session 18 parity:
   # reamix::remix::computeTransitionCosts vs Python
   # references/python-source/remix/transition_cost.py::compute_transition_costs

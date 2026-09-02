@@ -85,6 +85,11 @@ struct RemixOutput
     std::vector<int>          transitionFromBeats;     // path-source beat idx
     std::vector<int>          transitionToBeats;       // path-dest beat idx
     std::vector<float>        transitionEnergyDiffsDb; // dB
+    // DEV-087 (sesja 122): the overlap the edit plan applies at this splice
+    // ("resolved_overlap_sec") and whether the onset-anchor geometry was
+    // accepted ("anchor_overlap_samples" present). Harness CSV columns.
+    std::vector<float>        transitionOverlapSec;
+    std::vector<int>          transitionAnchorAccepted;
     std::vector<juce::String> transitionFromLabels;
     std::vector<juce::String> transitionToLabels;
     // Sesja 120 (DEV-099): 1 when a Blocks junction found no clean cut and

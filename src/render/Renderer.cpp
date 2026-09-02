@@ -480,9 +480,9 @@ EditPlan Renderer::buildEditPlan(reamix::remix::RemixPath& path)
             std::min(incomingStart, runs[idx + 1].sourceEndSample - 1));
 
         // DEV-087 (ADR-115 E7): when the onset-anchor geometry is accepted this
-        // overlap (>= 2 x 120 ms, up to ~2 beats) is what REAPER Insert applies,
-        // while the preview WAV path caps the crossfade at max_xf (200 ms) -
-        // preview and inserted result diverge by (overlap - max_xf) per splice.
+        // overlap (>= 2 x 120 ms, up to ~2 beats) is what REAPER Insert applies;
+        // since sesja 122 renderEditPlan overlays the same window (see the
+        // fullOverlay branch), so preview and insert agree sample for sample.
         const double overlapSec = static_cast<double>(overlapSamples) / sr_;
         runs[idx].sourceEndSample      = outgoingCut;
         runs[idx].fadeOutSec           = overlapSec;
@@ -658,17 +658,47 @@ void Renderer::renderEditPlan(const EditPlan&         plan,
                         incomingF64[c * ov + k] = static_cast<double>(src2[k]);
                     }
                 }
-                const std::size_t blendedLen = Crossfade::computeResultLen(
+                // DEV-087 (ADR-115 E7, sesja 122): the edit plan overlaps the
+                // two clips by the full `ov` and REAPER Insert plays exactly
+                // that (equal-power fades of length ov, C_FADEINSHAPE 7).
+                // adaptiveCrossfade caps its blend at the widest band
+                // (200 ms) and returns 2*ov - cap samples, so an anchor-
+                // accepted overlap (>= 240 ms, up to ~2 beats; Dance Monkey
+                // 1.84 s in the sesja-122 corpus run) started the incoming
+                // clip ov - cap late: the preview was longer than the insert,
+                // the two onsets the anchor aligned never coincided and the
+                // splice markers inherited the offset (ported verbatim from
+                // renderer.py:439-454). Overlay the whole window with one
+                // equal-power crossfade of length ov instead — what the
+                // inserted items play. Overlaps within the band cap are
+                // untouched (identical timing; the multi-band phase-aligned
+                // blend the listening panels judged stays).
+                const std::size_t adaptiveLen = Crossfade::computeResultLen(
                     ov, ov, sr_, nullptr, 0);
+                const bool fullOverlay = adaptiveLen > ov
+                                      && ! cfg_.legacyPreviewOverlapCap;
+                const std::size_t blendedLen = fullOverlay ? ov : adaptiveLen;
                 std::vector<double> blendedF64(nChannels_ * blendedLen);
-                Crossfade::adaptiveCrossfade(
-                    outgoingF64.data(), nChannels_, ov,
-                    incomingF64.data(), ov,
-                    sr_, nullptr, 0,
-                    /*energyCompensate*/ true,
-                    /*phaseAlign*/       true,
-                    /*maxPhaseShiftMs*/  3.0,
-                    blendedF64.data(), blendedLen);
+                if (fullOverlay) {
+                    // (ov + 0.5) keeps the ms -> int round trip at exactly ov;
+                    // simpleCrossfade clamps to min(outLen, inLen) = ov anyway.
+                    const double overlapMs = (static_cast<double>(ov) + 0.5) * 1000.0 / sr_;
+                    Crossfade::simpleCrossfade(
+                        outgoingF64.data(), nChannels_, ov,
+                        incomingF64.data(), ov,
+                        sr_, overlapMs,
+                        /*energyCompensate*/ false,   // REAPER fades do not
+                        blendedF64.data(), blendedLen);
+                } else {
+                    Crossfade::adaptiveCrossfade(
+                        outgoingF64.data(), nChannels_, ov,
+                        incomingF64.data(), ov,
+                        sr_, nullptr, 0,
+                        /*energyCompensate*/ true,
+                        /*phaseAlign*/       true,
+                        /*maxPhaseShiftMs*/  3.0,
+                        blendedF64.data(), blendedLen);
+                }
 
                 // Cast back to f32 (Python `.astype(result.dtype)`).
                 std::vector<float> blendedF32(nChannels_ * blendedLen);

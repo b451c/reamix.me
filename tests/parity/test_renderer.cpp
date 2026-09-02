@@ -330,6 +330,7 @@ int runCase(const std::string& root, const Case& c, CaseStats& stats)
 
     // --- Construct + run Renderer ---------------------------------------
     reamix::render::RendererConfig cfg; // defaults from config.py:147-178
+    cfg.legacyPreviewOverlapCap = true;  // DEV-087: Python caps the preview blend at 200 ms
     reamix::render::Renderer renderer(
         /*audioPath*/ std::string("phase5-test:") + c.track,
         audioIn.data.data(), nCh, nSamples, sr,
