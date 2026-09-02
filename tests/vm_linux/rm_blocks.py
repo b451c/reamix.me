@@ -69,17 +69,21 @@ def chips(png):
     im = Image.open(png).convert("RGB")
     px = im.load()
     best = (SEGBAR_Y, [])
-    best_len = 0
+    best_score = (0, 0)
     # Sesja 121: rows by distance from the bar centre, ties keep the nearer
     # row - the kind-tinted waveform above the bar (model sections) is as
     # tinted as the bar itself, and a click there only seeks.
+    # Sesja 123: score = (number of runs, tinted pixels). The bottom 2 px of
+    # the bar are pure section cells (one 660 px run, no chip gaps) and won
+    # the old "most tinted pixels" pick when the window sat a pixel lower;
+    # the centre of that run is the gap between two chips (s123b red run).
     for y in sorted(range(SEGBAR_Y - 6, SEGBAR_Y + 7), key=lambda v: abs(v - SEGBAR_Y)):
         if y < 0 or y >= im.size[1]:
             continue
         rs = runs_in_row(px, y, SEGBAR_X0, min(SEGBAR_X1, im.size[0]))
-        total = sum(b - a for a, b in rs)
-        if total > best_len:
-            best_len, best = total, (y, rs)
+        score = (len(rs), sum(b - a for a, b in rs))
+        if score > best_score:
+            best_score, best = score, (y, rs)
     return best
 
 
