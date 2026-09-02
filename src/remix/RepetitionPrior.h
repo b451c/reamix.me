@@ -40,10 +40,13 @@ struct RepetitionPrior
     int  min_run_used { 0 };       // diagonal cells required (TS = one measure; TS/2 after relax)
     std::vector<std::uint8_t> mask; // row-major n x n, 1 = allowed; empty when inactive
 
+    int  outro_exempt_from { 0 };   // targets j >= this index bypass the mask
+
     bool allowed(int i, int j) const noexcept
     {
         if (! active) return true;
         if (i < 0 || j < 0 || i >= n_beats || j >= n_beats) return false;
+        if (j >= outro_exempt_from) return true;
         return mask[static_cast<std::size_t>(i) * n_beats + j] != 0;
     }
 
@@ -63,6 +66,12 @@ struct RepetitionPrior
     // mask starves the DP and the user rated both engines "both bad".
     static constexpr double kMinAllowedPerSource = 3.0;
     static constexpr double kRelaxedMinRunBars   = 0.5;
+    // Outro exemption (sesja 115 user smoke, Billie Jean at 0:24): a song's
+    // ending (fade-out, coda) repeats nothing, so a pure repetition mask can
+    // leave the DP no jump INTO the outro and the remix stops mid-song. Targets
+    // in the last kOutroExemptBars bars bypass the mask (bar alignment still
+    // applies), so every remix can still reach the real ending.
+    static constexpr int kOutroExemptBars = 8;
 
     // `R` is the combined recurrence matrix [n x n] from Recurrence::build.
     // `min_run` defaults to one measure (time_signature cells).

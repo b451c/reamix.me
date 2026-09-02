@@ -18,8 +18,9 @@ static void expectTrue(const char* what, bool v)
 
 int main()
 {
-    // 32 beats, 4/4: downbeats 0,4,8,...; pre-downbeats 3,7,11,...
-    const int n = 32, ts = 4;
+    // 96 beats, 4/4: downbeats 0,4,8,...; pre-downbeats 3,7,11,... The last
+    // 8 bars (beats 64..95) are outro-exempt, so every probe below stays < 64.
+    const int n = 96, ts = 4;
     std::set<int> db, pre;
     for (int b = 0; b < n; b += ts) { db.insert(b); if (b - 1 >= 0) pre.insert(b - 1); }
     pre.insert(n - 1);
@@ -30,6 +31,7 @@ int main()
     std::vector<double> R(static_cast<std::size_t>(n) * n, 0.0);
     auto set = [&](int r, int c, double v) { R[(std::size_t) r * n + c] = v; R[(std::size_t) c * n + r] = v; };
     for (int b = 0; b < 8; ++b) set(b, b + 16, 0.5);
+    for (int b = 40; b < 48; ++b) set(b, b + 16, 0.5);   // second repeat (coverage)
     set(11, 27, 0.9);
 
     const auto p = RepetitionPrior::fromRecurrence(R.data(), n, pre, db, ts);
@@ -46,19 +48,35 @@ int main()
     // 0 hits on the repeat; the isolated (11, 27) cell is 1 hit < 4 -> blocked.
     expectTrue("11 -> 28 blocked (isolated single-beat match)", ! p.allowed(11, 28));
     expectTrue("3 -> 12 blocked (no repetition)", ! p.allowed(3, 12));
-    // Coverage: allowed sources are 3 (->20), 7 (->24), 19 (->4), 23 (->8) ...
+    // Coverage: allowed sources 3, 7, 19, 23, 43, 47, 59, 63 of 24 pre-downbeats (33 %).
     expectTrue("active: source coverage >= 25 %", p.active);
     std::printf("     n_allowed=%d n_sources=%d min_run_used=%d\n", p.n_allowed, p.n_sources, p.min_run_used);
-    // 5 allowed pairs over 8 sources < 3 per source -> relaxed to half a measure.
+    // ~8 allowed pairs over 24 sources < 3 per source -> relaxed to half a measure.
     expectTrue("sparse repeats relax the rule to half a measure", p.min_run_used == ts / 2);
     // Explicit min_run is honoured (no relax).
     const auto pf = RepetitionPrior::fromRecurrence(R.data(), n, pre, db, ts, ts);
     expectTrue("explicit min_run = TS keeps one full measure", pf.min_run_used == ts && pf.allowed(3, 20) && ! pf.allowed(11, 28));
 
+    // Outro exemption: targets in the last 8 bars (32 beats here = the whole
+    // 32-beat track) bypass the mask; probe with a longer track where the
+    // exemption covers only the tail.
+    {
+        const int n2 = 128;
+        std::set<int> db2, pre2;
+        for (int b = 0; b < n2; b += ts) { db2.insert(b); if (b > 0) pre2.insert(b - 1); }
+        std::vector<double> R4(static_cast<std::size_t>(n2) * n2, 0.0);
+        for (int b = 0; b < 8; ++b) { R4[(std::size_t) b * n2 + (b + 16)] = 0.5; R4[(std::size_t) (b + 16) * n2 + b] = 0.5; }
+        for (int b = 40; b < 48; ++b) { R4[(std::size_t) b * n2 + (b + 16)] = 0.5; R4[(std::size_t) (b + 16) * n2 + b] = 0.5; }
+        const auto p4 = RepetitionPrior::fromRecurrence(R4.data(), n2, pre2, db2, ts);
+        expectTrue("outro exemption starts at n - 32", p4.outro_exempt_from == n2 - 32);
+        expectTrue("jump into the last 8 bars allowed without repetition (3 -> 100)", p4.allowed(3, 100));
+        expectTrue("jump into the body still needs repetition (3 -> 80 blocked)", ! p4.allowed(3, 80));
+    }
+
     // Fallback: a matrix with a single tiny repeat -> too few sources -> inactive,
     // and an inactive prior allows everything.
     std::vector<double> R2(static_cast<std::size_t>(n) * n, 0.0);
-    for (int b = 0; b < 4; ++b) R2[(std::size_t) b * n + (b + 16)] = 0.5;
+    for (int b = 0; b < 4; ++b) R2[(std::size_t) b * n + (b + 16)] = 0.5;   // one source of 24 -> 4 % coverage
     const auto p2 = RepetitionPrior::fromRecurrence(R2.data(), n, pre, db, ts);
     expectTrue("sparse repeat -> prior inactive (fallback to E3)", ! p2.active);
     expectTrue("inactive prior allows every pair", p2.allowed(11, 28) && p2.allowed(3, 12));

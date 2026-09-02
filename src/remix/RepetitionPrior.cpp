@@ -57,6 +57,7 @@ RepetitionPrior RepetitionPrior::fromRecurrence(const double* R, int n,
     if (! user_run && per_source < kMinAllowedPerSource && relaxed < min_run)
         fill(relaxed);
     p.n_sources = n_sources;
+    p.outro_exempt_from = std::max(0, n - kOutroExemptBars * ts);
     const double coverage = static_cast<double>(n_sources)
                           / static_cast<double>(pre_db_set.size());
     p.active = p.n_allowed > 0 && coverage >= kMinSourceCoverage;
