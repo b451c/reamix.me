@@ -184,6 +184,7 @@ struct RegionCostInputs
     // constraint (pre-downbeat source -> downbeat target) with the top-k
     // chosen among allowed targets only. false = legacy Python-parity path.
     bool v2_scoring = false;
+    bool disable_repetition_prior = false;   // ADR-115 E4 (sesja 115)
 
 
 };

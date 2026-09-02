@@ -1,7 +1,8 @@
 #include "remix/RegionCost.h"
 
 #include "remix/Quality.h"
-#include "remix/SignalNorm.h"  // ADR-115 v2 scoring
+#include "remix/SignalNorm.h"
+#include "remix/RepetitionPrior.h"  // ADR-115 E4 (sesja 115)
 #include "dsp/WaveformXcorr.h"
 
 #include <algorithm>
@@ -425,6 +426,13 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             computeChromaContinuityMatrix(chroma_slice.data(), n_total, n_chroma);
     }
 
+    // ADR-115 E4 (sesja 115): repetition-diagonal prior on the region slice
+    // (region-relative indices, same fallback rule as TransitionCost).
+    const RepetitionPrior rep_prior = v2_bar_constraint && ! in.disable_repetition_prior
+        ? RepetitionPrior::build(in.features + static_cast<std::size_t>(in.entry_beat) * in.n_features,
+                                 n_region, in.n_features, pre_db_set, db_set, in.time_signature)
+        : RepetitionPrior{};
+
     // Build cost matrix (region_cost.py:113-148).
     out.region_W.assign(static_cast<std::size_t>(n_region) * n_region, INF);  // CLEAN
 
@@ -448,6 +456,7 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             if (std::abs(rj - ri) < REGION_MICRO_SKIP_BEATS) continue;  // C1
             // v2: bar alignment as a candidate constraint (ADR-115 E3)
             if (v2_bar_constraint && ! (pre_db_set.count(ri) > 0 && db_set.count(rj) > 0)) continue;
+            if (v2_bar_constraint && ! rep_prior.allowed(ri, rj)) continue;   // ADR-115 E4
             const double cd = chroma_D[static_cast<std::size_t>(ri) * n_region + rj];
             if (cd > REGION_CHROMA_PREFILTER) continue;  // C2
 

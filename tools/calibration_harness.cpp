@@ -634,6 +634,9 @@ int main (int argc, char** argv)
         std::fprintf (stderr, "[harness] dump-components: running computeTransitionCosts (v2=%d)...\n",
                       (int) args.dumpV2);
         auto tc = reamix::remix::computeTransitionCosts (tcin);
+        std::fprintf (stderr, "[harness] repetition prior: %s (%d allowed pairs over %d sources)\n",
+                      tc.repetition_prior_active ? "ACTIVE" : "inactive",
+                      tc.repetition_prior_pairs, tc.repetition_prior_sources);
         {
             std::set<int> sources;
             for (const auto& kv : tc.candidates) sources.insert (kv.second.from_beat);

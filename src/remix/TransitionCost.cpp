@@ -2,6 +2,7 @@
 
 #include "remix/Quality.h"
 #include "remix/SignalNorm.h"  // ADR-115 v2 scoring
+#include "remix/RepetitionPrior.h"  // ADR-115 E4 (sesja 115)
 #include "remix/SegmentData.h"
 #include "dsp/WaveformXcorr.h"
 
@@ -545,6 +546,16 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
     const bool v2_bar_constraint =
         v2 && ! db_idx.pre_db_set.empty() && ! db_idx.db_set.empty();
     const QualityWeights& v2_default_weights = v2 ? kV2QualityWeights : kDefaultQualityWeights;
+    // ADR-115 E4 (sesja 115): repetition-diagonal candidate prior. Inactive
+    // (mask empty, allowed() == true) when the track yields too few diagonal
+    // pairs; then the E3 bar-aligned set is used as-is.
+    const RepetitionPrior rep_prior = v2_bar_constraint && ! in.disable_repetition_prior
+        ? RepetitionPrior::build(in.features, n, in.n_features,
+                                 db_idx.pre_db_set, db_idx.db_set, in.time_signature)
+        : RepetitionPrior{};
+    res.repetition_prior_active  = rep_prior.active;
+    res.repetition_prior_pairs   = rep_prior.n_allowed;
+    res.repetition_prior_sources = rep_prior.n_sources;
 
     // ADR-066 (sesja 77): pre-compute MFCC + delta-MFCC L2 similarity matrix
     // once for per-pair `mfcc_continuity` composition inside the inner
@@ -659,10 +670,12 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
         const int block_lo = std::max(0, i - micro_skip + 1);
         const int block_hi = std::min(n, i + micro_skip);
         for (int k = block_lo; k < block_hi; ++k) chroma_row[k] = INF;
-        // v2: top-k among downbeat targets only (bar alignment as constraint).
+        // v2: top-k among downbeat targets only (bar alignment as constraint),
+        // further restricted to repetition-diagonal pairs when the E4 prior
+        // is active for this track.
         if (v2_bar_constraint) {
             for (int k = 0; k < n; ++k)
-                if (db_idx.db_set.count(k) == 0) chroma_row[k] = INF;
+                if (db_idx.db_set.count(k) == 0 || ! rep_prior.allowed(i, k)) chroma_row[k] = INF;
         }
 
         // Top-k by chroma (UNSORTED — matches np.argpartition).

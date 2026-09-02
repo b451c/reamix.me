@@ -1490,6 +1490,8 @@ if(REAMIX_BUILD_TESTS)
   add_executable(test_transition_cost
     tests/parity/test_transition_cost.cpp
     src/remix/TransitionCost.cpp
+    src/remix/RepetitionPrior.cpp
+    src/analysis/Recurrence.cpp
     src/remix/SegmentData.cpp
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
@@ -1658,6 +1660,8 @@ if(REAMIX_BUILD_TESTS)
     src/remix/RegionOptimizer.cpp
     src/remix/RegionCost.cpp
     src/remix/TransitionCost.cpp
+    src/remix/RepetitionPrior.cpp
+    src/analysis/Recurrence.cpp
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
     src/remix/SegmentData.cpp
@@ -1721,6 +1725,8 @@ if(REAMIX_BUILD_TESTS)
     tests/parity/test_block_assembly.cpp
     src/remix/BlockAssembly.cpp
     src/remix/TransitionCost.cpp
+    src/remix/RepetitionPrior.cpp
+    src/analysis/Recurrence.cpp
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
     src/remix/SegmentData.cpp
@@ -1790,6 +1796,28 @@ if(REAMIX_BUILD_TESTS)
   endif()
   add_test(NAME signal_norm_parity
            COMMAND test_signal_norm
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+  # test_repetition_prior — sesja 115 (ADR-115 E4) self-validation of the
+  # repetition-diagonal candidate prior on synthetic recurrence matrices.
+  add_executable(test_repetition_prior
+    tests/parity/test_repetition_prior.cpp
+    src/remix/RepetitionPrior.cpp
+    src/analysis/Recurrence.cpp
+  )
+  target_include_directories(test_repetition_prior PRIVATE
+    src
+  )
+  if(MSVC)
+    target_compile_options(test_repetition_prior PRIVATE /W3)
+  else()
+    target_compile_options(test_repetition_prior PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME repetition_prior_parity
+           COMMAND test_repetition_prior
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
   # test_mfcc_continuity — sesja 77 (DEV-028 ADR-066) self-validation.
@@ -1903,6 +1931,8 @@ if(REAMIX_BUILD_TESTS)
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
+    src/remix/RepetitionPrior.cpp
+    src/analysis/Recurrence.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
   )
@@ -1937,6 +1967,8 @@ if(REAMIX_BUILD_TESTS)
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
+    src/remix/RepetitionPrior.cpp
+    src/analysis/Recurrence.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
   )
@@ -1969,6 +2001,8 @@ if(REAMIX_BUILD_TESTS)
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
     src/remix/TransitionCost.cpp
+    src/remix/RepetitionPrior.cpp
+    src/analysis/Recurrence.cpp
     src/remix/SegmentData.cpp
     src/dsp/WaveformXcorr.cpp
     src/dsp/SosFilt.cpp
@@ -2201,6 +2235,8 @@ if(ORT_FOUND)
     src/remix/SignalNorm.cpp
     src/remix/SegmentData.cpp
     src/remix/TransitionCost.cpp
+    src/remix/RepetitionPrior.cpp
+    src/analysis/Recurrence.cpp
     src/ui/AnalyzePipeline.cpp
     src/ui/AnalysisDiskCache.cpp
     src/ui/Theme.cpp

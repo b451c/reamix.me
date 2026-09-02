@@ -367,6 +367,9 @@ struct TransitionCostInputs
     // constraint (pre-downbeat source -> downbeat target) with the top-k
     // chosen among allowed targets only. false = legacy Python-parity path.
     bool v2_scoring = false;
+    // ADR-115 E4 (sesja 115): set to skip the repetition-diagonal candidate
+    // prior while keeping the rest of v2 (diagnostics / A-B of the prior).
+    bool disable_repetition_prior = false;
 
     // ---- Reserved 11th cost-component slot, DEV-028 sesja 74 ----------
     // Optional flat (n_beats × n_beats) row-major double matrix indexed
@@ -393,6 +396,10 @@ struct TransitionCostResult
 
     // importance[i] = baseline weight per beat (0.3 outro / 1.0 chorus / 0.5 default).
     std::vector<double> importance;
+    // ADR-115 E4 (sesja 115): repetition-prior diagnostics for this build.
+    bool repetition_prior_active  = false;
+    int  repetition_prior_pairs   = 0;   // allowed (pre-downbeat, downbeat) pairs
+    int  repetition_prior_sources = 0;   // pre-downbeat sources with >= 1 allowed target
 
     // Sparse candidate map. Iteration order is lexicographic by (from, to).
     std::map<std::pair<int, int>, TransitionCandidate> candidates;
