@@ -477,6 +477,9 @@ viterbiDP(const ViterbiDPInputs& in)
                 // Python L237-238: backward must respect min_segment.
                 if (j < i && (i - j) < in.min_segment_beats) continue;
 
+                // DEV-112 (sesja 124): forward-only density path.
+                if (j < i && in.no_backward_jumps) continue;
+
                 // Python L241-242: don't jump backward into intro.
                 if (j < i && j < in.intro_beats) continue;
 
@@ -561,6 +564,9 @@ viterbiDP(const ViterbiDPInputs& in)
 
                     // Apply Edit Length scale to entire jump-tax.
                     cost += jump_extra * in.edit_length_jump_scale;
+
+                    // DEV-112 (sesja 124): density floor price (0 = bit-exact).
+                    cost -= in.jump_bonus;
                 }
 
                 // Python L306-313: L-inf tracking.
@@ -661,6 +667,58 @@ viterbiDP(const ViterbiDPInputs& in)
     result.path.assign(path_rev.rbegin(), path_rev.rend());
     result.total_cost = best_cost;
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// viterbiDPWithJumpFloor (DEV-112, sesja 124)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+int countJumps(const std::vector<std::int64_t>& path)
+{
+    int n = 0;
+    for (std::size_t k = 1; k < path.size(); ++k) {
+        if (path[k] != path[k - 1] + 1) ++n;
+    }
+    return n;
+}
+
+} // namespace
+
+ViterbiPath
+viterbiDPWithJumpFloor(ViterbiDPInputs in, int min_jumps_floor)
+{
+    in.jump_bonus = 0.0;
+    ViterbiPath base = viterbiDP(in);
+    if (min_jumps_floor <= 0 || base.path.empty() || countJumps(base.path) >= min_jumps_floor) {
+        return base;
+    }
+
+    // Find a bonus that reaches the floor (expand), then the smallest one (bisect).
+    double      lo = 0.0;
+    double      hi = kJumpBonusMax;
+    ViterbiPath at_hi;
+    for (int expand = 0; ; ++expand) {
+        in.jump_bonus = hi;
+        at_hi = viterbiDP(in);
+        if (!at_hi.path.empty() && countJumps(at_hi.path) >= min_jumps_floor) break;
+        if (expand >= 2) return at_hi.path.empty() ? base : at_hi;   // best effort
+        lo = hi;
+        hi *= 2.0;
+    }
+    for (int step = 0; step < kJumpBonusSteps; ++step) {
+        const double mid = 0.5 * (lo + hi);
+        in.jump_bonus = mid;
+        ViterbiPath r = viterbiDP(in);
+        if (!r.path.empty() && countJumps(r.path) >= min_jumps_floor) {
+            hi    = mid;
+            at_hi = std::move(r);
+        } else {
+            lo = mid;
+        }
+    }
+    return at_hi;
 }
 
 } // namespace reamix::remix

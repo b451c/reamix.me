@@ -1735,6 +1735,30 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_edit_length
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_edit_density — sesja 124 (ADR-115 P3 / DEV-112) self-validation.
+  # Validates the Edit density maximum-run gate in ViterbiDP (default off =
+  # bit-exact, neutral when not binding, run length bounded, cut count
+  # monotone, forced cuts bar-aligned). NO Python reference (C++-canonical).
+  add_executable(test_edit_density
+    tests/parity/test_edit_density.cpp
+    src/remix/ViterbiDP.cpp
+    src/remix/SegmentData.cpp
+  )
+  target_include_directories(test_edit_density PRIVATE
+    src
+  )
+  if(MSVC)
+    target_compile_options(test_edit_density PRIVATE /W3)
+  else()
+    target_compile_options(test_edit_density PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME edit_density_parity
+           COMMAND test_edit_density
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_region_inner_loop — sesja 94 (ADR-081 STATUS UPDATE 1) self-validation.
   # Validates Region β-model "inner-loop synthesizer" cost-function rebalance
   # (cap 1.0→5.0, backward penalty 0.5→0.05, jump base 0.8→0.3 in beta path).

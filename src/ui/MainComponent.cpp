@@ -256,6 +256,7 @@ MainComponent::MainComponent()
         kickRemixPipeline (op);
     };
     editTuningBar_.setDefaultBars (defaultDensityBars (appMode_));
+    editTuningBar_.setCutLabels (appMode_ == reamix::ui::ModeTabs::Mode::Duration);
     editTuningBar_.setBars (defaultDensityBars (appMode_));
 
     // Sesja 108 — collapse/expand. Persist to ExtState + re-run resized()
@@ -1160,6 +1161,7 @@ MainComponent::MainComponent()
         // re-run; the hash currentEditDensityBars() returns matches the key
         // the mode's last remix was stored under -> tryRestoreModeRemix hit).
         editTuningBar_.setDefaultBars (defaultDensityBars (m));
+        editTuningBar_.setCutLabels (m == reamix::ui::ModeTabs::Mode::Duration);
         {
             const int bars = currentEditDensityBars();
             editTuningBar_.setBars (bars > 0 ? bars : defaultDensityBars (m));
@@ -4000,6 +4002,7 @@ void MainComponent::recomputeRegionState()
     // change (tab click, auto-Region flip, item attach): the mode's default
     // detent + the persisted value for (item, mode). Setters fire no callback.
     editTuningBar_.setDefaultBars (defaultDensityBars (appMode_));
+    editTuningBar_.setCutLabels (appMode_ == reamix::ui::ModeTabs::Mode::Duration);
     {
         const int bars = currentEditDensityBars();
         editTuningBar_.setBars (bars > 0 ? bars : defaultDensityBars (appMode_));
@@ -5918,11 +5921,10 @@ void MainComponent::resized()
     statusBar_    .setBounds (r.removeFromBottom (22));
     transportBar_ .setBounds (r.removeFromBottom (54));
     // ADR-115 P3 (sesja 123) — one-row Edit density bar (76 px expanded, 28
-    // collapsed). Shown in Region only: in Blocks the queue fixes the number
-    // of cuts, and in Duration the control is inert until the DP gets a
-    // maximum-run state (DEV-112, user decision sesja 123: hide rather than
-    // show a control that changes nothing).
-    const bool showTuning = (appMode_ == reamix::ui::ModeTabs::Mode::Region);
+    // collapsed). Shown in Duration + Region; hidden in Blocks, where the
+    // queue fixes the number of cuts. Duration returned with the min-cuts
+    // floor (DEV-112, sesja 124): before it the control was inert there.
+    const bool showTuning = (appMode_ != reamix::ui::ModeTabs::Mode::Blocks);
     editTuningBar_.setVisible (showTuning);
     if (showTuning)
         editTuningBar_.setBounds (r.removeFromBottom (editTuningBar_.getPreferredHeight()));

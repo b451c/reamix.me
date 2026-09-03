@@ -7,10 +7,12 @@
 #include "Theme.h"
 
 // EditTuningBar — ADR-115 P3 (sesja 123). The one user control besides the
-// target duration: "Edit density", five detents mapped to the minimum run
-// between two cuts in bars (16 / 8 / 4 / 2 / 1). Left = fewer cuts, right =
-// more cuts. Replaces the AuditionBar (Tone / Edit length / Allow +- / Min
-// segment, ADR-080 / 083 / 084) and the Advanced weights window (ADR-097):
+// target duration: "Edit density", five detents (16 / 8 / 4 / 2 / 1, stored
+// as bars; per-mode meaning in EditDensity.h). Left = fewer cuts, right =
+// more cuts. In Region the readout is the loop length in bars; in Duration
+// it reads the cut floor ("At least 2 cuts", DEV-112 sesja 124). Replaces
+// the AuditionBar (Tone / Edit length / Allow +- / Min segment, ADR-080 /
+// 083 / 084) and the Advanced weights window (ADR-097):
 // the weights are calibrated by the blinded panels, the density is the axis
 // the literature and every shipped remix tool agree on.
 //
@@ -39,6 +41,7 @@ public:
     // Programmatic setters — no callback.
     void setBars        (int bars);        // one of kDetentBars
     void setDefaultBars (int bars);        // the mode's default (tick + double-click)
+    void setCutLabels   (bool cutLabels);  // Duration readout + tooltip (cuts), else bars
     int  barsValue()    const noexcept { return bars_; }
     int  defaultBars()  const noexcept { return defaultBars_; }
 
@@ -74,6 +77,7 @@ private:
 
     int  bars_        = 4;
     int  defaultBars_ = 4;
+    bool cutLabels_   = false;
     bool suppressCallbacks_ = false;
 
     bool collapsed_     = false;

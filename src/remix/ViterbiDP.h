@@ -284,6 +284,27 @@ struct ViterbiDPInputs
     // supersedes sesja-92 ADR-083 § Implementation step 4-6 additive design).
     // Self-validated by `tests/parity/test_edit_length.cpp`.
     double              edit_length_jump_scale = 1.0;
+
+    // ---- ADR-115 P3 / DEV-112 Edit density in Duration (sesja 124) ------
+    // No backward jumps at all. Set by CleanOptimizer when the density
+    // floor asks for more cuts on a SHORTENING remix: with backward jumps
+    // allowed, a many-cut path degenerates into one clean loop played over
+    // and over (sesja-124 harness on Billie Jean: 1/3 of the track three
+    // times), while forward-only means "remove several phrases", the edit a
+    // listener expects from a shorter version. Default false = bit-exact
+    // legacy path. CANONICAL DEFINITION (no Python reference); self-validated
+    // by `tests/parity/test_edit_density.cpp`.
+    bool                no_backward_jumps = false;
+
+    // Per-jump bonus subtracted from every non-sequential edge (DEV-112).
+    // Default 0.0 = bit-exact. `viterbiDPWithJumpFloor` searches the
+    // smallest bonus that makes the optimal path carry the requested number
+    // of cuts (a Lagrangian relaxation of "at least k cuts": the DP keeps
+    // one greedy jump count per cell, so `min_jumps` as a filter prunes
+    // feasible k-cut paths - sesja-124 fixture: empty at k >= 3 although a
+    // 4-cut path exists). Every cut is still the globally cheapest choice
+    // under that price.
+    double              jump_bonus = 0.0;
 };
 
 struct ViterbiPath
@@ -293,5 +314,15 @@ struct ViterbiPath
 };
 
 ViterbiPath viterbiDP(const ViterbiDPInputs& inputs);
+
+// DEV-112 (sesja 124): the path of `viterbiDP` with the smallest jump bonus
+// (bisection over [0, kJumpBonusMax], expanded geometrically when needed)
+// whose optimal path has at least `min_jumps_floor` non-sequential steps.
+// floor <= 0 or already satisfied at bonus 0 = `viterbiDP(inputs)` verbatim
+// (bit-exact). When even the largest bonus falls short, the best effort
+// (that path) is returned - a floor is a request, not a constraint.
+inline constexpr double kJumpBonusMax   = 2.0;   // ~ the largest per-jump tax on the v2 path
+inline constexpr int    kJumpBonusSteps = 6;     // bisection iterations (resolution 1/64 of the range)
+ViterbiPath viterbiDPWithJumpFloor(ViterbiDPInputs inputs, int min_jumps_floor);
 
 } // namespace reamix::remix

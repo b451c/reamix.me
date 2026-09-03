@@ -229,6 +229,19 @@ struct CleanOptimizerInputs
     // dominate the existing ~2.4 per-jump penalty).
     double edit_length_jump_scale = 1.0;
 
+    // ADR-115 P3 / DEV-112 sesja 124 — Edit density "More cuts" in Duration.
+    // `min_jumps_floor` = at least this many cuts, found by
+    // `viterbiDPWithJumpFloor` (smallest per-jump bonus whose optimal path
+    // carries the floor; best effort when none does - a floor is a request,
+    // not a constraint). `no_backward_when_shortening` makes a shortening
+    // remix forward-only (see ViterbiDPInputs::no_backward_jumps).
+    // Defaults 0 / false = bit-exact baseline. Rejected alternatives
+    // (sesja 124, DEV-112): a maximum-run gate (sparse pools strand or loop
+    // the path) and the DP's own `min_jumps` filter (greedy per-cell jump
+    // count prunes feasible k-cut paths).
+    int    min_jumps_floor            = 0;
+    bool   no_backward_when_shortening = false;
+
     // A6/A7: waveform_sample_rate / boundary_waveforms — stored by Python
     // `__init__` (L101-102) but NOT consumed by `optimize()` main-path.
     // Used only by `remix_region` (mixin, session 23) + phase-5 renderer.
@@ -372,6 +385,8 @@ private:
     int                                                         max_transitions_;
     double                                                      duration_tolerance_sec_;
     double                                                      edit_length_jump_scale_ = 1.0;  // ADR-084 sesja 93
+    int                                                         min_jumps_floor_ = 0;              // DEV-112 sesja 124
+    bool                                                        no_backward_when_shortening_ = false; // DEV-112 sesja 124
     // ADR-083 sesja 92 — true when UI Min cut slider was dragged off
     // default 16. When set, _run_dp_and_build_path uses min_seq_after_jump_
     // directly instead of adaptive cooldown scaling — user explicit override

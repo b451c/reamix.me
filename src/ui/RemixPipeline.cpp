@@ -8,6 +8,7 @@
 #include "remix/BlockAssembly.h"
 #include "remix/Optimizer.h"
 #include "remix/Path.h"
+#include "ui/EditDensity.h"   // DEV-112 (sesja 124): density detent -> cut floor
 #include "remix/RegionCost.h"
 #include "remix/RegionOptimizer.h"
 #include "remix/TransitionCost.h"
@@ -574,26 +575,38 @@ void RemixPipeline::run()
             oin.time_signature = gridBarBeats;
             oin.sample_rate    = kAnalysisSampleRate;
 
-            // ADR-115 P3 (sesja 123) — Edit density in Duration. The default
-            // (0 / 4 bars = COOLDOWN_BARS) keeps the legacy path bit-exact:
-            // no cooldown override (the adaptive scaling for ratios < 0.5
-            // stays), jump scale 1.0, transition cap 6. Another detent sets
-            // the cooldown to bars x TS (bypassing the adaptive scaling, as
-            // the Min cut override did), scales the jump tax by bars / 4
-            // (16 bars = 4x, 1 bar = 0.25x - the ADR-084 range over the five
-            // detents) and scales the transition cap inversely (16 bars: 2,
-            // 8: 3, 4: 6, 2: 12, 1: 16) so "more cuts" can actually add cuts.
+            // ADR-115 P3 (sesja 123) + DEV-112 (sesja 124) — Edit density in
+            // Duration. The default (0 / 4 bars = COOLDOWN_BARS) keeps the
+            // legacy path bit-exact: no cooldown override (the adaptive
+            // scaling for ratios < 0.5 stays), jump scale 1.0, transition
+            // cap 6, no density floor.
+            // "Fewer cuts" (8 / 16 bars): cooldown bars x TS (bypassing the
+            // adaptive scaling, as the Min cut override did), jump tax x
+            // bars / 4 (2x / 4x) and the transition cap 6 x 4 / bars (3 / 2)
+            // - a preference the DP already leans to, so it changes little.
+            // "More cuts" (detents 2 / 1): at least 2 / 4 cuts, forward-only
+            // when shortening, phrase cooldown untouched; best effort when no
+            // jump bonus reaches the floor (viterbiDPWithJumpFloor). The
+            // detent value is still "bars" for the cache key / harness; the
+            // Duration bar labels read the cut counts (EditTuningBar).
+            // DEV-112: a maximum-run gate (cut every N bars) was measured
+            // and rejected - sparse pools strand or loop the path.
             oin.duration_tolerance_sec      = reamix::remix::kDurationToleranceSecDefault;
             {
                 constexpr int kDefaultBars = reamix::remix::COOLDOWN_BARS;
                 const int bars = in_.edit_density_bars > 0 ? in_.edit_density_bars : kDefaultBars;
-                if (bars != kDefaultBars)
+                if (bars > kDefaultBars)
                 {
                     oin.min_seq_after_jump_override = bars * gridBarBeats;
                     oin.edit_length_jump_scale      = (double) bars / (double) kDefaultBars;
                     oin.max_transitions             = juce::jlimit (2, 16,
                         juce::roundToInt ((double) reamix::remix::kMaxTransitionsDefaultOpt
                                           * (double) kDefaultBars / (double) bars));
+                }
+                else if (bars < kDefaultBars)
+                {
+                    oin.min_jumps_floor             = reamix::ui::densityMinCuts (bars);
+                    oin.no_backward_when_shortening = true;
                 }
             }
 

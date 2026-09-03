@@ -1,4 +1,5 @@
 #include "EditTuningBar.h"
+#include "EditDensity.h"
 
 namespace reamix::ui
 {
@@ -20,10 +21,7 @@ int EditTuningBar::barsForDetent (int detent) noexcept
 EditTuningBar::EditTuningBar()
 {
     label_.setText ("Edit density", juce::dontSendNotification);
-    label_.setTooltip ("Minimum length of music between two cuts, in bars.\n"
-                       "Fewer cuts: long untouched stretches, the edit stays close to the original.\n"
-                       "More cuts: shorter phrases may be repeated or skipped.\n"
-                       "Double-click the slider to return to the default.");
+    setCutLabels (false);
     label_.setFont (th::uiFont (th::fs::Md, 500));
     label_.setColour (juce::Label::textColourId, th::Fg1);
     label_.setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
@@ -86,8 +84,25 @@ void EditTuningBar::sliderValueChanged (juce::Slider* s)
     if (onBarsChanged) onBarsChanged (bars_);
 }
 
+void EditTuningBar::setCutLabels (bool cutLabels)
+{
+    cutLabels_ = cutLabels;
+    label_.setTooltip (cutLabels
+        ? juce::String ("How many cuts the edit may use.\n"
+                        "Fewer cuts: long untouched stretches, the edit stays close to the original.\n"
+                        "More cuts: at least 2 or 4 cuts - a shorter version removes several phrases "
+                        "instead of one, a longer one repeats several; fewer when the track has no clean way.\n"
+                        "Double-click the slider to return to the default.")
+        : juce::String ("Length of the loop between two cuts, in bars.\n"
+                        "Fewer cuts: long untouched stretches, the edit stays close to the original.\n"
+                        "More cuts: shorter phrases may be repeated or skipped.\n"
+                        "Double-click the slider to return to the default."));
+    repaint();
+}
+
 juce::String EditTuningBar::readout() const
 {
+    if (cutLabels_) return durationDensityLabel (bars_);
     const juce::String n = juce::String (bars_) + (bars_ == 1 ? " bar" : " bars");
     return bars_ == defaultBars_ ? juce::String::fromUTF8 ("Default \xc2\xb7 ") + n : n;
 }

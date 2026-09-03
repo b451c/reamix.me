@@ -211,6 +211,9 @@ CleanOptimizer::CleanOptimizer(const CleanOptimizerInputs& in)
     // ADR-084 sesja 93 — Edit Length multiplicative jump-cost scale
     // propagated to ViterbiDP. Supersedes sesja-92 ADR-083 additive design.
     edit_length_jump_scale_ = in.edit_length_jump_scale;
+    // DEV-112 sesja 124 — Edit density "More cuts" (defaults = bit-exact).
+    min_jumps_floor_             = std::max(0, in.min_jumps_floor);
+    no_backward_when_shortening_ = in.no_backward_when_shortening;
 
     // Python L111: `self._segments = list(segments or [])`. Own a copy so
     // the caller can free its buffer. `analysis::Segment` is a plain struct
@@ -586,8 +589,11 @@ CleanOptimizer::runDpAndBuildPath(double* W, const DpParams& params) const
     // .min_segment_beats` at runtime (viterbi_dp.py:237) — same value.
     // ADR-084 sesja 93 — Edit Length multiplicative jump-cost scale propagated.
     dp_in.edit_length_jump_scale = edit_length_jump_scale_;
+    // DEV-112 sesja 124 — density floor (jump-bonus search) + forward-only
+    // shortening. floor 0 = `viterbiDP` verbatim (bit-exact legacy path).
+    dp_in.no_backward_jumps = no_backward_when_shortening_ && params.is_shortening;
 
-    ViterbiPath dp_result = viterbiDP(dp_in);
+    ViterbiPath dp_result = viterbiDPWithJumpFloor(dp_in, min_jumps_floor_);
     std::vector<std::int64_t> path = std::move(dp_result.path);
     double                    cost = dp_result.total_cost;
 
