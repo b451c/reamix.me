@@ -1,4 +1,5 @@
 #include "ui/AnalyzePipeline.h"
+#include "analysis/GridConsistency.h"   // DEV-088 (sesja 124)
 #include "ui/LoopSpotsBuilder.h"   // ADR-115 E11 (sesja 117)
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -40,22 +41,6 @@ namespace
     // For each beat, check whether any downbeat time falls within half a beat
     // period — port of the Lua / Python beat_is_downbeat semantic used by the
     // WaveformView grid.
-    std::vector<bool> computeDownbeatMask (const std::vector<double>& beats,
-                                           const std::vector<double>& downbeats)
-    {
-        std::vector<bool> mask (beats.size(), false);
-        if (beats.size() < 2 || downbeats.empty()) return mask;
-
-        const double tol = 0.25 * (beats.back() - beats.front()) / (double) beats.size();
-        for (size_t i = 0; i < beats.size(); ++i)
-        {
-            for (double db : downbeats)
-            {
-                if (std::abs (db - beats[i]) < tol) { mask[i] = true; break; }
-            }
-        }
-        return mask;
-    }
 }
 
 AnalyzePipeline::AnalyzePipeline (Input                 in,
@@ -217,11 +202,19 @@ void AnalyzePipeline::run()
     }
     if (threadShouldExit()) return;
 
-    bundle->bpm           = (double) det.tempo;
-    bundle->timeSigNum    = (int) det.timeSigNum;
-    bundle->beatTimes     = toDoubles (det.beats);
-    bundle->downbeatTimes = toDoubles (det.downbeats);
-    bundle->beatIsDownbeat = computeDownbeatMask (bundle->beatTimes, bundle->downbeatTimes);
+    // DEV-088 (sesja 124) — the bundle carries a consistent grid: phase-
+    // consistent gaps filled, downbeats on the grid (off-grid / hole-
+    // adjacent dropped), bar length measured, tempo = the grid's own
+    // (the detector's octave-corrected BPM could be 2x the beat rate).
+    {
+        const auto grid = reamix::analysis::makeConsistentGrid (
+            toDoubles (det.beats), toDoubles (det.downbeats), (int) det.timeSigNum);
+        bundle->bpm            = grid.bpm;
+        bundle->timeSigNum     = grid.bar_beats;
+        bundle->beatTimes      = grid.beats;
+        bundle->downbeatTimes  = grid.downbeats;
+        bundle->beatIsDownbeat = grid.beatIsDownbeat;
+    }
 
     // ── Stage 2b — SectionClassifier (sesja 121, DEV-098) ──────────
     // LinkSeg sections from the full mix + the beat grid, raw model times

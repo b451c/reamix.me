@@ -1638,6 +1638,29 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_beat_grid
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_grid_consistency — sesja 124 (DEV-088) self-validation of the
+  # analysis-stage grid (phase-consistent gap fill, holes kept, downbeats
+  # on the grid, grid tempo). NO Python / REABeat reference (C++-canonical).
+  add_executable(test_grid_consistency
+    tests/parity/test_grid_consistency.cpp
+    src/analysis/GridConsistency.cpp
+    src/remix/BeatGrid.cpp
+  )
+  target_include_directories(test_grid_consistency PRIVATE
+    src
+  )
+  if(MSVC)
+    target_compile_options(test_grid_consistency PRIVATE /W3)
+  else()
+    target_compile_options(test_grid_consistency PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME grid_consistency_parity
+           COMMAND test_grid_consistency
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_mfcc_continuity — sesja 77 (DEV-028 ADR-066) self-validation.
   # Validates `computeMfccContinuityMatrix` against hand-computed expected
   # values + mathematical invariants. NO Python reference (C++-canonical
@@ -2177,6 +2200,7 @@ if(ORT_FOUND)
     src/remix/TransitionCost.cpp
     src/remix/RepetitionPrior.cpp
     src/remix/BeatGrid.cpp
+    src/analysis/GridConsistency.cpp
     src/remix/RegionCost.cpp
     src/remix/PairScorer.cpp
     src/remix/LoopSpots.cpp
