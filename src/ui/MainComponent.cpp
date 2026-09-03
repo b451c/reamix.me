@@ -242,15 +242,25 @@ MainComponent::MainComponent()
                 bars == defaultDensityBars (appMode_) ? 0 : bars;
         if (analysisState_ != AnalysisState::Complete) return;
         if (currentSourcePath_.isEmpty()) return;
+        // Sesja 124 (user report): in Region mode with no region there is
+        // nothing to re-run - a kick here rendered a whole-track remix and
+        // flipped the waveform to the Remix variant, hiding the sections
+        // and the loop-spot chips. Persist only; the value applies to the
+        // next region remix. The region is the same effective one the
+        // target slider uses (the live selection or the last region remix).
+        const auto region = appMode_ == reamix::ui::ModeTabs::Mode::Region
+                              ? deriveEffectiveRegion (currentRegion_, currentRemix_)
+                              : std::nullopt;
+        if (appMode_ == reamix::ui::ModeTabs::Mode::Region && ! region.has_value()) return;
 
         PendingRemixOp op;
         op.targetSec = durationPanel_.getTarget();
         if (auto bIt = blockedBySource_.find (currentSourcePath_); bIt != blockedBySource_.end())
             op.blockedTransitions = bIt->second;
-        if (currentRegion_.has_value())
+        if (region.has_value())
         {
-            op.regionStartSec = currentRegion_->startSec;
-            op.regionEndSec   = currentRegion_->endSec;
+            op.regionStartSec = region->startSec;
+            op.regionEndSec   = region->endSec;
         }
         op.variation = 0;
         kickRemixPipeline (op);
