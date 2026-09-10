@@ -46,6 +46,10 @@ struct PhraseAlign
     std::vector<int> bar_offset;          // per beat; -1 = unknown (before the first downbeat)
     int              n_allowed   { 0 };   // (pre-downbeat, downbeat) pairs that pass every gate
     int              n_sources   { 0 };   // pre-downbeat sources with >= 1 allowed target
+    // DEV-117 (d) (sesja 127): grid bar per beat and the section id per beat
+    // (-1 = none) for the short-loop rule below.
+    std::vector<int> bar_index;
+    std::vector<int> section_of;
 
     static constexpr int    kPhraseBars          = 8;
     static constexpr int    kRelaxedPhraseBars   = 4;
@@ -67,6 +71,37 @@ struct PhraseAlign
         if (i < 0 || j < 0 || i + 1 >= n_beats || j >= n_beats) return false;
         return positionOk(bar_offset[static_cast<std::size_t>(i + 1)],
                           bar_offset[static_cast<std::size_t>(j)], phrase_bars);
+    }
+
+    // DEV-117 (d) (sesja 127) - Region / Blocks short loops. A backward pair
+    // that repeats L grid bars of ONE section (j < i, same section, L in
+    // {1, 2, 4}) is a loop of its own size: it keeps the phrase when it
+    // starts on a multiple of L inside the phrase (a 2-bar loop at bar 0,
+    // 2, 4, 6 of the 8-bar phrase; a 4-bar loop at 0 or 4; a 1-bar loop
+    // anywhere). The mod-8 rule would reject every 2- / 4-bar loop that
+    // does not start a phrase, and Region lives on those loops (sesja 122:
+    // 2-bar loop spots are a user decision). Everything else = `allowed`.
+    bool loopAllowed(int i, int j) const noexcept
+    {
+        if (! active) return true;
+        if (i < 0 || j < 0 || i + 1 >= n_beats || j >= n_beats) return false;
+        if (j < i && bar_index.size() == bar_offset.size() && section_of.size() == bar_offset.size()) {
+            // The looped material is [j, i]; i + 1 may already start the
+            // next section (a loop ending on a section end), so the section
+            // test uses beat i, the bar count the bar after it.
+            const std::size_t a = static_cast<std::size_t>(i + 1), b = static_cast<std::size_t>(j);
+            const int sec_i = section_of[static_cast<std::size_t>(i)], sec_b = section_of[b];
+            const int L = bar_index[a] - bar_index[b];
+            // A loop of a whole number of phrases (8, 16, ... grid bars)
+            // returns to its own phrase position by construction, whatever
+            // the section map says about its two ends (Billie Jean 51.6 ->
+            // 68.0 s: an 8-bar loop across the verse / chorus boundary).
+            if (L > 0 && L % kPhraseBars == 0 && bar_index[b] >= 0) return true;
+            if (sec_i == sec_b && sec_i >= 0 && bar_offset[b] >= 0
+                && (L == 1 || L == 2 || L == 4))
+                return bar_offset[b] % L == 0;
+        }
+        return allowed(i, j);
     }
 
     // Bar offsets per beat. `db_set` = beat indices that are downbeats.
@@ -120,6 +155,22 @@ struct PhraseAlign
         p.n_beats = n;
         if (beat_times == nullptr || n <= 0 || db_set.empty() || pre_db_set.empty()) return p;
         p.bar_offset = barOffsets(beat_times, n, db_set, segs, n_segs);
+        // DEV-117 (d): grid bar + section id per beat (same lookup as barOffsets).
+        p.bar_index.assign(static_cast<std::size_t>(n), -1);
+        p.section_of.assign(static_cast<std::size_t>(n), -1);
+        {
+            int bar = -1;
+            for (int b = 0; b < n; ++b) {
+                if (db_set.count(b) > 0) ++bar;
+                p.bar_index[static_cast<std::size_t>(b)] = bar;
+                if (segs == nullptr) continue;
+                for (int s2 = 0; s2 < n_segs; ++s2)
+                    if (beat_times[b] >= segs[s2].start - 1e-6 && beat_times[b] < segs[s2].end - 1e-6) {
+                        p.section_of[static_cast<std::size_t>(b)] = s2;
+                        break;
+                    }
+            }
+        }
         for (const int bars : { kPhraseBars, kRelaxedPhraseBars }) {
             int allowed = 0, sources = 0;
             for (const int i : pre_db_set) {

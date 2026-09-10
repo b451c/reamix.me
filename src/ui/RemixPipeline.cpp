@@ -400,24 +400,83 @@ void RemixPipeline::run()
             // blocked set; variation > 0 → remix_variation() builds k-best
             // and returns the (variation_idx)-th distinct path. Mirrors
             // Duration mode wiring (CleanOptimizer::remix_variation).
-            if (in_.variation > 0)
+            auto runRegion = [&] (const double* W)
             {
-                path = ropt.remix_variation (in_.targetDurationSec,
-                                              regStart, regEnd,
-                                              rcr.region_W.data(),
-                                              rcr.n_region,
-                                              &rcr.candidates,
-                                              in_.variation,
-                                              blockedPtr);
+                return (in_.variation > 0)
+                    ? ropt.remix_variation (in_.targetDurationSec, regStart, regEnd, W,
+                                            rcr.n_region, &rcr.candidates, in_.variation, blockedPtr)
+                    : ropt.remix (in_.targetDurationSec, regStart, regEnd, W,
+                                  rcr.n_region, &rcr.candidates, blockedPtr);
+            };
+            // DEV-117 (d) (sesja 127): the Duration waveform floor (DEV-116)
+            // in Region - the unfiltered run first (the baseline), then tiers
+            // 0.80 / 0.70 / 0.60 masked in region_W; a tier is accepted when
+            // the Region DP still returns >= 1 cut (when the target differs
+            // from the region's own length), every cut at q >= 0.45, the
+            // path length inside the tolerance (+2 s) and NO MORE cuts than
+            // the baseline (Woodkid 60-90 s -> 90 s: the 0.60 tier left one
+            // 2-bar loop and the DP took it 15 times where the baseline had
+            // 8 cuts - a floor must not buy its cleanliness with cuts). The
+            // legacy path (v2 off) = the single unfiltered run.
+            if (! in_.v2_scoring)
+            {
+                path = runRegion (rcr.region_W.data());
             }
             else
             {
-                path = ropt.remix (in_.targetDurationSec,
-                                    regStart, regEnd,
-                                    rcr.region_W.data(),
-                                    rcr.n_region,
-                                    &rcr.candidates,
-                                    blockedPtr);
+                constexpr double kAcceptMinQ = 0.45;
+                const double tol      = roin.duration_tolerance_sec + 2.0;
+                const double regionLen = bt[(std::size_t) std::min (exit_beat, (int) bt.size() - 1)]
+                                         - bt[(std::size_t) entry_beat];
+                const bool needsCut   = std::fabs (regionLen - in_.targetDurationSec) > roin.duration_tolerance_sec;
+                std::vector<double> maskedW;
+                reamix::remix::RemixPath baseline = runRegion (rcr.region_W.data());
+                const std::size_t baselineCuts = baseline.transitions.size();
+                bool haveBest = false;
+                for (const double tier : { 0.80, 0.70, 0.60 })
+                {
+                    const double* W = rcr.region_W.data();
+                    if (baselineCuts == 0) break;
+                    {
+                        maskedW = rcr.region_W;
+                        for (const auto& kv : rcr.candidates)
+                            if (kv.second.waveform_similarity < tier)
+                            {
+                                const int ri = kv.first.first - entry_beat, rj = kv.first.second - entry_beat;
+                                if (ri >= 0 && rj >= 0 && ri < rcr.n_region && rj < rcr.n_region)
+                                    maskedW[(std::size_t) ri * (std::size_t) rcr.n_region + (std::size_t) rj]
+                                        = reamix::remix::INF;
+                            }
+                        W = maskedW.data();
+                    }
+                    reamix::remix::RemixPath cand = runRegion (W);
+                    bool ok = ! cand.beat_indices.empty() && (! needsCut || ! cand.transitions.empty())
+                              && cand.transitions.size() <= baselineCuts;
+                    double minQ = 1.0;
+                    for (const auto& tr : cand.transitions)
+                    {
+                        auto it = cand.transition_metadata.find (tr);
+                        const double q = (it != cand.transition_metadata.end() && it->second.count ("quality_score"))
+                                         ? it->second.at ("quality_score") : 0.0;
+                        minQ = std::min (minQ, q);
+                    }
+                    if (minQ < kAcceptMinQ) ok = false;
+                    double len = 0.0;
+                    for (const int b : cand.beat_indices)
+                        len += (b + 1 < (int) bt.size()) ? bt[(std::size_t) b + 1] - bt[(std::size_t) b]
+                                                         : bt[bt.size() - 1] - bt[bt.size() - 2];
+                    if (std::fabs (len - in_.targetDurationSec) > tol) ok = false;
+                    if (const char* dbg = std::getenv ("REAMIX_REGION_DEBUG"))
+                        if (FILE* f = std::fopen (dbg, "a"))
+                        {
+                            std::fprintf (f, "# region tier %.2f: cuts %d minQ %.3f len %.1f target %.1f -> %s\n",
+                                          tier, (int) cand.transitions.size(), minQ, len,
+                                          in_.targetDurationSec, ok ? "ACCEPT" : "reject");
+                            std::fclose (f);
+                        }
+                    if (ok) { path = std::move (cand); out.waveformFloorUsed = tier; haveBest = true; break; }
+                }
+                if (! haveBest) path = std::move (baseline);
             }
 
             // ADR-057 (sesja 68) — capture source-time positions where WAV's
@@ -758,11 +817,19 @@ void RemixPipeline::run()
             }
             if (! haveBest)
             {
-                // Length off at every tier: the highest tier that still ends
-                // at the song's ending with clean cuts, then the unfiltered
-                // pool's path as it is.
+                // No tier makes the length with clean cuts. The user's length
+                // comes first (High Hopes 3:11 -> 0:30: the pool has one
+                // intro -> outro pair at q 0.25; a 36 s remix with that red
+                // cut is the request, a 51 s remix with two orange cuts is
+                // not - "totalna klapa"): the highest tier whose path ends at
+                // the tail inside the cap, whatever its cuts; then the
+                // highest tier ending at the tail with clean cuts (length
+                // off); then the unfiltered pool's path as it is.
                 for (const auto& c : cands)
-                    if (c.qOk && c.tail) { best = c.path; floorUsed = c.tier; haveBest = true; break; }
+                    if (c.tail && std::fabs (c.dev) <= kMaxLengthDevSec) { best = c.path; floorUsed = c.tier; haveBest = true; break; }
+                if (! haveBest)
+                    for (const auto& c : cands)
+                        if (c.qOk && c.tail) { best = c.path; floorUsed = c.tier; haveBest = true; break; }
                 if (! haveBest && ! cands.empty()) { best = cands.back().path; floorUsed = cands.back().tier; haveBest = true; }
                 if (const char* dbg = std::getenv ("REAMIX_DURATION_DEBUG"))
                 {

@@ -91,6 +91,39 @@ bool test_bar_offsets()
     return true;
 }
 
+bool test_loop_rule()
+{
+    // DEV-117 (d) (sesja 127): 32 bars, 8-bar sections, 4/4 at 0.5 s.
+    const Grid g(32, 8);
+    const int n = (int) g.t.size();
+    auto all = [] (int, int) { return true; };
+    const PhraseAlign p = PhraseAlign::build(g.t.data(), n, g.db, g.pre_db, g.segs.data(), (int) g.segs.size(), all);
+    bool ok = p.active && p.phrase_bars == 8;
+    // 2-bar loop: after bar 11 (beat 47) back to bar 10 (beat 40) = offset 2 -> allowed;
+    // after bar 12 (beat 51) back to bar 11 (beat 44) = offset 3 -> rejected;
+    // 4-bar loop: after bar 15 (beat 63) back to bar 12 (beat 48) = offset 4 -> allowed;
+    // after bar 13 (beat 55) back to bar 10 (beat 40) = offset 2 -> rejected;
+    // 1-bar loop anywhere: after bar 11 (beat 47) back to bar 11 (beat 44) -> allowed;
+    // 3-bar loop falls back to the mod-8 rule: after bar 12 (beat 51) back to bar 10 (beat 40): 5 -> 2 rejected;
+    // across sections (bar 8 -> bar 6, 2 bars): mod-8 rule, offsets 1 -> 6 rejected;
+    // forward skip unchanged: after bar 3 (beat 15) -> bar 11 (beat 44) rejected, -> bar 12 (beat 48) allowed.
+    ok = ok && p.loopAllowed(47, 40) && !p.loopAllowed(51, 44)
+            && p.loopAllowed(63, 48) && !p.loopAllowed(55, 40)
+            && p.loopAllowed(47, 44) && !p.loopAllowed(51, 40)
+            && !p.loopAllowed(35, 24)
+            && p.loopAllowed(43, 12)   // 8-bar loop across the section boundary (bars 3..10): whole phrase -> allowed
+            && !p.loopAllowed(15, 44) && p.loopAllowed(15, 48);
+    if (!ok) {
+        std::fprintf(stderr, "[FAIL] loop rule: 47->40 %d 51->44 %d 63->48 %d 55->40 %d 47->44 %d 51->40 %d 35->24 %d 15->44 %d 15->48 %d\n",
+                     (int) p.loopAllowed(47, 40), (int) p.loopAllowed(51, 44), (int) p.loopAllowed(63, 48),
+                     (int) p.loopAllowed(55, 40), (int) p.loopAllowed(47, 44), (int) p.loopAllowed(51, 40),
+                     (int) p.loopAllowed(35, 24), (int) p.loopAllowed(15, 44), (int) p.loopAllowed(15, 48));
+        return false;
+    }
+    std::fprintf(stderr, "[PASS] loop rule: 2-bar loop at even offsets, 4-bar at 0 / 4, 1-bar anywhere, other spans mod 8\n");
+    return true;
+}
+
 bool test_build()
 {
     const Grid g(32, 8);
@@ -120,6 +153,7 @@ int main()
     ok = test_rated_cuts()  && ok;
     ok = test_bar_offsets() && ok;
     ok = test_build()       && ok;
+    ok = test_loop_rule()   && ok;
     std::fprintf(stderr, ok ? "== test_phrase_align PASS ==\n" : "== test_phrase_align FAIL ==\n");
     return ok ? 0 : 1;
 }

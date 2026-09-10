@@ -287,6 +287,13 @@ struct BlockCompatInputs
     // p98 loudness reject (ADR-115 E1 / E2) stay on either way. Harness key
     // "blocks_energy_gate" flips it for the blinded A/B/C.
     bool block_energy_gate = false;
+    // DEV-117 (d) (sesja 127): phrase-position gate + waveform floor on the
+    // beta junction pools (v2 only). Offsets count bars from the USER'S
+    // block starts (the blocks are the sections here); a junction keeps
+    // its phrase-aligned candidates when it has any, else all of them; the
+    // waveform floor 0.80 / 0.70 / 0.60 holds per junction when at least
+    // one candidate with q >= 0.45 survives it. false = active.
+    bool disable_phrase_align = false;
 
     // ADR-051 (sesja 61) — junction search-window radius (beats either side
     // of the user-authored boundary). Default = BLOCK_SEARCH_WINDOW_BEATS to

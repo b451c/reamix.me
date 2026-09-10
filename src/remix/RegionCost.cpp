@@ -4,6 +4,7 @@
 #include "remix/SignalNorm.h"
 #include "remix/RepetitionPrior.h"  // ADR-115 E4 (sesja 115)
 #include "remix/PairScorer.h"      // sesja 119 (DEV-096) shared pair scorer
+#include "remix/PhraseAlign.h"     // sesja 127 (DEV-117 d) phrase-position gate
 
 #include <algorithm>
 #include <cmath>
@@ -445,6 +446,36 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
     out.prior_active   = rep_prior.active;
     out.n_pairs_bar    = n_pairs_bar;
     out.n_pairs_prior  = n_pairs_prior;
+
+    // DEV-117 (d) (sesja 127): phrase-position gate (the Duration rule of
+    // DEV-116) on the region's v2 pairs. Built on the WHOLE track (section
+    // offsets need the section map, the starvation average needs every
+    // source); backward pairs use the short-loop rule (a 2- / 4-bar loop
+    // may start on a multiple of its length inside the phrase), forward
+    // skips the mod-8 rule. Region fallback = the prior's: fewer than
+    // kRegionMinPriorPairsPerSource surviving pairs per region source
+    // switches the gate off for this region.
+    PhraseAlign phrase = v2_bar_constraint && ! in.disable_phrase_align
+        ? PhraseAlign::build(in.beat_times, n_total, abs_db_set, abs_pre_db_set,
+                             in.segments, in.n_segments,
+                             [&](int i, int j) { return ! rep_prior.active || rep_prior.allowed(i, j); })
+        : PhraseAlign{};
+    int n_pairs_phrase = 0;
+    if (phrase.active) {
+        for (int ri : pre_db_set) {
+            for (int rj : db_set) {
+                if (rj == ri + 1 || std::abs(rj - ri) < REGION_MICRO_SKIP_BEATS) continue;
+                const int ai = in.entry_beat + ri, aj = in.entry_beat + rj;
+                if (rep_prior.active && ! rep_prior.allowed(ai, aj)) continue;
+                if (rj < ri ? phrase.loopAllowed(ai, aj) : phrase.allowed(ai, aj)) ++n_pairs_phrase;
+            }
+        }
+        if (n_pairs_phrase < kRegionMinPriorPairsPerSource * static_cast<double>(pre_db_set.size()))
+            phrase.active = false;
+    }
+    out.phrase_active  = phrase.active;
+    out.phrase_bars    = phrase.active ? phrase.phrase_bars : 0;
+    out.n_pairs_phrase = n_pairs_phrase;
     int n_gate_chroma = 0, n_gate_energy = 0, n_gate_loud = 0;   // dev dump counters
 
     // Build cost matrix (region_cost.py:113-148).
@@ -503,6 +534,8 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             // v2: bar alignment as a candidate constraint (ADR-115 E3)
             if (v2_bar_constraint && ! (pre_db_set.count(ri) > 0 && db_set.count(rj) > 0)) continue;
             if (v2_bar_constraint && ! rep_prior.allowed(abs_i, in.entry_beat + rj)) continue;   // ADR-115 E4 (whole-track prior, sesja 116)
+            if (phrase.active && ! (rj < ri ? phrase.loopAllowed(abs_i, in.entry_beat + rj)
+                                            : phrase.allowed(abs_i, in.entry_beat + rj))) continue;   // DEV-117 (d)
             const double cd = chroma_D[static_cast<std::size_t>(ri) * n_region + rj];
             if (cd > REGION_CHROMA_PREFILTER) { ++n_gate_chroma; continue; }  // C2
 
@@ -593,10 +626,11 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
             std::fprintf(f, "# natural edge step dB: all p50=%.2f p90=%.2f p98=%.2f | bar p50=%.2f p90=%.2f p98=%.2f (n=%d)\n",
                          pct(step_all, 0.5), pct(step_all, 0.9), pct(step_all, 0.98),
                          pct(step_bar, 0.5), pct(step_bar, 0.9), pct(step_bar, 0.98), static_cast<int>(step_bar.size()));
-            std::fprintf(f, "# pool entry=%d n_region=%d bar=%d sources=%d bar_pairs=%d prior_pairs=%d prior_active=%d gate_chroma=%d gate_energy=%d gate_loud=%d scored=%d best_q=%.3f\n",
+            std::fprintf(f, "# pool entry=%d n_region=%d bar=%d sources=%d bar_pairs=%d prior_pairs=%d prior_active=%d phrase_pairs=%d phrase_bars=%d gate_chroma=%d gate_energy=%d gate_loud=%d scored=%d best_q=%.3f\n",
                          in.entry_beat, n_region, in.time_signature,
                          static_cast<int>(pre_db_set.size()), n_pairs_bar, n_pairs_prior,
-                         rep_prior.active ? 1 : 0, n_gate_chroma, n_gate_energy, n_gate_loud,
+                         rep_prior.active ? 1 : 0, n_pairs_phrase, out.phrase_bars,
+                         n_gate_chroma, n_gate_energy, n_gate_loud,
                          static_cast<int>(out.candidates.size()), best_q);
             std::fclose(f);
         }

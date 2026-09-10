@@ -191,6 +191,11 @@ struct RegionCostInputs
     // chosen among allowed targets only. false = legacy Python-parity path.
     bool v2_scoring = false;
     bool disable_repetition_prior = false;   // ADR-115 E4 (sesja 115)
+    // DEV-117 (d) (sesja 127): phrase-position gate on the v2 Region pool
+    // (src/remix/PhraseAlign.h; short loops by the loop-of-its-own-size
+    // rule). Built on the whole track, switched off for a region it would
+    // starve (the repetition-prior rule). false = active with the bar grid.
+    bool disable_phrase_align = false;
 
 
 };
@@ -214,6 +219,10 @@ struct RegionCostResult
     bool prior_active  = false;
     int  n_pairs_bar   = 0;
     int  n_pairs_prior = 0;
+    // DEV-117 (d) (sesja 127) phrase gate diagnostics.
+    bool phrase_active  = false;
+    int  phrase_bars    = 0;
+    int  n_pairs_phrase = 0;
 };
 
 // Main entry point. Port of `compute_region_costs` (region_cost.py:42-148).

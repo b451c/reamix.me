@@ -17,7 +17,8 @@
 
 #include "dsp/WaveformXcorr.h"
 #include "remix/Quality.h"
-#include "remix/PairScorer.h"   // sesja 119 (DEV-096) shared pair scorer
+#include "remix/PairScorer.h"
+#include "remix/PhraseAlign.h"   // sesja 127 (DEV-117 d)   // sesja 119 (DEV-096) shared pair scorer
 #include "remix/RegionCost.h"   // REGION_CHROMA_PREFILTER (Region C2 gate, shared sesja 119)
 #include "remix/SignalNorm.h"  // ADR-115 v2 scoring
 #include "remix/TransitionCost.h"  // chromaRange + EDGE_ENERGY_SATURATION_DB + N_CHROMA_DIMS
@@ -901,6 +902,23 @@ computeBlockCompatibility(const BlockCompatInputs& in)
 
         out.pools.assign(nn, {});
 
+        // DEV-117 (d) (sesja 127): phrase offsets from the user's block starts.
+        PhraseAlign phrase{};
+        if (in.v2_scoring && !in.disable_phrase_align && downbeat_only) {
+            std::vector<analysis::Segment> block_segs;
+            block_segs.reserve(static_cast<std::size_t>(n));
+            for (int b = 0; b < n; ++b) {
+                analysis::Segment sg;
+                sg.start = in.blocks[b].start_sec;
+                sg.end   = in.blocks[b].end_sec;
+                sg.label = in.blocks[b].label;
+                block_segs.push_back(sg);
+            }
+            phrase = PhraseAlign::build(in.beat_times, n_beats, db_set, pre_db_set,
+                                        block_segs.data(), static_cast<int>(block_segs.size()),
+                                        [](int, int) { return true; });
+        }
+
         // Build the (i, j) pair list. Lazy mode = only the junctions in the
         // user-arranged block sequence; full mode = n × n.
         std::vector<std::pair<int, int>> pair_list;
@@ -953,6 +971,7 @@ computeBlockCompatibility(const BlockCompatInputs& in)
             const double section_sim = label_match * BLOCK_SECTION_SIM_SCALE + BLOCK_SECTION_SIM_BIAS;
 
             std::vector<BlockJunctionCandidate> candidates;
+            std::vector<char>                   phrase_ok;   // DEV-117 (d), parallel to candidates
             const int est = std::max(0, (bi_hi - bi_lo)) * std::max(0, (bj_hi - bj_lo));
             candidates.reserve(static_cast<std::size_t>(std::min(est, 4096)));
 
@@ -1030,7 +1049,35 @@ computeBlockCompatibility(const BlockCompatInputs& in)
                         c.waveform_sim    = score.waveform_sim;
                         c.chroma_distance = chroma_distance;
                         candidates.push_back(c);
+                        phrase_ok.push_back(phrase.active
+                            && (bj < bi ? phrase.loopAllowed(bi, bj) : phrase.allowed(bi, bj)) ? 1 : 0);
                     }
+                }
+            }
+
+            // DEV-117 (d) (sesja 127): keep the phrase-aligned candidates when
+            // the junction has any (else all - never an authored fallback
+            // because of the gate); then the per-junction waveform floor.
+            if (phrase.active) {
+                bool any = false;
+                for (const char ok : phrase_ok) if (ok) { any = true; break; }
+                if (any) {
+                    std::vector<BlockJunctionCandidate> kept;
+                    for (std::size_t k = 0; k < candidates.size(); ++k)
+                        if (phrase_ok[k]) kept.push_back(candidates[k]);
+                    candidates.swap(kept);
+                }
+            }
+            if (in.v2_scoring && has_wf && !in.disable_phrase_align) {
+                for (const double tier : { 0.80, 0.70, 0.60 }) {
+                    bool holds = false;
+                    for (const auto& c : candidates)
+                        if (c.waveform_sim >= tier && c.quality >= 0.45) { holds = true; break; }
+                    if (!holds) continue;
+                    std::vector<BlockJunctionCandidate> kept;
+                    for (const auto& c : candidates) if (c.waveform_sim >= tier) kept.push_back(c);
+                    candidates.swap(kept);
+                    break;
                 }
             }
 
