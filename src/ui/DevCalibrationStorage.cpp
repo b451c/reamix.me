@@ -59,6 +59,7 @@ juce::var weightsToVar (const reamix::remix::QualityWeights& w)
     // compat: reader ignores extra fields. Older JSONL records without this
     // key default to kDefaultQualityWeights.vocal_continuity (= 0.0).
     obj->setProperty ("vocal_continuity",      w.vocal_continuity);
+    obj->setProperty ("edge_continuity",       w.edge_continuity);   // sesja 129
     return juce::var (obj);
 }
 
@@ -95,6 +96,7 @@ void weightsFromVar (const juce::var& v, reamix::remix::QualityWeights& out)
     out.bar_align             = v.getProperty ("bar_align",             out.bar_align);
     out.centroid              = v.getProperty ("centroid",              out.centroid);
     out.vocal_continuity      = v.getProperty ("vocal_continuity",      out.vocal_continuity);
+    out.edge_continuity       = v.getProperty ("edge_continuity",       out.edge_continuity);   // sesja 129
 }
 
 // Sesja 106 ADR-098: PerceptualSliders dropped. perceptualFromVar removed.

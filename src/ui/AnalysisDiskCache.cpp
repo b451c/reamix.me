@@ -27,7 +27,7 @@ namespace
     constexpr char        kMagic[4]       = { 'R', 'X', 'B', 'C' };
     // 7 (sesja 121): bundle.structure carries the LinkSeg model sections;
     // format-6 entries (empty structure) would never get them, so they miss.
-    constexpr juce::uint32 kFormatVersion = 9;   // sesja 126: DEV-116 phrase-position gate baked into bundle.tc
+    constexpr juce::uint32 kFormatVersion = 10;  // sesja 129: edgeMelEnd / edgeMelStart (edge-continuity signal)
 
     juce::String hashOf (const juce::String& s)
     {
@@ -145,7 +145,9 @@ namespace
             && writeVec (s, f.edgeVocalActivityStart)
             && writeVec (s, f.edgeVocalActivityEnd)
             && writeVec (s, f.edgeVocalOnsetStart)
-            && writeVec (s, f.edgeVocalReleaseEnd);
+            && writeVec (s, f.edgeVocalReleaseEnd)
+            && writeVec (s, f.edgeMelEnd)          // sesja 129
+            && writeVec (s, f.edgeMelStart);
     }
 
     bool readFeatureResult (juce::FileInputStream& s,
@@ -172,7 +174,9 @@ namespace
             && readVec (s, f.edgeVocalActivityStart)
             && readVec (s, f.edgeVocalActivityEnd)
             && readVec (s, f.edgeVocalOnsetStart)
-            && readVec (s, f.edgeVocalReleaseEnd))) return false;
+            && readVec (s, f.edgeVocalReleaseEnd)
+            && readVec (s, f.edgeMelEnd)           // sesja 129
+            && readVec (s, f.edgeMelStart))) return false;
         f.nBeats = (int) nBeats;
         f.nFeat  = (int) nFeat;
         return true;

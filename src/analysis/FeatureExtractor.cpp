@@ -354,6 +354,41 @@ FeatureExtractor::extract(const float* y, std::size_t nSamples, int sr,
     out.onsetStrength    = syncAndNormalize1DTruncate(onsetFrames,    beatFrames, nBeats);
     out.spectralCentroid = syncAndNormalize1DTruncate(centroidFrames, beatFrames, nBeats);
 
+    // ---- Sesja 129: voice-band log-mel edges per beat ---------------------
+    // 10*log10(max(p, 1e-10)) per band (librosa power_to_db, ref 1, no
+    // top_db), averaged over the last / first kEdgeMelFrames frames of the
+    // beat. The end window of the last beat runs up to the end of the audio.
+    // An empty window (beat frame beyond the STFT) leaves a zero row.
+    {
+        const int T = static_cast<int>(melPower.size());
+        const int nb = static_cast<int>(nBeats);
+        const int B = kEdgeMelBands, K = kEdgeMelFrames, first = kEdgeMelFirstBand;
+        out.edgeMelEnd.assign(static_cast<std::size_t>(nb) * B, 0.0f);
+        out.edgeMelStart.assign(static_cast<std::size_t>(nb) * B, 0.0f);
+        const bool haveBands = T > 0 && static_cast<int>(melPower[0].size()) >= first + B;
+        auto meanRow = [&](int f0, int f1, float* dst) {
+            f0 = std::max(0, f0);
+            f1 = std::min(T, f1);
+            if (f1 <= f0) return;
+            for (int m = 0; m < B; ++m) {
+                double acc = 0.0;
+                for (int t = f0; t < f1; ++t) {
+                    const double p = std::max(static_cast<double>(melPower[(std::size_t) t][(std::size_t) (first + m)]), 1e-10);
+                    acc += 10.0 * std::log10(p);
+                }
+                dst[m] = static_cast<float>(acc / static_cast<double>(f1 - f0));
+            }
+        };
+        if (haveBands) {
+            for (int k = 0; k < nb; ++k) {
+                const int fEnd   = (k + 1 < nb) ? beatFrames[(std::size_t) k + 1] : T;
+                const int fStart = beatFrames[(std::size_t) k];
+                meanRow(fEnd - K, fEnd, out.edgeMelEnd.data() + static_cast<std::size_t>(k) * B);
+                meanRow(fStart, fStart + K, out.edgeMelStart.data() + static_cast<std::size_t>(k) * B);
+            }
+        }
+    }
+
     // ---- Phase-2b vocal features ----------------------------------------
     // PARITY: feature_extractor.py:264-281 — default-mode composite proxy
     // (vocal_use_pyin=False per ADR-014).

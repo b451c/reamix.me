@@ -599,6 +599,9 @@ void RemixPipeline::run()
                 // ADR-088 sesja 98 — vocal phrase boundary signals.
                 tcin.edge_vocal_onset_start    = bundle.feat.edgeVocalOnsetStart.empty()    ? nullptr : bundle.feat.edgeVocalOnsetStart.data();
                 tcin.edge_vocal_release_end    = bundle.feat.edgeVocalReleaseEnd.empty()    ? nullptr : bundle.feat.edgeVocalReleaseEnd.data();
+                // Sesja 129 — edge continuity (voice-band mel END edges).
+                tcin.edge_mel_end = bundle.feat.edgeMelEnd.empty() ? nullptr : bundle.feat.edgeMelEnd.data();
+                tcin.n_edge_mel   = bundle.feat.edgeMelEnd.empty() ? 0 : reamix::analysis::FeatureExtractor::kEdgeMelBands;
                 tcin.edge_rms_start            = bundle.feat.edgeRmsStart.empty()           ? nullptr : bundle.feat.edgeRmsStart.data();
                 tcin.edge_rms_end              = bundle.feat.edgeRmsEnd.empty()             ? nullptr : bundle.feat.edgeRmsEnd.data();
 

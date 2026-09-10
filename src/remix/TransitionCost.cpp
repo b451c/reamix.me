@@ -542,7 +542,8 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
     const SignalBaselines baselines = v2
         ? buildSignalBaselines(in.rms_energy, in.spectral_centroid, in.onset_strength,
                                edge_db.available ? edge_db.end_dB.data()   : nullptr,
-                               edge_db.available ? edge_db.start_dB.data() : nullptr, n)
+                               edge_db.available ? edge_db.start_dB.data() : nullptr, n,
+                               in.edge_mel_end, in.n_edge_mel, in.time_signature)   // sesja 129
         : SignalBaselines{};
     const bool v2_bar_constraint =
         v2 && ! db_idx.pre_db_set.empty() && ! db_idx.db_set.empty();
@@ -883,6 +884,12 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
                 qi.mfcc_continuity =
                     mfcc_continuity_matrix[(std::size_t) i * n + j];
             }
+            // Sesja 129 (ADR-116 step 2) — edge continuity at the seam, v2 only.
+            EdgeContinuityValue edge_cont{};
+            if (v2) {
+                edge_cont = edgeContinuityV2(baselines, in.edge_mel_end, in.n_edge_mel, n, i, j);
+                if (edge_cont.available) qi.edge_continuity = edge_cont.quality;
+            }
             // ADR-080 RESCOPE + ADR-083 sesja 92 — full-mix chroma continuity
             // per-pair similarity from pre-computed matrix. Consumed by Tone
             // slider blend in computeQualityScore (weights.harmonic_vs_timbre).
@@ -1001,6 +1008,8 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
                                             ? qi.transient_continuity.value() : 0.0;
             cand.mfcc_continuity        = qi.mfcc_continuity.has_value()
                                             ? qi.mfcc_continuity.value() : 0.0;
+            cand.edge_continuity        = edge_cont.available ? edge_cont.quality : 0.0;   // sesja 129
+            cand.edge_distance          = edge_cont.distance;
             res.candidates[{i, j}]      = cand;
         }
     }

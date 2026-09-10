@@ -71,6 +71,9 @@ inline void fillRegionCostInputs (reamix::remix::RegionCostInputs& rcin,
                                       ? nullptr : bundle.feat.edgeVocalOnsetStart.data();
     rcin.edge_vocal_release_end    = bundle.feat.edgeVocalReleaseEnd.empty()
                                       ? nullptr : bundle.feat.edgeVocalReleaseEnd.data();
+    // Sesja 129 — edge continuity (voice-band mel END edges).
+    rcin.edge_mel_end = bundle.feat.edgeMelEnd.empty() ? nullptr : bundle.feat.edgeMelEnd.data();
+    rcin.n_edge_mel   = bundle.feat.edgeMelEnd.empty() ? 0 : reamix::analysis::FeatureExtractor::kEdgeMelBands;
 
     rcin.downbeats   = gridDownbeats.empty() ? nullptr : gridDownbeats.data();
     rcin.n_downbeats = (int) gridDownbeats.size();

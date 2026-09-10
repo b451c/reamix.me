@@ -115,6 +115,8 @@ struct JunctionContext
     // ADR-088 sesja 98 — vocal phrase boundary signals. Null = parity path.
     const double*  edge_vocal_onset_start;
     const double*  edge_vocal_release_end;
+    const float*   edge_mel_end = nullptr;   // sesja 129
+    int            n_edge_mel   = 0;
     // ADR-115 (sesja 114) — v2 scoring: baselines + default weight set
     const SignalBaselines* baselines = nullptr;
     bool           v2 = false;
@@ -811,6 +813,8 @@ computeBlockCompatibility(const BlockCompatInputs& in)
     // ADR-088 sesja 98 — vocal phrase boundary signals (passthrough nullptr-OK).
     ctx.edge_vocal_onset_start   = in.edge_vocal_onset_start;
     ctx.edge_vocal_release_end   = in.edge_vocal_release_end;
+    ctx.edge_mel_end             = in.edge_mel_end;   // sesja 129
+    ctx.n_edge_mel               = in.n_edge_mel;
     ctx.quality_weights     = in.quality_weights;  // ADR-058 calibration override
     ctx.db_set              = &db_set;
     ctx.pre_db_set          = &pre_db_set;
@@ -818,7 +822,8 @@ computeBlockCompatibility(const BlockCompatInputs& in)
     const SignalBaselines v2_baselines = in.v2_scoring
         ? buildSignalBaselines(in.rms_energy, in.spectral_centroid, in.onset_strength,
                                has_edge_db ? edge_db_end_vec.data()   : nullptr,
-                               has_edge_db ? edge_db_start_vec.data() : nullptr, n_beats)
+                               has_edge_db ? edge_db_start_vec.data() : nullptr, n_beats,
+                               in.edge_mel_end, in.n_edge_mel, in.time_signature)   // sesja 129
         : SignalBaselines{};
     ctx.baselines           = in.v2_scoring ? &v2_baselines : nullptr;
     ctx.v2                  = in.v2_scoring;
@@ -885,6 +890,8 @@ computeBlockCompatibility(const BlockCompatInputs& in)
         track.edge_vocal_activity_end   = in.edge_vocal_activity_end;
         track.edge_vocal_onset_start    = in.edge_vocal_onset_start;
         track.edge_vocal_release_end    = in.edge_vocal_release_end;
+        track.edge_mel_end              = in.edge_mel_end;   // sesja 129
+        track.n_edge_mel                = in.n_edge_mel;
         track.onset_norm          = ctx.onset_norm;
         track.onset_norm_n        = ctx.onset_norm_n;
         track.mfcc_continuity_matrix   = ctx.mfcc_continuity_matrix;

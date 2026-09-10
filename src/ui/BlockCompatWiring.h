@@ -69,6 +69,9 @@ inline void fillBlockCompatInputs (reamix::remix::BlockCompatInputs& bin,
                                                                         : bundle.feat.edgeVocalOnsetStart.data();
     bin.edge_vocal_release_end = bundle.feat.edgeVocalReleaseEnd.empty() ? nullptr
                                                                         : bundle.feat.edgeVocalReleaseEnd.data();
+    // Sesja 129 - edge continuity (voice-band mel END edges).
+    bin.edge_mel_end = bundle.feat.edgeMelEnd.empty() ? nullptr : bundle.feat.edgeMelEnd.data();
+    bin.n_edge_mel   = bundle.feat.edgeMelEnd.empty() ? 0 : reamix::analysis::FeatureExtractor::kEdgeMelBands;
     // Sesja 119 (DEV-096) - edge-resolution vocal activity for the shared
     // vocal penalty (same inputs Region passes).
     bin.edge_vocal_activity_start = bundle.feat.edgeVocalActivityStart.empty() ? nullptr

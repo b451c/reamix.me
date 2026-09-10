@@ -381,6 +381,9 @@ reamix::remix::TransitionCostInputs buildTcInputs (const reamix::ui::AnalysisBun
     }
     in.edge_vocal_activity_start = b.feat.edgeVocalActivityStart.empty() ? nullptr : b.feat.edgeVocalActivityStart.data();
     in.edge_vocal_activity_end   = b.feat.edgeVocalActivityEnd.empty()   ? nullptr : b.feat.edgeVocalActivityEnd.data();
+    // Sesja 129 — edge continuity (voice-band mel END edges).
+    in.edge_mel_end = b.feat.edgeMelEnd.empty() ? nullptr : b.feat.edgeMelEnd.data();
+    in.n_edge_mel   = b.feat.edgeMelEnd.empty() ? 0 : reamix::analysis::FeatureExtractor::kEdgeMelBands;
 
     in.edge_rms_start = b.feat.edgeRmsStart.empty() ? nullptr : b.feat.edgeRmsStart.data();
     in.edge_rms_end   = b.feat.edgeRmsEnd.empty()   ? nullptr : b.feat.edgeRmsEnd.data();
@@ -843,7 +846,44 @@ int main (int argc, char** argv)
             if (i > 0) s << ", ";
             s << juce::String (grid.downbeats[i], 6);
         }
-        s << "]\n}\n";
+        s << "],\n";
+        // Sesja 129 (ADR-116 step-2 prerequisite): the per-beat vocal signals
+        // the engine already carries (ADR-088 edge onset / release, the
+        // vocal-penalty edge activity), so the boundary-family separation test
+        // can read them next to the grid. Empty vector -> empty array.
+        auto writeVec = [&s] (const char* key, const std::vector<double>& v, bool last)
+        {
+            s << "  \"" << key << "\": [";
+            for (std::size_t i = 0; i < v.size(); ++i)
+            {
+                if (i > 0) s << ", ";
+                s << juce::String (v[i], 5);
+            }
+            s << (last ? "]\n" : "],\n");
+        };
+        writeVec ("vocal_activity",           bundle->feat.vocalActivity,          false);
+        writeVec ("rms_energy",               bundle->feat.rmsEnergy,              false);
+        writeVec ("edge_vocal_activity_start", bundle->feat.edgeVocalActivityStart, false);
+        writeVec ("edge_vocal_activity_end",   bundle->feat.edgeVocalActivityEnd,   false);
+        writeVec ("edge_vocal_onset_start",    bundle->feat.edgeVocalOnsetStart,    false);
+        writeVec ("edge_vocal_release_end",    bundle->feat.edgeVocalReleaseEnd,    false);
+        // Sesja 129: the voice-band mel END edges (n_beats x n_edge_mel, dB)
+        // so the sandbox prototype can check the C++ signal row by row.
+        {
+            const int B = reamix::analysis::FeatureExtractor::kEdgeMelBands;
+            const auto& em = bundle->feat.edgeMelEnd;
+            const int nb = em.empty() ? 0 : (int) (em.size() / (std::size_t) B);
+            s << "  \"n_edge_mel\": " << (nb > 0 ? B : 0) << ",\n  \"edge_mel_end\": [";
+            for (int k = 0; k < nb; ++k)
+            {
+                s << (k > 0 ? ", [" : "[");
+                for (int m = 0; m < B; ++m)
+                    s << (m > 0 ? ", " : "") << juce::String (em[(std::size_t) k * B + m], 2);
+                s << "]";
+            }
+            s << "]\n";
+        }
+        s << "}\n";
         std::fprintf (stderr, "[harness] wrote %s (%d beats)\n",
                       args.dumpBeatsJson.toRawUTF8(),
                       (int) bundle->beatTimes.size());
@@ -921,7 +961,8 @@ int main (int argc, char** argv)
              "waveform,successor,edge_splice,context,label,section,bar_align,"
              "energy,edge_energy,centroid,transient_continuity,mfcc_continuity,"
              "chroma_distance,energy_diff_db,rms_log_step,centroid_log_step,onset_step,"
-             "va_i,va_j,eva_end_i,eva_start_j,rel_i,on_j,vocal_penalty,phrase_off_out,phrase_off_in\n";   // sesja 126 audit
+             "va_i,va_j,eva_end_i,eva_start_j,rel_i,on_j,vocal_penalty,phrase_off_out,phrase_off_in,"   // sesja 126 audit
+             "edge_continuity,edge_distance\n";   // sesja 129
         for (const auto& kv : tc.candidates)
         {
             const auto& c = kv.second;
@@ -955,7 +996,9 @@ int main (int argc, char** argv)
                      bundle->feat.edgeVocalActivityEnd.empty() ? std::nullopt : std::optional<double> (at (bundle->feat.edgeVocalActivityEnd, c.from_beat)),
                      bundle->feat.edgeVocalActivityStart.empty() ? std::nullopt : std::optional<double> (at (bundle->feat.edgeVocalActivityStart, c.to_beat))), 4) << ','
               << ((std::size_t) c.from_beat + 1 < tc.phrase_bar_offset.size() ? tc.phrase_bar_offset[(std::size_t) c.from_beat + 1] : -1) << ','
-              << ((std::size_t) c.to_beat < tc.phrase_bar_offset.size() ? tc.phrase_bar_offset[(std::size_t) c.to_beat] : -1)
+              << ((std::size_t) c.to_beat < tc.phrase_bar_offset.size() ? tc.phrase_bar_offset[(std::size_t) c.to_beat] : -1) << ','
+              << juce::String (c.edge_continuity, 4) << ','          // sesja 129
+              << juce::String (c.edge_distance, 4)
               << '\n';
         }
         std::fprintf (stderr, "[harness] wrote %s (%d pairs)\n",

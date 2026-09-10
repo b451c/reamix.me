@@ -112,9 +112,11 @@ int main()
         qi.transient_continuity = 0.5;
         QualityWeights w = kV2QualityWeights;
         const double got = computeQualityScore(qi, w);
-        // exp( (0.45 ln0.8 + 0.25 ln0.7 + 0.08 ln0.05 + 0.05 ln1 + 0.05 ln1 + 0.12 ln0.5) / 1.0 )
-        const double want = std::exp(0.45 * std::log(0.8) + 0.25 * std::log(0.7)
-                                     + 0.08 * std::log(0.05) + 0.12 * std::log(0.5));
+        // exp( (w_wf ln0.8 + w_seq ln0.7 + w_en ln0.05 + w_ee ln1 + w_c ln1 + w_tr ln0.5) / avail )
+        // with avail = 1 - w_edge (sesja 129: edge_continuity is nullopt here -> renormalised out).
+        const double avail = 1.0 - w.edge_continuity;
+        const double want = std::exp((w.waveform * std::log(0.8) + w.sequential_continuity * std::log(0.7)
+                                      + w.energy * std::log(0.05) + w.transient_continuity * std::log(0.5)) / avail);
         expectNear("geometric composite, energy floored at 0.05", got, want, 1e-9);
         expectTrue("a zeroed signal no longer zeroes the composite", got > 0.5);
         // harmonic legacy on the same inputs collapses (documents the ADR-115 motivation)
@@ -124,8 +126,8 @@ int main()
         // missing optional signal is renormalised out
         QualityInputs qm = qi; qm.transient_continuity.reset();
         const double got2 = computeQualityScore(qm, w);
-        const double want2 = std::exp((0.45 * std::log(0.8) + 0.25 * std::log(0.7)
-                                       + 0.08 * std::log(0.05)) / 0.88);
+        const double want2 = std::exp((w.waveform * std::log(0.8) + w.sequential_continuity * std::log(0.7)
+                                       + w.energy * std::log(0.05)) / (avail - w.transient_continuity));
         expectNear("geometric composite renormalises a missing signal", got2, want2, 1e-9);
         // all signals perfect -> 1.0
         QualityInputs q1{}; q1.waveform_sim = 1.0; q1.successor_sim = 1.0; q1.context_sim = 1.0;

@@ -258,6 +258,9 @@ struct BlockCompatInputs
     // to qi.vocal_continuity. nullptr default preserves bit-exact parity.
     const double* edge_vocal_onset_start;
     const double* edge_vocal_release_end;
+    // Sesja 129 (ADR-116 step 2) — voice-band log-mel END edges (n_beats x n_edge_mel).
+    const float*  edge_mel_end = nullptr;
+    int           n_edge_mel   = 0;
 
     // Sesja 119 (DEV-096) — edge-resolution vocal activity for the shared
     // vocal penalty (Region passes these; β path only, nullptr = beat-level

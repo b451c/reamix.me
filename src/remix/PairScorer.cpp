@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "dsp/WaveformXcorr.h"
+#include "remix/SignalNorm.h"      // sesja 129 edgeContinuityV2
 #include "remix/TransitionCost.h"  // ENERGY_HARD_BLOCK_DB, EDGE_ENERGY_SATURATION_DB
 
 namespace reamix::remix {
@@ -209,6 +210,10 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
             vocal_density = std::max(t.vocal_activity[i], t.vocal_activity[j]);
         constexpr double kSilenceThreshold = 0.1;
         q.vocal_continuity = vocal_density < kSilenceThreshold ? 1.0 : 0.5 + 0.5 * boundary;
+    }
+    if (t.v2 && t.baselines != nullptr) {   // sesja 129 (ADR-116 step 2) — edge continuity
+        const EdgeContinuityValue ec = edgeContinuityV2(*t.baselines, t.edge_mel_end, t.n_edge_mel, n_total, i, j);
+        if (ec.available) q.edge_continuity = ec.quality;
     }
 
     double quality = computeQualityScore(q, *t.weights);

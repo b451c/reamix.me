@@ -220,6 +220,18 @@ struct QualityWeights
     // killing the candidate). Takes precedence over use_harmonic_mean.
     bool   use_geometric_mean = false;
     double geometric_floor    = 0.10;
+
+    // ---- Sesja 129 (ADR-116 step 2): edge continuity ----------------------
+    // Per-pair quality of the seam context: exp(-d / scale) where d = RMS dB
+    // difference across the voice-band mel rows between the END edge (69 ms)
+    // of the outgoing beat i and the END edge of beat j-1 (what preceded the
+    // landing in the original), scale = the track's median phrase-lag edge
+    // distance (SignalNorm.h EdgeContinuityScale). Beat-mean signals hide a
+    // pickup shorter than a beat; this one does not. Evidence:
+    // meta/research/sesja-129-edge-continuity.md (probe 8/8 ordered, rated
+    // Duration cuts AUC 0.91). Default 0.0 (legacy / kDefault bit-exact);
+    // kV2QualityWeights sets 0.15. v2 path only (nullopt on legacy).
+    double edge_continuity    = 0.0;
 };
 
 // Harmonic-mean denominator floor — guards `wᵢ / qᵢ` against q≈0 producing
@@ -299,7 +311,7 @@ static_assert(kDefaultQualityWeightsSum > 1.0 - 1e-12 &&
 // inputs are sequential-baseline percentiles (SignalNorm.h) so their weights
 // are comparable across tracks. Geometric composite with floor 0.10.
 inline constexpr QualityWeights kV2QualityWeights{
-    /* waveform              */ 0.45,
+    /* waveform              */ 0.35,  // sesja 129: 0.45 -> 0.35, the edge term takes the sharper half of the continuation question
     /* successor             */ 0.0,
     /* edge_splice           */ 0.0,
     /* context               */ 0.0,
@@ -313,17 +325,19 @@ inline constexpr QualityWeights kV2QualityWeights{
     /* mfcc_continuity       */ 0.0,
     /* extra1                */ 0.0,
     /* vocal_continuity      */ 0.0,
-    /* sequential_continuity */ 0.25,
+    /* sequential_continuity */ 0.20,  // sesja 129: 0.25 -> 0.20
     /* use_harmonic_mean     */ false,
     /* harmonic_vs_timbre    */ 0.0,
     /* use_geometric_mean    */ true,
-    /* geometric_floor       */ 0.05   // sesja 115: exp mapping never hits 0; floor only backs the p98 reject
+    /* geometric_floor       */ 0.05,  // sesja 115: exp mapping never hits 0; floor only backs the p98 reject
+    /* edge_continuity       */ 0.15   // sesja 129 (ADR-116 step 2); mirror in tools/dev/calibration/p1_gate.py V2_WEIGHTS
 };
 inline constexpr double kV2QualityWeightsSum =
     kV2QualityWeights.waveform + kV2QualityWeights.energy
     + kV2QualityWeights.edge_energy + kV2QualityWeights.centroid
     + kV2QualityWeights.transient_continuity
-    + kV2QualityWeights.sequential_continuity;
+    + kV2QualityWeights.sequential_continuity
+    + kV2QualityWeights.edge_continuity;
 static_assert(kV2QualityWeightsSum > 1.0 - 1e-12 && kV2QualityWeightsSum < 1.0 + 1e-12,
               "kV2QualityWeights fields must sum to 1.0.");
 
@@ -491,6 +505,11 @@ struct QualityInputs
     // AND zero-weight-on-blend short-circuit to bit-exact baseline.
     std::optional<double> full_mix_chroma_continuity;
 
+    // ---- Sesja 129 — edge continuity (ADR-116 step 2) --------------------
+    // exp(-d / scale) of the seam-context distance (SignalNorm.h
+    // edgeContinuityV2). nullopt on the legacy path, when the edge-mel rows
+    // are missing, when the track scale is invalid, or when j == 0.
+    std::optional<double> edge_continuity;
 };
 
 // ---------------------------------------------------------------------------

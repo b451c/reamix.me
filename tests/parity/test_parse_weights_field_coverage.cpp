@@ -77,6 +77,7 @@ const OptionalDoubleProbe kOptionalDoubles[] = {
     { "mfcc_continuity",                     0.232, [] (const QualityWeights& w) { return w.mfcc_continuity; } },
     { "extra1",                              0.243, [] (const QualityWeights& w) { return w.extra1; } },
     { "sequential_continuity",               0.265, [] (const QualityWeights& w) { return w.sequential_continuity; } },
+    { "edge_continuity",                     0.276, [] (const QualityWeights& w) { return w.edge_continuity; } },   // sesja 129
 };
 constexpr size_t kOptionalDoubleCount = sizeof (kOptionalDoubles) / sizeof (kOptionalDoubles[0]);
 
@@ -216,7 +217,7 @@ int testRequiredFieldMissingThrows()
 int testProbeCountSentinel()
 {
     constexpr size_t kExpectedRequired       = 10;  // pre-sesja-75 base
-    constexpr size_t kExpectedOptionalDouble = 4;   // sesja 91 ADR-082 CL-1+CL-7: stems-aware + vocal_avoid removed
+    constexpr size_t kExpectedOptionalDouble = 5;   // sesja 129: + edge_continuity (was 4 since sesja 91 ADR-082 CL-1+CL-7)
     int failures = 0;
     if (kRequiredCount != kExpectedRequired)
     {

@@ -266,6 +266,9 @@ struct TransitionCandidate
     double centroid_match          = 1.0;
     double transient_continuity    = 0.0;  // 0 if onset_strength absent
     double mfcc_continuity         = 0.0;  // 0 if features absent (matrix empty)
+    // Sesja 129 — edge continuity (v2 only): quality and d / scale (-1 = n/a).
+    double edge_continuity         = 0.0;
+    double edge_distance           = -1.0;
 };
 
 // Inputs bundle — raw pointers + explicit sizes for zero-copy interop with
@@ -331,6 +334,11 @@ struct TransitionCostInputs
     // qi.vocal_continuity. nullptr default preserves bit-exact parity.
     const double* edge_vocal_onset_start;     // (n_beats,) optional
     const double* edge_vocal_release_end;     // (n_beats,) optional
+    // Sesja 129 (ADR-116 step 2) — voice-band log-mel END edges per beat,
+    // (n_beats, n_edge_mel) row-major (FeatureExtractor::Result::edgeMelEnd).
+    // nullptr / 0 = signal absent (legacy parity path).
+    const float*  edge_mel_end = nullptr;
+    int           n_edge_mel   = 0;
 
     // DOWNBEAT INDICATOR for bar-alignment scoring.
     // If downbeats is null OR n_downbeats == 0, falls back to

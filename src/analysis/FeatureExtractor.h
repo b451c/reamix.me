@@ -91,7 +91,21 @@ public:
         std::vector<double> edgeVocalActivityEnd;   // [nBeats] meaningful
         std::vector<double> edgeVocalOnsetStart;    // [nBeats] meaningful
         std::vector<double> edgeVocalReleaseEnd;    // [nBeats] meaningful
+
+        // Sesja 129 (ADR-116 step 2) — voice-band log-mel edges per beat:
+        // the mean dB row over the LAST kEdgeMelFrames frames of the beat
+        // (end) and the FIRST kEdgeMelFrames frames (start), bands
+        // kEdgeMelFirstBand .. +kEdgeMelBands of the 128-band slaney mel
+        // (262-3949 Hz). Consumed by the edge-continuity splice signal
+        // (SignalNorm.h); C++-canonical, validated against the sandbox
+        // prototype tools/dev/vocal_eval/edge_probe.py.
+        std::vector<float> edgeMelEnd;              // [nBeats × kEdgeMelBands] dB
+        std::vector<float> edgeMelStart;            // [nBeats × kEdgeMelBands] dB
     };
+
+    static constexpr int kEdgeMelFirstBand = 10;  // first 128-band mel centre >= 250 Hz (262 Hz)
+    static constexpr int kEdgeMelBands     = 80;  // bands 10..89, last centre 3949 Hz
+    static constexpr int kEdgeMelFrames    = 3;   // 3 × 512 / 22050 = 69.7 ms
 
     // Run the 59-dim (or 39-dim) orchestrator on raw mono audio plus a list
     // of beat times in seconds. The beat source is irrelevant — phase-1

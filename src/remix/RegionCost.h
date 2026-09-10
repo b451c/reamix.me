@@ -170,6 +170,9 @@ struct RegionCostInputs
     // ADR-088 sesja 98 — vocal phrase boundary signals (see TransitionCost.h).
     const double* edge_vocal_onset_start;
     const double* edge_vocal_release_end;
+    // Sesja 129 (ADR-116 step 2) — voice-band log-mel END edges (n_total x n_edge_mel).
+    const float*  edge_mel_end = nullptr;
+    int           n_edge_mel   = 0;
 
     // DOWNBEAT INDICATOR ---------------------------------------------------
     const double* downbeats;

@@ -72,6 +72,9 @@ struct PairScorerTrack
     const double* edge_vocal_activity_end   = nullptr;
     const double* edge_vocal_onset_start   = nullptr;
     const double* edge_vocal_release_end   = nullptr;
+    // Sesja 129 (ADR-116 step 2) — voice-band log-mel END edges (n_total x n_edge_mel).
+    const float*  edge_mel_end             = nullptr;
+    int           n_edge_mel               = 0;
 
     // Precomputed whole-track helpers (empty / null = signal absent).
     const double* onset_norm               = nullptr;  // (n_total)

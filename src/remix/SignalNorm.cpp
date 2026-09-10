@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace reamix::remix {
 
@@ -69,18 +70,84 @@ std::vector<double> sequentialPairDiff(const double* end_of_i, const double* sta
     return out;
 }
 
+// ---- Sesja 129: edge continuity -------------------------------------------
+
+double EdgeContinuityScale::quality(double d) const noexcept
+{
+    if (! std::isfinite(d)) return 0.0;
+    if (! valid()) return 1.0;
+    if (d <= 0.0) return 1.0;
+    return std::exp(-d / scale);
+}
+
+double edgeMelDistance(const float* edge_mel, int n_mel, int a, int b) noexcept
+{
+    if (edge_mel == nullptr || n_mel <= 0) return 0.0;
+    const float* ra = edge_mel + static_cast<std::size_t>(a) * static_cast<std::size_t>(n_mel);
+    const float* rb = edge_mel + static_cast<std::size_t>(b) * static_cast<std::size_t>(n_mel);
+    double acc = 0.0;
+    for (int m = 0; m < n_mel; ++m) {
+        const double d = static_cast<double>(ra[m]) - static_cast<double>(rb[m]);
+        acc += d * d;
+    }
+    return std::sqrt(acc / static_cast<double>(n_mel));
+}
+
+EdgeContinuityScale buildEdgeContinuityScale(const float* edge_mel_end, int n_beats,
+                                             int n_mel, int lag_beats,
+                                             int fallback_lag_beats)
+{
+    EdgeContinuityScale s;
+    if (edge_mel_end == nullptr || n_beats <= 0 || n_mel <= 0) return s;
+    for (const int lag : {lag_beats, fallback_lag_beats}) {
+        if (lag <= 0 || lag >= n_beats) continue;
+        std::vector<double> d;
+        d.reserve(static_cast<std::size_t>(n_beats - lag));
+        for (int b = 0; b + lag < n_beats; ++b) {
+            const double v = edgeMelDistance(edge_mel_end, n_mel, b, b + lag);
+            if (std::isfinite(v)) d.push_back(v);
+        }
+        if (static_cast<int>(d.size()) < DistanceBaseline::kMinSamples) continue;
+        std::sort(d.begin(), d.end());
+        const std::size_t n = d.size();
+        s.scale   = (n % 2 == 1) ? d[n / 2] : 0.5 * (d[n / 2 - 1] + d[n / 2]);
+        s.samples = static_cast<int>(n);
+        return s;
+    }
+    return s;
+}
+
+EdgeContinuityValue edgeContinuityV2(const SignalBaselines& b, const float* edge_mel_end,
+                                     int n_mel, int n_beats, int i, int j) noexcept
+{
+    EdgeContinuityValue v;
+    if (! b.edge_continuity.valid() || edge_mel_end == nullptr || n_mel <= 0) return v;
+    if (i < 0 || j <= 0 || i >= n_beats || j >= n_beats) return v;
+    const double d = edgeMelDistance(edge_mel_end, n_mel, i, j - 1);
+    v.distance  = d / b.edge_continuity.scale;
+    v.quality   = b.edge_continuity.quality(d);
+    v.available = true;
+    return v;
+}
+
 SignalBaselines buildSignalBaselines(const double* rms_energy,
                                      const double* spectral_centroid,
                                      const double* onset_strength,
                                      const double* edge_db_end,
                                      const double* edge_db_start,
-                                     int n_beats)
+                                     int n_beats,
+                                     const float* edge_mel_end,
+                                     int n_edge_mel,
+                                     int bar_beats)
 {
     SignalBaselines b;
     b.energy.build(sequentialAbsDiff(rms_energy, n_beats, /*log*/ true));
     b.centroid.build(sequentialAbsDiff(spectral_centroid, n_beats, /*log*/ true));
     b.onset.build(sequentialAbsDiff(onset_strength, n_beats, /*log*/ false));
     b.edge_energy.build(sequentialPairDiff(edge_db_end, edge_db_start, n_beats));
+    if (edge_mel_end != nullptr && n_edge_mel > 0 && bar_beats > 0)
+        b.edge_continuity = buildEdgeContinuityScale(edge_mel_end, n_beats, n_edge_mel,
+                                                     8 * bar_beats, bar_beats);
     return b;
 }
 

@@ -74,12 +74,46 @@ std::vector<double> sequentialPairDiff(const double* end_of_i,
 // Baselines for the side-channel signals shared by Duration, Region and Block
 // scoring. Any pointer may be null; the matching baseline is then invalid and
 // the legacy formula for that signal is used instead.
+// Sesja 129 (ADR-116 step 2, meta/research/sesja-129-edge-continuity.md):
+// per-track scale of the edge-continuity distance. The seam replaces what
+// preceded the landing beat j in the original (the end edge of beat j-1) by
+// the end edge of the outgoing beat i; d = RMS dB difference across the
+// voice-band mel rows of those two edges. Consecutive pairs give d = 0 by
+// construction, so the track's own tolerance is the median distance between
+// end edges one PHRASE apart (8 bars; one bar when the track is too short):
+// the same phrase position a phrase later is what a clean repetition cut
+// lands on. Probe: every ok cut <= 0.62 of that scale, every bad one >= 0.81.
+struct EdgeContinuityScale
+{
+    double scale   = 0.0;   // median phrase-lag distance (dB)
+    int    samples = 0;
+
+    bool valid() const noexcept
+    {
+        return samples >= DistanceBaseline::kMinSamples && scale > 0.0;
+    }
+    // exp(-d / scale); 1.0 when the scale is not valid, 0.0 for non-finite d.
+    double quality(double d) const noexcept;
+};
+
+// RMS dB difference across the n_mel bands of rows a and b of a row-major
+// (n_beats x n_mel) edge matrix.
+double edgeMelDistance(const float* edge_mel, int n_mel, int a, int b) noexcept;
+
+// Median of edgeMelDistance(end, b, b + lag) over b; when fewer than
+// DistanceBaseline::kMinSamples pairs exist at `lag_beats` the shorter
+// `fallback_lag_beats` is tried. Null / empty input -> invalid scale.
+EdgeContinuityScale buildEdgeContinuityScale(const float* edge_mel_end, int n_beats,
+                                             int n_mel, int lag_beats,
+                                             int fallback_lag_beats);
+
 struct SignalBaselines
 {
     DistanceBaseline energy;       // log-rms step
     DistanceBaseline centroid;     // log-centroid step
     DistanceBaseline onset;        // onset-strength step
     DistanceBaseline edge_energy;  // edge dB step (end_i vs start_{i+1})
+    EdgeContinuityScale edge_continuity;   // sesja 129
 
     bool any() const noexcept
     {
@@ -87,12 +121,30 @@ struct SignalBaselines
     }
 };
 
+// Sesja 129: the trailing edge-mel arguments build the edge-continuity scale
+// (lag = 8 x bar_beats, fallback one bar); null / zero leaves it invalid.
 SignalBaselines buildSignalBaselines(const double* rms_energy,
                                      const double* spectral_centroid,
                                      const double* onset_strength,
                                      const double* edge_db_end,
                                      const double* edge_db_start,
-                                     int n_beats);
+                                     int n_beats,
+                                     const float* edge_mel_end = nullptr,
+                                     int n_edge_mel = 0,
+                                     int bar_beats = 0);
+
+// Sesja 129: edge continuity of the pair (i -> j) = quality of the distance
+// between the end edge of beat i and the end edge of beat j-1. Returns
+// {quality, d / scale}; quality 1.0 / distance -1.0 when the scale is not
+// valid, the arrays are missing, or j == 0 (no original context).
+struct EdgeContinuityValue
+{
+    double quality  = 1.0;
+    double distance = -1.0;   // normalised (d / scale), -1 = not available
+    bool   available = false;
+};
+EdgeContinuityValue edgeContinuityV2(const SignalBaselines& b, const float* edge_mel_end,
+                                     int n_mel, int n_beats, int i, int j) noexcept;
 
 // V2 signal qualities for a candidate pair (i -> j) - each returns the
 // legacy value when its baseline is invalid so callers can substitute freely.

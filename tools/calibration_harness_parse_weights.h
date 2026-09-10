@@ -69,6 +69,8 @@ inline reamix::remix::QualityWeights parseWeights (const juce::var& v)
         w.use_geometric_mean = (bool) v.getProperty ("use_geometric_mean", false);
     if (v.hasProperty ("geometric_floor"))
         w.geometric_floor = (double) v.getProperty ("geometric_floor", 0.10);
+    if (v.hasProperty ("edge_continuity"))            // sesja 129 (ADR-116 step 2)
+        w.edge_continuity = (double) v.getProperty ("edge_continuity", 0.0);
     return w;
 }
 

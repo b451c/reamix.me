@@ -2123,6 +2123,39 @@ if(REAMIX_BUILD_TESTS)
              COMMAND test_vocal_continuity
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    # test_edge_continuity — sesja 129 (ADR-116 step 2) self-validation of the
+    # edge-continuity splice signal (SignalNorm.h EdgeContinuityScale /
+    # edgeContinuityV2) and its composite slot. Hand-computed fixtures (ADR-065).
+    add_executable(test_edge_continuity
+      tests/parity/test_edge_continuity.cpp
+      src/remix/Quality.cpp
+      src/remix/SignalNorm.cpp
+    )
+    target_include_directories(test_edge_continuity PRIVATE
+      src
+      ${POCKETFFT_DIR}
+    )
+    target_link_libraries(test_edge_continuity PRIVATE
+      juce::juce_core
+    )
+    target_compile_definitions(test_edge_continuity PRIVATE
+      JUCE_STANDALONE_APPLICATION=0
+      JUCE_MODAL_LOOPS_PERMITTED=0
+      JUCE_WEB_BROWSER=0
+      JUCE_USE_CURL=0
+      JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
+    )
+    if(MSVC)
+      target_compile_options(test_edge_continuity PRIVATE /W3)
+    else()
+      target_compile_options(test_edge_continuity PRIVATE
+        -Wall -Wextra -Wno-unused-parameter
+        -ffp-contract=off)
+    endif()
+    add_test(NAME edge_continuity_parity
+             COMMAND test_edge_continuity
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_parse_weights_field_coverage — sesja 86 ADR-076 CI guardrail.
   # Verifies tools/calibration_harness_parse_weights.h reads every JSONL
   # field that orchestrator.py emits + maps it onto the matching

@@ -360,7 +360,8 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
         ? buildSignalBaselines(in.rms_energy, in.spectral_centroid, in.onset_strength,
                                edge_db_end.empty()   ? nullptr : edge_db_end.data(),
                                edge_db_start.empty() ? nullptr : edge_db_start.data(),
-                               n_total)
+                               n_total,
+                               in.edge_mel_end, in.n_edge_mel, in.time_signature)   // sesja 129
         : SignalBaselines{};
     const bool v2_bar_constraint = v2 && db_set.size() >= 2 && ! pre_db_set.empty();
     const QualityWeights& v2_default_weights = v2 ? kV2QualityWeights : kDefaultQualityWeights;
@@ -513,6 +514,8 @@ RegionCostResult computeRegionCosts(const RegionCostInputs& in)
     track.edge_vocal_activity_end   = in.edge_vocal_activity_end;
     track.edge_vocal_onset_start    = in.edge_vocal_onset_start;
     track.edge_vocal_release_end    = in.edge_vocal_release_end;
+    track.edge_mel_end              = in.edge_mel_end;   // sesja 129
+    track.n_edge_mel                = in.n_edge_mel;
     track.onset_norm          = onset_norm.empty() ? nullptr : onset_norm.data();
     track.onset_norm_n        = static_cast<int>(onset_norm.size());
     track.mfcc_continuity_matrix   = mfcc_continuity_matrix.empty() ? nullptr : mfcc_continuity_matrix.data();

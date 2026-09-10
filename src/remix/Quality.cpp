@@ -199,6 +199,19 @@ double computeQualityScore(const QualityInputs& inputs, const QualityWeights& we
         missing_weight   += weights.vocal_continuity;
     }
 
+    // Sesja 129 (ADR-116 step 2) — edge continuity at the seam.
+    if (inputs.edge_continuity.has_value()) {
+        if (weights.edge_continuity > 0.0) {
+            const double q = inputs.edge_continuity.value();
+            available_weight += weights.edge_continuity;
+            weighted_sum     += weights.edge_continuity * q;
+            if (harmonic) harmonic_inv_sum += weights.edge_continuity / std::max(q, kHarmonicMeanEpsilon);
+            if (geometric) log_sum += weights.edge_continuity * std::log(std::max(q, gfloor));
+        }
+    } else {
+        missing_weight   += weights.edge_continuity;
+    }
+
     // ---- D4 collapse: sequential_continuity (sesja 81 ADR-068 D4) -----
     // Single weight replacing the redundant successor + context +
     // mfcc_continuity triplet (ρ=0.67-0.71 measured sesja-80 D1). The

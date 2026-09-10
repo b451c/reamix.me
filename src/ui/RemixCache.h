@@ -139,6 +139,7 @@ inline bool qualityWeightsAtDefault (const reamix::remix::QualityWeights& w) noe
         && w.bar_align             == d.bar_align
         && w.centroid              == d.centroid
         && w.vocal_continuity      == d.vocal_continuity   // ADR-088 sesja 98
+        && w.edge_continuity       == d.edge_continuity    // sesja 129
         && w.use_harmonic_mean     == d.use_harmonic_mean
         && w.harmonic_vs_timbre    == d.harmonic_vs_timbre;
 }
@@ -166,6 +167,7 @@ inline juce::uint64 hashQualityWeights (const reamix::remix::QualityWeights& w)
     mix (w.bar_align);
     mix (w.centroid);
     mix (w.vocal_continuity);  // ADR-088 sesja 98
+    mix (w.edge_continuity);   // sesja 129
     mix (w.harmonic_vs_timbre);
     h ^= (juce::uint64) (w.use_harmonic_mean ? 1ull : 0ull);
     h *= 1099511628211ull;
