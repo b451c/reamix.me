@@ -269,6 +269,15 @@ struct TransitionCandidate
     // Sesja 129 — edge continuity (v2 only): quality and d / scale (-1 = n/a).
     double edge_continuity         = 0.0;
     double edge_distance           = -1.0;
+    // ADR-116 step 3 (sesja 130): the candidate family. 0 = continuation
+    // (the main loop: repetition diagonal + phrase position, continuity
+    // composite), 1 = boundary (leaves at a phrase end, lands on a phrase
+    // start; substitution-view composite kV2BoundaryQualityWeights, see
+    // src/remix/BoundaryFamily.h). The acceptance tiers read it
+    // (SpliceAcceptance.h).
+    static constexpr int kFamilyContinuation = 0;
+    static constexpr int kFamilyBoundary     = 1;
+    int    family                  = kFamilyContinuation;
 };
 
 // Inputs bundle — raw pointers + explicit sizes for zero-copy interop with
@@ -381,6 +390,9 @@ struct TransitionCostInputs
     // DEV-116 (sesja 126): phrase-position alignment gate on the v2 pool
     // (src/remix/PhraseAlign.h). false = active whenever the bar grid exists.
     bool disable_phrase_align = false;
+    // ADR-116 step 3 (sesja 130): skip the boundary cut family (v2 only;
+    // harness key "disable_boundary_family" for A/B rounds).
+    bool disable_boundary_family = false;
 
     // ---- Reserved 11th cost-component slot, DEV-028 sesja 74 ----------
     // Optional flat (n_beats × n_beats) row-major double matrix indexed
@@ -417,6 +429,11 @@ struct TransitionCostResult
     int  phrase_align_pairs   = 0;
     int  phrase_align_sources = 0;
     std::vector<int> phrase_bar_offset;  // per beat, bars since its section start (-1 unknown)
+    // ADR-116 step 3 (sesja 130): boundary family diagnostics.
+    bool boundary_family_active  = false;
+    int  boundary_family_starts  = 0;    // phrase starts on the grid
+    int  boundary_family_pairs   = 0;    // candidates admitted with family 1
+    int  boundary_family_sources = 0;    // sources with >= 1 boundary candidate
 
     // Sparse candidate map. Iteration order is lexicographic by (from, to).
     std::map<std::pair<int, int>, TransitionCandidate> candidates;

@@ -69,27 +69,41 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
     const int  j = req.abs_j;
     const int  source_boundary = std::min(i + 1, n_total - 1);
     const bool have_edge_db = t.edge_db_end != nullptr && t.edge_db_start != nullptr;
+    // ADR-116 step 3 (sesja 130): boundary cut = substitution view. Every
+    // "what does the ear compare" input is beat i against beat jp = j-1
+    // (the beat that preceded the landing in the original) instead of the
+    // beat after the cut against beat j; the waveform xcorr, which compares
+    // both halves of the seam, is left out (RC-2). v2 only.
+    const bool boundary = req.boundary && t.v2 && t.baselines != nullptr && j > 0;
+    const int  jp       = boundary ? j - 1 : j;
+    out.family = boundary ? 1 : 0;
 
     // --- Hard gates (edge energy) ------------------------------------------
-    double energy_diff = 0.0;
+    double energy_diff = 0.0;   // legacy edge view |end(i) - start(j)| (display + legacy gate)
+    double tail_step   = 0.0;   // substitution view |end(i) - end(j-1)| (boundary gate + boundary edge term)
     if (have_edge_db) {
         energy_diff = std::abs(t.edge_db_end[i] - t.edge_db_start[j]);
         out.energy_diff_db = energy_diff;
         bool ok = true;
-        switch (t.gate) {
-            case PairGate::None: break;
-            case PairGate::LegacyAbsolute:
-                ok = energy_diff <= ENERGY_HARD_BLOCK_DB;
-                break;
-            case PairGate::SuccessorView:
-                // ADR-115 E8 (sesja 116, DEV-090 / DEV-091): the incoming
-                // attack must resemble the one the listener expects
-                // (start(j) vs start(i+1)) and the outgoing tail must resemble
-                // what normally precedes j (end(i) vs end(j-1)).
-                ok = i + 1 < n_total && j > 0
-                  && std::abs(t.edge_db_start[j] - t.edge_db_start[i + 1]) <= ENERGY_HARD_BLOCK_DB
-                  && std::abs(t.edge_db_end[i] - t.edge_db_end[j - 1]) <= ENERGY_HARD_BLOCK_DB;
-                break;
+        if (boundary) {
+            tail_step = std::abs(t.edge_db_end[i] - t.edge_db_end[jp]);
+            ok = tail_step <= ENERGY_HARD_BLOCK_DB;
+        } else {
+            switch (t.gate) {
+                case PairGate::None: break;
+                case PairGate::LegacyAbsolute:
+                    ok = energy_diff <= ENERGY_HARD_BLOCK_DB;
+                    break;
+                case PairGate::SuccessorView:
+                    // ADR-115 E8 (sesja 116, DEV-090 / DEV-091): the incoming
+                    // attack must resemble the one the listener expects
+                    // (start(j) vs start(i+1)) and the outgoing tail must resemble
+                    // what normally precedes j (end(i) vs end(j-1)).
+                    ok = i + 1 < n_total && j > 0
+                      && std::abs(t.edge_db_start[j] - t.edge_db_start[i + 1]) <= ENERGY_HARD_BLOCK_DB
+                      && std::abs(t.edge_db_end[i] - t.edge_db_end[j - 1]) <= ENERGY_HARD_BLOCK_DB;
+                    break;
+            }
         }
         if (! ok) { out.rejected = true; out.gate = 1; return out; }
     }
@@ -101,7 +115,7 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
         if (j < n_total) va_j = t.vocal_activity[j];
     }
 
-    // --- Waveform xcorr -----------------------------------------------------
+    // --- Waveform xcorr (diagnostic only on a boundary cut) ----------------
     std::optional<double> waveform_sim;
     if (t.has_waveforms && source_boundary < n_total) {
         auto [ws, lag] = dsp::WaveformXcorr::compute(
@@ -113,12 +127,18 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
         waveform_sim     = ws;
         out.has_waveform = true;
         out.waveform_sim = ws;
-        out.lag          = lag;
+        out.lag          = boundary ? 0 : lag;   // a cross-material lag is noise
     }
 
-    // --- Successor similarity (row-shifted full-feature cosine) ------------
+    // --- Successor similarity ----------------------------------------------
+    // Continuation: row-shifted full-feature cosine (beat after the cut vs
+    // the landing beat). Boundary: beat i vs beat j-1.
     double successor_sim = 0.0;
-    if (req.successor_sim.has_value()) {
+    if (boundary) {
+        successor_sim = rowCosine(t.features + static_cast<std::size_t>(i) * t.n_features,
+                                  t.features + static_cast<std::size_t>(jp) * t.n_features,
+                                  t.n_features).value_or(0.0);
+    } else if (req.successor_sim.has_value()) {
         successor_sim = *req.successor_sim;
     } else {
         successor_sim = rowCosine(t.features + static_cast<std::size_t>(source_boundary) * t.n_features,
@@ -127,9 +147,9 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
     }
     out.successor_sim = successor_sim;
 
-    // --- Edge splice similarity --------------------------------------------
-    std::optional<double> edge_splice_sim = req.edge_splice_sim;
-    if (! edge_splice_sim.has_value()
+    // --- Edge splice similarity (continuation only) -------------------------
+    std::optional<double> edge_splice_sim = boundary ? std::nullopt : req.edge_splice_sim;
+    if (! boundary && ! edge_splice_sim.has_value()
         && t.edge_features_start != nullptr && t.edge_features_end != nullptr && t.n_edge_features > 0) {
         edge_splice_sim = rowCosine(t.edge_features_end + static_cast<std::size_t>(i) * t.n_edge_features,
                                     t.edge_features_start + static_cast<std::size_t>(j) * t.n_edge_features,
@@ -138,9 +158,14 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
     out.edge_splice_sim = edge_splice_sim.value_or(0.0);
 
     // --- Context similarity -------------------------------------------------
+    // Continuation: 2 beats before the source vs 3 beats from the
+    // destination. Boundary: the same 3-beat window before i and before j-1.
     std::vector<double> ctx_a, ctx_b;
     windowMean(t.features, t.n_features, std::max(t.ctx_lo, i - kContextBefore), std::min(t.ctx_hi, i + 1), ctx_a);
-    windowMean(t.features, t.n_features, std::max(t.ctx_lo, j), std::min(t.ctx_hi, j + kContextAfter), ctx_b);
+    if (boundary)
+        windowMean(t.features, t.n_features, std::max(t.ctx_lo, jp - kContextBefore), std::min(t.ctx_hi, jp + 1), ctx_b);
+    else
+        windowMean(t.features, t.n_features, std::max(t.ctx_lo, j), std::min(t.ctx_hi, j + kContextAfter), ctx_b);
     double na = 0.0, nb = 0.0, dot = 0.0;
     for (int k = 0; k < t.n_features; ++k) {
         na  += ctx_a[static_cast<std::size_t>(k)] * ctx_a[static_cast<std::size_t>(k)];
@@ -153,36 +178,34 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
     if (na > kNormFloor && nb > kNormFloor) context_sim = std::clamp(dot / (na * nb), -1.0, 1.0);
     out.context_sim = context_sim;
 
-    // --- Scalar matches -----------------------------------------------------
+    // --- Scalar matches (jp = j on a continuation cut) ----------------------
+    const double edge_step = boundary ? tail_step : energy_diff;
     double energy_match = 1.0;
     if (t.rms_energy != nullptr)
-        energy_match = std::max(0.0, 1.0 - std::abs(t.rms_energy[i] - t.rms_energy[j]) * 5.0);
-
+        energy_match = std::max(0.0, 1.0 - std::abs(t.rms_energy[i] - t.rms_energy[jp]) * 5.0);
     double edge_energy_match = 1.0;
     if (have_edge_db)
         edge_energy_match = std::max(
-            0.0, 1.0 - std::min(energy_diff, EDGE_ENERGY_SATURATION_DB) / EDGE_ENERGY_SATURATION_DB);
-
+            0.0, 1.0 - std::min(edge_step, EDGE_ENERGY_SATURATION_DB) / EDGE_ENERGY_SATURATION_DB);
     double centroid_match = 1.0;
     if (t.spectral_centroid != nullptr)
-        centroid_match = std::max(0.0, 1.0 - std::abs(t.spectral_centroid[i] - t.spectral_centroid[j]) * 5.0);
-
+        centroid_match = std::max(0.0, 1.0 - std::abs(t.spectral_centroid[i] - t.spectral_centroid[jp]) * 5.0);
     if (t.v2 && t.baselines != nullptr) {   // ADR-115 E1 / E2
         if (t.rms_energy != nullptr && have_edge_db
-            && loudnessRejectV2(*t.baselines, t.rms_energy[i], t.rms_energy[j], energy_diff)) {
+            && loudnessRejectV2(*t.baselines, t.rms_energy[i], t.rms_energy[jp], edge_step)) {
             out.rejected = true; out.gate = 2; return out;
         }
         if (t.rms_energy != nullptr)
-            energy_match = energyQualityV2(*t.baselines, t.rms_energy[i], t.rms_energy[j], energy_match);
+            energy_match = energyQualityV2(*t.baselines, t.rms_energy[i], t.rms_energy[jp], energy_match);
         if (have_edge_db)
-            edge_energy_match = edgeEnergyQualityV2(*t.baselines, energy_diff, edge_energy_match);
+            edge_energy_match = edgeEnergyQualityV2(*t.baselines, edge_step, edge_energy_match);
         if (t.spectral_centroid != nullptr)
-            centroid_match = centroidQualityV2(*t.baselines, t.spectral_centroid[i], t.spectral_centroid[j], centroid_match);
+            centroid_match = centroidQualityV2(*t.baselines, t.spectral_centroid[i], t.spectral_centroid[jp], centroid_match);
     }
 
     // --- Composite ----------------------------------------------------------
     QualityInputs q{};
-    q.waveform_sim      = waveform_sim;
+    q.waveform_sim      = boundary ? std::nullopt : waveform_sim;
     q.successor_sim     = successor_sim;
     q.edge_splice_sim   = edge_splice_sim;
     q.context_sim       = context_sim;
@@ -192,48 +215,47 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
     q.energy_match      = energy_match;
     q.edge_energy_match = edge_energy_match;
     q.centroid_match    = centroid_match;
-    if (t.onset_norm != nullptr && i < t.onset_norm_n && j < t.onset_norm_n) {   // ADR-064
-        q.transient_continuity = 1.0 - std::abs(t.onset_norm[i] - t.onset_norm[j]);
+    if (t.onset_norm != nullptr && i < t.onset_norm_n && jp < t.onset_norm_n) {   // ADR-064
+        q.transient_continuity = 1.0 - std::abs(t.onset_norm[i] - t.onset_norm[jp]);
         if (t.v2 && t.baselines != nullptr && t.onset_strength != nullptr)
-            q.transient_continuity = onsetQualityV2(*t.baselines, t.onset_strength[i], t.onset_strength[j],
+            q.transient_continuity = onsetQualityV2(*t.baselines, t.onset_strength[i], t.onset_strength[jp],
                                                     *q.transient_continuity);
     }
-    if (t.mfcc_continuity_matrix != nullptr && i < n_total && j < n_total)   // ADR-066
-        q.mfcc_continuity = t.mfcc_continuity_matrix[static_cast<std::size_t>(i) * n_total + j];
-    if (t.chroma_continuity_matrix != nullptr && i < n_total && j < n_total)   // ADR-083
-        q.full_mix_chroma_continuity = t.chroma_continuity_matrix[static_cast<std::size_t>(i) * n_total + j];
-    if (t.edge_vocal_onset_start != nullptr && t.edge_vocal_release_end != nullptr
+    if (t.mfcc_continuity_matrix != nullptr && i < n_total && jp < n_total)   // ADR-066
+        q.mfcc_continuity = t.mfcc_continuity_matrix[static_cast<std::size_t>(i) * n_total + jp];
+    if (t.chroma_continuity_matrix != nullptr && i < n_total && jp < n_total)   // ADR-083
+        q.full_mix_chroma_continuity = t.chroma_continuity_matrix[static_cast<std::size_t>(i) * n_total + jp];
+    if (! boundary && t.edge_vocal_onset_start != nullptr && t.edge_vocal_release_end != nullptr
         && i < n_total && j < n_total) {   // ADR-088 STATUS UPDATE 1
-        const double boundary = std::max(t.edge_vocal_release_end[i], t.edge_vocal_onset_start[j]);
+        const double bnd = std::max(t.edge_vocal_release_end[i], t.edge_vocal_onset_start[j]);
         double vocal_density = 0.0;
         if (t.vocal_activity != nullptr)
             vocal_density = std::max(t.vocal_activity[i], t.vocal_activity[j]);
         constexpr double kSilenceThreshold = 0.1;
-        q.vocal_continuity = vocal_density < kSilenceThreshold ? 1.0 : 0.5 + 0.5 * boundary;
+        q.vocal_continuity = vocal_density < kSilenceThreshold ? 1.0 : 0.5 + 0.5 * bnd;
     }
-    if (t.v2 && t.baselines != nullptr) {   // sesja 129 (ADR-116 step 2) — edge continuity
+    if (t.v2 && t.baselines != nullptr) {   // sesja 129 (ADR-116 step 2) — edge continuity (i vs j-1 by definition)
         const EdgeContinuityValue ec = edgeContinuityV2(*t.baselines, t.edge_mel_end, t.n_edge_mel, n_total, i, j);
-        if (ec.available) q.edge_continuity = ec.quality;
+        if (ec.available) { q.edge_continuity = ec.quality; out.edge_distance = ec.distance; }
     }
+    double quality = computeQualityScore(q, boundary ? kV2BoundaryQualityWeights : *t.weights);
 
-    double quality = computeQualityScore(q, *t.weights);
-
-    // --- Penalties (all >= 0; sequential clamps equal one final clamp) ------
-    if (t.graduated_energy_penalty && have_edge_db && energy_diff > kGraduatedThresholdDb)
-        quality -= std::min(kGraduatedCap, (energy_diff - kGraduatedThresholdDb) * kGraduatedSlope);
-
-    if (t.track_has_vocals && t.vocal_activity != nullptr) {
-        std::optional<double> eva_end, eva_start;
-        if (t.edge_vocal_activity_end != nullptr && i < n_total)   eva_end   = t.edge_vocal_activity_end[i];
-        if (t.edge_vocal_activity_start != nullptr && j < n_total) eva_start = t.edge_vocal_activity_start[j];
-        quality = std::max(0.0, quality - computeVocalPenalty(va_i, va_j, eva_end, eva_start));
+    // --- Penalties (continuation heuristics; none on a boundary cut) --------
+    if (! boundary) {
+        if (t.graduated_energy_penalty && have_edge_db && energy_diff > kGraduatedThresholdDb)
+            quality -= std::min(kGraduatedCap, (energy_diff - kGraduatedThresholdDb) * kGraduatedSlope);
+        if (t.track_has_vocals && t.vocal_activity != nullptr) {
+            std::optional<double> eva_end, eva_start;
+            if (t.edge_vocal_activity_end != nullptr && i < n_total)   eva_end   = t.edge_vocal_activity_end[i];
+            if (t.edge_vocal_activity_start != nullptr && j < n_total) eva_start = t.edge_vocal_activity_start[j];
+            quality = std::max(0.0, quality - computeVocalPenalty(va_i, va_j, eva_end, eva_start));
+        }
+        if (t.onset_strength != nullptr) {
+            std::optional<double> os_j;
+            if (j < n_total) os_j = t.onset_strength[j];
+            quality = std::max(0.0, quality - computeOnsetPenalty(os_j));
+        }
     }
-    if (t.onset_strength != nullptr) {
-        std::optional<double> os_j;
-        if (j < n_total) os_j = t.onset_strength[j];
-        quality = std::max(0.0, quality - computeOnsetPenalty(os_j));
-    }
-
     out.quality = std::max(0.0, quality);
     return out;
 }

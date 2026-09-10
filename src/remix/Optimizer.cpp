@@ -153,6 +153,10 @@ constexpr const char* K_META_ALIGNMENT_OFFSET_SEC = "alignment_offset_sec";
 constexpr const char* K_META_TOTAL_COST           = "total_cost";
 constexpr const char* K_META_IS_REPETITION_JUMP   = "is_repetition_jump";
 constexpr const char* K_META_CHROMA_CORRELATION   = "chroma_correlation";
+// ADR-116 step 3 (sesja 130): candidate family + normalised edge distance
+// (no Python key; the UI / harness read them for the boundary family).
+constexpr const char* K_META_FAMILY               = "family";
+constexpr const char* K_META_EDGE_DISTANCE        = "edge_distance";
 
 } // anonymous namespace
 
@@ -737,6 +741,8 @@ CleanOptimizer::extractRemixPath(const std::vector<std::int64_t>& path,
                     static_cast<double>(c.alignment_lag_samples)
                     / static_cast<double>(std::max(1, sample_rate_));
                 meta[K_META_TOTAL_COST] = c.total_cost;
+                meta[K_META_FAMILY]        = static_cast<double>(c.family);     // sesja 130
+                meta[K_META_EDGE_DISTANCE] = c.edge_distance;
             }
         }
 

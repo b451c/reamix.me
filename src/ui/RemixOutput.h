@@ -102,6 +102,9 @@ struct RemixOutput
     // accepted ("anchor_overlap_samples" present). Harness CSV columns.
     std::vector<float>        transitionOverlapSec;
     std::vector<int>          transitionAnchorAccepted;
+    // ADR-116 step 3 (sesja 130): candidate family of each transition
+    // ("family" metadata; 0 continuation, 1 boundary, -1 unknown / legacy).
+    std::vector<int>          transitionFamilies;
     std::vector<juce::String> transitionFromLabels;
     std::vector<juce::String> transitionToLabels;
     // Sesja 120 (DEV-099): 1 when a Blocks junction found no clean cut and

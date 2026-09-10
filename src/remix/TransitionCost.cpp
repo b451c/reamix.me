@@ -1,5 +1,6 @@
 #include "remix/TransitionCost.h"
 #include "remix/PhraseAlign.h"
+#include "remix/BoundaryFamily.h"  // ADR-116 step 3 (sesja 130)
 
 #include "remix/Quality.h"
 #include "remix/SignalNorm.h"  // ADR-115 v2 scoring
@@ -1012,6 +1013,170 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
             cand.edge_distance          = edge_cont.distance;
             res.candidates[{i, j}]      = cand;
         }
+    }
+
+    // ADR-116 step 3 (sesja 130) — the BOUNDARY cut family (src/remix/
+    // BoundaryFamily.h). The loop above admits one family: a cut that
+    // continues repeating material (same phrase position, repetition
+    // diagonal, judged by the continuity composite whose waveform term
+    // compares [end_i | start_{i+1}] with [end_{j-1} | start_j]). A cut that
+    // leaves at a PHRASE END and lands on a PHRASE START changes the
+    // arrangement on purpose (intro -> last chorus), so start_{i+1} vs
+    // start_j is not a defect; the xcorr scores such a cut 0.1-0.4 and the
+    // pool held them only through the outro exemption (High Hopes 3:11 ->
+    // 0:30: seven usable pairs at q 0.21-0.47, a red cut or a 51 s remix;
+    // corpus 0.15-0.33: 12 of 51 renders red). Sesja-128 probe: 4 of 5 such
+    // placements rated usable. Judge = the SUBSTITUTION view: does what the
+    // ear hears right before the landing (beat i) match what preceded that
+    // landing in the original (beat j-1)? Edge continuity (sesja 129, i vs
+    // j-1 by definition) carries the sharp half, the whole-beat signals in
+    // the same view the rest (kV2BoundaryQualityWeights, no waveform term).
+    // No repetition prior, no phrase gate (the phrase grid IS the rule), no
+    // top-k chroma budget (a phrase start every 8 bars is the budget); the
+    // chroma prefilter as harmonic compatibility; the loudness gates in the
+    // substitution view (end_i vs end_{j-1}, rms_i vs rms_{j-1}); the legacy
+    // span / vocal / onset penalties (continuation heuristics) do not apply.
+    // A pair already admitted as a continuation keeps that score. The
+    // acceptance tiers read `family` (SpliceAcceptance.h).
+    if (v2_bar_constraint && ! in.disable_boundary_family) {
+        const BoundaryFamily bf = BoundaryFamily::build(in.beat_times, n, db_idx.db_set,
+                                                        in.segments, in.n_segments);
+        res.boundary_family_active = bf.active;
+        res.boundary_family_starts = bf.n_starts;
+        std::set<int> bf_sources;
+        for (const int i : db_idx.pre_db_set) {
+            if (! bf.active || ! bf.leavesAtPhraseEnd(i)) continue;
+            const int source_boundary = i + 1;
+            for (const int j : db_idx.db_set) {
+                if (! bf.landsAtPhraseStart(j)) continue;
+                if (std::abs(j - i) < micro_skip) continue;              // same block as the continuation family
+                if (res.candidates.count({i, j}) > 0) continue;           // continuation score kept
+                const double chroma_d = res.chroma_D[static_cast<std::size_t>(i) * n + j];
+                if (chroma_d >= INF || chroma_d > in.chroma_prefilter) continue;   // harmonic compatibility
+                const int jp = j - 1;                                     // what preceded the landing
+
+                // --- Loudness gates, substitution view ------------------
+                double tail_step_db = 0.0;   // end edge of i vs end edge of j-1
+                double energy_diff  = 0.0;   // end_i vs start_j: the step the listener hears (display)
+                if (edge_db.available) {
+                    tail_step_db = std::abs(edge_db.end_dB[i] - edge_db.end_dB[jp]);
+                    energy_diff  = std::abs(edge_db.end_dB[i] - edge_db.start_dB[j]);
+                    if (tail_step_db > ENERGY_HARD_BLOCK_DB) continue;
+                    if (in.rms_energy != nullptr
+                        && loudnessRejectV2(baselines, in.rms_energy[i], in.rms_energy[jp], tail_step_db))
+                        continue;
+                }
+
+                // --- Substitution-view signals ---------------------------
+                QualityInputs qi{};
+                // successor matrix is row-shifted: S[r][c] = cos(feat[r+1], feat[c]).
+                qi.successor_sim = (i >= 1)
+                    ? static_cast<double>(successor_sim[static_cast<std::size_t>(i - 1) * n + jp]) : 0.0;
+                {
+                    std::vector<double> ctx_i = windowMeanF64(
+                        in.features, n, in.n_features,
+                        i + CONTEXT_BEFORE_LO_OFFSET, i + CONTEXT_BEFORE_HI_OFFSET);
+                    std::vector<double> ctx_jp = windowMeanF64(
+                        in.features, n, in.n_features,
+                        jp + CONTEXT_BEFORE_LO_OFFSET, jp + CONTEXT_BEFORE_HI_OFFSET);
+                    qi.context_sim = cosineSim(ctx_i.data(), ctx_jp.data(), in.n_features);
+                }
+                qi.label_match = (beat_labels[i] != "unknown" && beat_labels[i] == beat_labels[j]) ? 1.0 : 0.0;
+                {
+                    const std::int64_t seg_i = seg_data.beat_to_segment[i];
+                    const std::int64_t seg_j = seg_data.beat_to_segment[j];
+                    qi.section_sim = noStructure ? 0.0
+                        : seg_data.seg_sim[static_cast<std::size_t>(seg_i) * seg_data.n_segs + seg_j];
+                }
+                qi.bar_aligned = 1.0;
+                double energy_match = 1.0;
+                if (in.rms_energy != nullptr) {
+                    const double rms_diff = std::abs(in.rms_energy[i] - in.rms_energy[jp]);
+                    energy_match = energyQualityV2(baselines, in.rms_energy[i], in.rms_energy[jp],
+                                                   std::max(0.0, 1.0 - rms_diff * RMS_DIFF_SCALE));
+                }
+                double edge_energy_match = 1.0;
+                if (edge_db.available) {
+                    edge_energy_match = edgeEnergyQualityV2(
+                        baselines, tail_step_db,
+                        std::max(0.0, 1.0 - std::min(tail_step_db, EDGE_ENERGY_SATURATION_DB)
+                                            / EDGE_ENERGY_SATURATION_DB));
+                }
+                double centroid_match = 1.0;
+                if (in.spectral_centroid != nullptr) {
+                    const double c_diff = std::abs(in.spectral_centroid[i] - in.spectral_centroid[jp]);
+                    centroid_match = centroidQualityV2(baselines, in.spectral_centroid[i], in.spectral_centroid[jp],
+                                                       std::max(0.0, 1.0 - c_diff * CENTROID_DIFF_SCALE));
+                }
+                qi.energy_match      = energy_match;
+                qi.edge_energy_match = edge_energy_match;
+                qi.centroid_match    = centroid_match;
+                if (! onset_norm.empty()) {
+                    qi.transient_continuity =
+                        1.0 - std::abs(onset_norm[static_cast<std::size_t>(i)]
+                                     - onset_norm[static_cast<std::size_t>(jp)]);
+                    if (in.onset_strength != nullptr)
+                        qi.transient_continuity = onsetQualityV2(
+                            baselines, in.onset_strength[i], in.onset_strength[jp], *qi.transient_continuity);
+                }
+                if (! mfcc_continuity_matrix.empty())
+                    qi.mfcc_continuity = mfcc_continuity_matrix[static_cast<std::size_t>(i) * n + jp];
+                const EdgeContinuityValue edge_cont =
+                    edgeContinuityV2(baselines, in.edge_mel_end, in.n_edge_mel, n, i, j);
+                if (edge_cont.available) qi.edge_continuity = edge_cont.quality;
+
+                const double quality = computeQualityScore(qi, kV2BoundaryQualityWeights);
+                if (quality < in.quality_floor) continue;
+
+                // Waveform xcorr for the record only (harness columns, DEV-118
+                // lag audit); a cross-material lag is noise, so no alignment.
+                double waveform_diag = 0.0;
+                if (has_waveforms) {
+                    const float* src = in.boundary_waveforms
+                                       + static_cast<std::size_t>(source_boundary) * in.n_samples_per_bnd;
+                    const float* tgt = in.boundary_waveforms
+                                       + static_cast<std::size_t>(j) * in.n_samples_per_bnd;
+                    auto [ws, lag] = dsp::WaveformXcorr::compute(
+                        src, tgt,
+                        static_cast<std::size_t>(in.n_samples_per_bnd),
+                        static_cast<std::size_t>(in.n_samples_per_bnd),
+                        max_lag_samples);
+                    (void) lag;
+                    waveform_diag = ws;
+                }
+
+                const double total_cost = 1.0 - quality;
+                res.W[static_cast<std::size_t>(i) * n + j] = total_cost;
+
+                TransitionCandidate cand;
+                cand.from_beat              = i;
+                cand.to_beat                = j;
+                cand.quality_score          = quality;
+                cand.waveform_similarity    = waveform_diag;
+                cand.successor_similarity   = qi.successor_sim;
+                cand.edge_splice_similarity = 0.0;
+                cand.chroma_distance        = chroma_d;
+                cand.energy_diff_db         = energy_diff;
+                cand.alignment_lag_samples  = 0;
+                cand.total_cost             = total_cost;
+                cand.context_similarity     = qi.context_sim;
+                cand.label_match            = qi.label_match;
+                cand.section_similarity     = qi.section_sim;
+                cand.bar_aligned            = 1.0;
+                cand.energy_match           = energy_match;
+                cand.edge_energy_match      = edge_energy_match;
+                cand.centroid_match         = centroid_match;
+                cand.transient_continuity   = qi.transient_continuity.value_or(0.0);
+                cand.mfcc_continuity        = qi.mfcc_continuity.value_or(0.0);
+                cand.edge_continuity        = edge_cont.available ? edge_cont.quality : 0.0;
+                cand.edge_distance          = edge_cont.distance;
+                cand.family                 = TransitionCandidate::kFamilyBoundary;
+                res.candidates[{i, j}]      = cand;
+                ++res.boundary_family_pairs;
+                bf_sources.insert(i);
+            }
+        }
+        res.boundary_family_sources = static_cast<int>(bf_sources.size());
     }
 
     return res;

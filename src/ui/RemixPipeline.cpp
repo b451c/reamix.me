@@ -12,6 +12,7 @@
 #include "remix/RegionCost.h"
 #include "remix/RegionOptimizer.h"
 #include "remix/TransitionCost.h"
+#include "remix/SpliceAcceptance.h"   // ADR-116 step 3 (sesja 130)
 #include "render/Renderer.h"
 #include "ui/RemixCache.h"
 
@@ -264,6 +265,7 @@ void RemixPipeline::run()
             // Default block_assembly_beta=false preserves legacy +-W path.
             bin.block_assembly_beta = in_.block_assembly_beta;
             bin.block_energy_gate   = in_.block_energy_gate;   // sesja 119
+            bin.disable_boundary_family = in_.disable_boundary_family;   // sesja 130 (ADR-116 step 3)
             bin.block_sequence      = validQueue.data();
             bin.n_block_sequence    = (int) validQueue.size();
             const int barBeats      = std::max (1, gridBarBeats);
@@ -616,6 +618,7 @@ void RemixPipeline::run()
 
                 tcin.time_signature  = gridBarBeats;
                 tcin.quality_weights = &(*in_.qualityWeightsOverride);
+                tcin.disable_boundary_family = in_.disable_boundary_family;   // sesja 130
 
                 freshTc = reamix::remix::computeTransitionCosts (tcin);
                 tcSrc   = &freshTc;
@@ -733,9 +736,12 @@ void RemixPipeline::run()
             // tier that ends at the tail wins (length off, logged); the
             // unfiltered pool is the last resort. Legacy path (v2_scoring
             // off) = the single unfiltered run.
-            constexpr double kAcceptMinQ      = 0.45;
+            // ADR-116 step 3 (sesja 130): the tier vocabulary lives in
+            // SpliceAcceptance.h; a tier masks a continuation candidate by
+            // its waveform xcorr and a boundary candidate by its edge distance.
+            constexpr double kAcceptMinQ      = reamix::remix::kAcceptMinQ;
             const     double kMaxLengthDevSec = in_.maxLengthDevSec;
-            const double tiers[] = { 0.80, 0.70, 0.60, 0.0 };
+            const auto&      tiers            = reamix::remix::kAcceptTiers;
             struct TierCand
             {
                 double tier;
@@ -744,6 +750,7 @@ void RemixPipeline::run()
                 double dev;
             };
             std::vector<TierCand> cands;
+            std::size_t passInsert = 0;   // sesja 130: pass-1 candidates are inserted at the front, in tier order
             std::vector<double> maskedW;
             double floorUsed = 0.0;
             reamix::remix::RemixPath best;
@@ -768,14 +775,32 @@ void RemixPipeline::run()
                 if (tail) len += bt.front() + juce::jmax (0.0, trackSec - bt[(std::size_t) p.beat_indices.back()]);
                 return len;
             };
+            // ADR-116 step 3 (sesja 130): the boundary family is a RESCUE, not
+            // a competitor. Its composite (no waveform term) sits on another
+            // scale than the continuation composite, so with both families
+            // in one pool the DP swapped 34 of 51 normal-ratio corpus cases
+            // (Woodkid x0.75 to a red cut, Periphery x1.25 to one boundary
+            // loop x6). Pass 0 = the continuation pool alone (the tiers
+            // exactly as sesja 129, bit-exact when a tier accepts); pass 1 =
+            // both families, only when no tier accepted in pass 0 (extreme
+            // ratios: High Hopes 3:11 -> 0:30, corpus 0.15-0.33). The
+            // fallback then prefers the pass-1 pool (richer) over pass 0.
+            bool hasBoundary = false;
+            for (const auto& kv : tcSrc->candidates)
+                if (kv.second.family == reamix::remix::TransitionCandidate::kFamilyBoundary) { hasBoundary = true; break; }
+            for (int pass = 0; pass < 2 && ! haveBest; ++pass)
+            {
+            if (pass == 1 && (! hasBoundary || ! in_.v2_scoring)) break;
+            const bool withBoundary = pass == 1;
             for (const double tier : tiers)
             {
                 if (tier > 0.0 && ! in_.v2_scoring) continue;
-                if (tier > 0.0)
+                if (tier > 0.0 || (hasBoundary && ! withBoundary))
                 {
                     maskedW = tcSrc->W;
                     for (const auto& kv : tcSrc->candidates)
-                        if (kv.second.waveform_similarity < tier)
+                        if ((! withBoundary && kv.second.family == reamix::remix::TransitionCandidate::kFamilyBoundary)
+                            || reamix::remix::maskedAtTier (kv.second, tier))
                             maskedW[(std::size_t) kv.first.first * (std::size_t) tcSrc->n_beats
                                     + (std::size_t) kv.first.second] = reamix::remix::INF;
                     oin.W = maskedW.data();
@@ -800,6 +825,13 @@ void RemixPipeline::run()
                     minQ = std::min (minQ, q);
                 }
                 if (minQ < kAcceptMinQ) qOk = false;
+                int bnd = 0;   // sesja 130: boundary-family cuts on the path
+                for (const auto& tr : cand.transitions)
+                {
+                    auto ci = tcSrc->candidates.find (tr);
+                    if (ci != tcSrc->candidates.end()
+                        && ci->second.family == reamix::remix::TransitionCandidate::kFamilyBoundary) ++bnd;
+                }
                 const bool   tail = endsAtTail (cand);
                 const double est  = estimateSec (cand, tail);
                 const double dev  = est - in_.targetDurationSec;
@@ -808,15 +840,19 @@ void RemixPipeline::run()
                 {
                     if (FILE* f = std::fopen (dbg, "a"))
                     {
-                        std::fprintf (f, "tier %.2f: cuts %d minQ %.3f est %.1f dev %+.1f dp-target %.1f last %d/%d %s -> %s\n",
-                                      tier, (int) cand.transitions.size(), minQ, est, dev, dpTarget,
+                        std::fprintf (f, "pass %d tier %.2f: cuts %d bnd %d minQ %.3f est %.1f dev %+.1f dp-target %.1f last %d/%d %s -> %s\n",
+                                      pass, tier, (int) cand.transitions.size(), bnd, minQ, est, dev, dpTarget,
                                       cand.beat_indices.empty() ? -1 : cand.beat_indices.back(), nBeatsAll,
                                       tail ? "ends@tail" : "ends-early", ok ? "ACCEPT" : "reject");
                         std::fclose (f);
                     }
                 }
                 if (ok) { best = std::move (cand); floorUsed = tier; haveBest = true; break; }
-                cands.push_back ({ tier, std::move (cand), qOk, tail, dev });
+                // Pass-1 candidates go first so the fallback prefers the
+                // richer pool (a boundary cut over a red continuation cut).
+                if (withBoundary) cands.insert (cands.begin() + passInsert++, TierCand { tier, std::move (cand), qOk, tail, dev });
+                else              cands.push_back ({ tier, std::move (cand), qOk, tail, dev });
+            }
             }
             if (! haveBest)
             {
@@ -1036,6 +1072,7 @@ void RemixPipeline::run()
             int   junction  = ti < path.transition_junctions.size()
                               ? path.transition_junctions[ti] : -1;
             int   fallback  = 0;
+            int   family    = -1;   // sesja 130
             auto it = path.transition_metadata.find (tr);
             if (it != path.transition_metadata.end())
             {
@@ -1050,7 +1087,10 @@ void RemixPipeline::run()
                 auto oit = it->second.find ("resolved_overlap_sec");   // DEV-087
                 if (oit != it->second.end()) overlap = (float) oit->second;
                 anchor = it->second.count ("anchor_overlap_samples") ? 1 : 0;
+                auto fam = it->second.find ("family");   // sesja 130
+                if (fam != it->second.end()) family = (int) fam->second;
             }
+            out.transitionFamilies.push_back (family);
             out.transitionFallbacks.push_back (fallback);
             out.transitionJunctions.push_back (junction);
             out.transitionFromBeats.push_back (fb);

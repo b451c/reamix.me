@@ -437,6 +437,7 @@ struct Run
     double       blocksDriftWeight { 0.10 };   // sesja 119 - "blocks_drift_weight" (blocks only; BLOCK_DRIFT_PENALTY_WEIGHT)
     int          editDensityBars  { 0 };       // sesja 123 - "edit_density_bars" (ADR-115 P3: 16/8/4/2/1, 0 = mode default)
     double       maxLengthDevSec  { 10.0 };    // sesja 127 - "max_length_dev_sec" (DEV-117: tier length cap, Duration v2)
+    bool         disableBoundaryFamily { false };   // sesja 130 - "disable_boundary_family" (ADR-116 step 3 A/B)
     juce::String outWav;
     juce::String outCsv;
 
@@ -503,6 +504,7 @@ Run parseRun (const juce::var& v)
     r.blocksDriftWeight = (double) v.getProperty ("blocks_drift_weight", 0.10);
     r.editDensityBars   = (int) v.getProperty ("edit_density_bars", 0);
     r.maxLengthDevSec   = (double) v.getProperty ("max_length_dev_sec", 10.0);
+    r.disableBoundaryFamily = (bool) v.getProperty ("disable_boundary_family", false);   // sesja 130
     r.outWav = v.getProperty ("out_wav", juce::String()).toString();
     r.outCsv = v.getProperty ("out_csv", juce::String()).toString();
     if (r.outWav.isEmpty() || r.outCsv.isEmpty())
@@ -548,6 +550,7 @@ reamix::ui::RemixOutput driveRemixPipeline (
     pin.driftPenaltyWeight = run.blocksDriftWeight;  // sesja 119
     pin.edit_density_bars  = run.editDensityBars;    // sesja 123 (ADR-115 P3)
     pin.maxLengthDevSec    = run.maxLengthDevSec;    // sesja 127 (DEV-117)
+    pin.disable_boundary_family = run.disableBoundaryFamily;   // sesja 130 (ADR-116 step 3)
 
     std::atomic<bool>          done { false };
     reamix::ui::RemixOutput    result;
@@ -584,7 +587,7 @@ bool writeSplicesCsv (const juce::String& path,
 
     stream << "splice_idx,from_beat,to_beat,from_time_sec,to_time_sec,"
               "splice_remix_time_sec,quality,energy_diff_db,from_label,to_label,"
-              "overlap_sec,anchor\n";   // DEV-087 (sesja 122)
+              "overlap_sec,anchor,family\n";   // DEV-087 (sesja 122); family sesja 130
 
     const auto& bt = bundle.beatTimes;
     auto safeBt = [&] (int b) -> double
@@ -604,6 +607,7 @@ bool writeSplicesCsv (const juce::String& path,
         const auto   toLb   = (i < (int) out.transitionToLabels.size())      ? out.transitionToLabels[i]      : juce::String();
         const double ov     = (i < (int) out.transitionOverlapSec.size())     ? (double) out.transitionOverlapSec[i] : 0.0;
         const int    anc    = (i < (int) out.transitionAnchorAccepted.size()) ? out.transitionAnchorAccepted[i] : 0;
+        const int    fam    = (i < (int) out.transitionFamilies.size())       ? out.transitionFamilies[i]       : -1;
 
         stream << i << ','
                << fb << ',' << tb << ','
@@ -613,7 +617,7 @@ bool writeSplicesCsv (const juce::String& path,
                << juce::String (q,           6) << ','
                << juce::String (edb,         3) << ','
                << fromLb << ',' << toLb << ','
-               << juce::String (ov, 4) << ',' << anc << '\n';
+               << juce::String (ov, 4) << ',' << anc << ',' << fam << '\n';
     }
     return true;
 }
@@ -915,6 +919,9 @@ int main (int argc, char** argv)
         std::fprintf (stderr, "[harness] phrase align: %s (%d bars, %d allowed pairs over %d sources)\n",
                       tc.phrase_align_bars > 0 ? "ACTIVE" : "inactive",
                       tc.phrase_align_bars, tc.phrase_align_pairs, tc.phrase_align_sources);
+        std::fprintf (stderr, "[harness] boundary family: %s (%d phrase starts, %d pairs over %d sources)\n",   // sesja 130
+                      tc.boundary_family_active ? "ACTIVE" : "inactive",
+                      tc.boundary_family_starts, tc.boundary_family_pairs, tc.boundary_family_sources);
         {
             std::set<int> sources;
             for (const auto& kv : tc.candidates) sources.insert (kv.second.from_beat);
@@ -962,7 +969,7 @@ int main (int argc, char** argv)
              "energy,edge_energy,centroid,transient_continuity,mfcc_continuity,"
              "chroma_distance,energy_diff_db,rms_log_step,centroid_log_step,onset_step,"
              "va_i,va_j,eva_end_i,eva_start_j,rel_i,on_j,vocal_penalty,phrase_off_out,phrase_off_in,"   // sesja 126 audit
-             "edge_continuity,edge_distance\n";   // sesja 129
+             "edge_continuity,edge_distance,family\n";   // sesja 129; family sesja 130
         for (const auto& kv : tc.candidates)
         {
             const auto& c = kv.second;
@@ -998,7 +1005,8 @@ int main (int argc, char** argv)
               << ((std::size_t) c.from_beat + 1 < tc.phrase_bar_offset.size() ? tc.phrase_bar_offset[(std::size_t) c.from_beat + 1] : -1) << ','
               << ((std::size_t) c.to_beat < tc.phrase_bar_offset.size() ? tc.phrase_bar_offset[(std::size_t) c.to_beat] : -1) << ','
               << juce::String (c.edge_continuity, 4) << ','          // sesja 129
-              << juce::String (c.edge_distance, 4)
+              << juce::String (c.edge_distance, 4) << ','
+              << c.family                                      // sesja 130
               << '\n';
         }
         std::fprintf (stderr, "[harness] wrote %s (%d pairs)\n",
@@ -1090,6 +1098,7 @@ int main (int argc, char** argv)
                 if (run.v2) applyV2Grid (tcin, *bundle, gridStorage);   // ADR-115 E5
                 if (run.qualityFloor.has_value())
                     tcin.quality_floor = *run.qualityFloor;
+                tcin.disable_boundary_family = run.disableBoundaryFamily;   // sesja 130 (ADR-116 step 3 A/B)
                 if (extra1 != nullptr && extra1->n == bundle->feat.nBeats)
                 {
                     tcin.extra1_per_pair = extra1->data.data();

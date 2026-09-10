@@ -65,6 +65,11 @@ public:
         // when no tier makes it, the highest tier ending at the song's
         // ending wins. The harness overrides it for A/B rounds.
         double                maxLengthDevSec { 10.0 };
+        // ADR-116 step 3 (sesja 130): skip the boundary cut family in the
+        // Duration pool (harness key "disable_boundary_family"; A/B rounds).
+        // Reaches the pool only on the weights-override path (the plugin's
+        // analysis-time pool always carries the family).
+        bool                  disable_boundary_family { false };
 
         // ADR-051 (sesja 61) — Block Assembly mode. Active when
         // userBlocks non-empty AND queue.size() ≥ 2. Mutually exclusive

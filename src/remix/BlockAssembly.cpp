@@ -19,6 +19,8 @@
 #include "remix/Quality.h"
 #include "remix/PairScorer.h"
 #include "remix/PhraseAlign.h"   // sesja 127 (DEV-117 d)   // sesja 119 (DEV-096) shared pair scorer
+#include "remix/BoundaryFamily.h"     // sesja 130 (ADR-116 step 3)
+#include "remix/SpliceAcceptance.h"   // sesja 130: per-family tier masks
 #include "remix/RegionCost.h"   // REGION_CHROMA_PREFILTER (Region C2 gate, shared sesja 119)
 #include "remix/SignalNorm.h"  // ADR-115 v2 scoring
 #include "remix/TransitionCost.h"  // chromaRange + EDGE_ENERGY_SATURATION_DB + N_CHROMA_DIMS
@@ -910,20 +912,40 @@ computeBlockCompatibility(const BlockCompatInputs& in)
         out.pools.assign(nn, {});
 
         // DEV-117 (d) (sesja 127): phrase offsets from the user's block starts.
+        std::vector<analysis::Segment> block_segs;
+        block_segs.reserve(static_cast<std::size_t>(n));
+        for (int b = 0; b < n; ++b) {
+            analysis::Segment sg;
+            sg.start = in.blocks[b].start_sec;
+            sg.end   = in.blocks[b].end_sec;
+            sg.label = in.blocks[b].label;
+            block_segs.push_back(sg);
+        }
         PhraseAlign phrase{};
         if (in.v2_scoring && !in.disable_phrase_align && downbeat_only) {
-            std::vector<analysis::Segment> block_segs;
-            block_segs.reserve(static_cast<std::size_t>(n));
-            for (int b = 0; b < n; ++b) {
-                analysis::Segment sg;
-                sg.start = in.blocks[b].start_sec;
-                sg.end   = in.blocks[b].end_sec;
-                sg.label = in.blocks[b].label;
-                block_segs.push_back(sg);
-            }
             phrase = PhraseAlign::build(in.beat_times, n_beats, db_set, pre_db_set,
                                         block_segs.data(), static_cast<int>(block_segs.size()),
                                         [](int, int) { return true; });
+        }
+        // ADR-116 step 3 (sesja 130): a junction candidate that leaves at a
+        // phrase end and lands on a phrase start (the user's blocks as the
+        // sections) is a BOUNDARY cut: scored in the substitution view
+        // (PairScorerRequest::boundary) and masked by its edge distance in
+        // the tiers below. The authored junction (end of block a -> start of
+        // block b) is one by construction. Sesja-129 round: every junction
+        // landing on an authored start was rated bad under the continuity
+        // judge; the boundary judge re-orders the window (Billie Jean
+        // chorus -> outro: 98.31 -> 266.78 at 0.57 of the edge scale vs the
+        // authored 96.23 -> 268.82 at 0.78).
+        BoundaryFamily bfam{};
+        if (in.v2_scoring && !in.disable_boundary_family && downbeat_only) {
+            bfam = BoundaryFamily::build(in.beat_times, n_beats, db_set,
+                                         block_segs.data(), static_cast<int>(block_segs.size()));
+            // The beat after a user block is a phrase end for the cut that
+            // leaves there (the authored junction end_a -> start_b is a
+            // boundary cut by construction; the bare 8-bar count from the
+            // block start would miss a 6- or 12-bar block).
+            for (int b = 0; b < n; ++b) bfam.markStart(in.blocks[b].end_beat);
         }
 
         // Build the (i, j) pair list. Lazy mode = only the junctions in the
@@ -1014,6 +1036,7 @@ computeBlockCompatibility(const BlockCompatInputs& in)
                     req.section_sim = section_sim;
                     req.bar_aligned =
                         (pre_db_set.count(bi) > 0 && db_set.count(bj) > 0) ? 1.0 : 0.0;
+                    req.boundary    = bfam.active && bfam.pairOk(bi, bj);   // sesja 130
                     const PairScore score = scorePair(track, req);
                     if (score.rejected) continue;
                     double q = score.quality;
@@ -1055,6 +1078,8 @@ computeBlockCompatibility(const BlockCompatInputs& in)
                         c.energy_diff_db  = score.energy_diff_db;
                         c.waveform_sim    = score.waveform_sim;
                         c.chroma_distance = chroma_distance;
+                        c.family          = score.family;          // sesja 130
+                        c.edge_distance   = score.edge_distance;
                         candidates.push_back(c);
                         phrase_ok.push_back(phrase.active
                             && (bj < bi ? phrase.loopAllowed(bi, bj) : phrase.allowed(bi, bj)) ? 1 : 0);
@@ -1076,13 +1101,20 @@ computeBlockCompatibility(const BlockCompatInputs& in)
                 }
             }
             if (in.v2_scoring && has_wf && !in.disable_phrase_align) {
+                // Sesja 130: the tier masks a continuation candidate by its
+                // waveform xcorr and a boundary candidate by its edge
+                // distance (SpliceAcceptance.h), same rule as Duration.
+                auto passes = [] (const BlockJunctionCandidate& c, double tier)
+                {
+                    return ! maskedAtTierRaw(c.family, c.waveform_sim, c.edge_distance, tier);
+                };
                 for (const double tier : { 0.80, 0.70, 0.60 }) {
                     bool holds = false;
                     for (const auto& c : candidates)
-                        if (c.waveform_sim >= tier && c.quality >= 0.45) { holds = true; break; }
+                        if (passes(c, tier) && c.quality >= kAcceptMinQ) { holds = true; break; }
                     if (!holds) continue;
                     std::vector<BlockJunctionCandidate> kept;
-                    for (const auto& c : candidates) if (c.waveform_sim >= tier) kept.push_back(c);
+                    for (const auto& c : candidates) if (passes(c, tier)) kept.push_back(c);
                     candidates.swap(kept);
                     break;
                 }
@@ -1131,6 +1163,7 @@ computeBlockCompatibility(const BlockCompatInputs& in)
                 if (FILE* f = std::fopen(dbg, "a")) {
                     PairScorerRequest areq{};
                     areq.abs_i = core_exit; areq.abs_j = core_entry;
+                    areq.boundary = bfam.active && bfam.pairOk(core_exit, core_entry);   // sesja 130
                     areq.label_match = label_match; areq.section_sim = section_sim;
                     areq.bar_aligned = (pre_db_set.count(core_exit) > 0 && db_set.count(core_entry) > 0) ? 1.0 : 0.0;
                     const PairScore as = scorePair(track, areq);
@@ -1142,10 +1175,11 @@ computeBlockCompatibility(const BlockCompatInputs& in)
                                  as.quality, as.energy_diff_db, (int) areq.bar_aligned,
                                  static_cast<int>(candidates.size()));
                     for (std::size_t k = 0; k < candidates.size() && k < 5; ++k)
-                        std::fprintf(f, "#   %d -> %d  q=%.4f  edb=%.2f  cd=%.3f  drift=%d\n",
+                        std::fprintf(f, "#   %d -> %d  q=%.4f  edb=%.2f  cd=%.3f  drift=%d  fam=%d  ed=%.2f\n",
                                      candidates[k].from_beat, candidates[k].to_beat, candidates[k].quality,
                                      candidates[k].energy_diff_db, candidates[k].chroma_distance,
-                                     std::abs(candidates[k].from_beat - core_exit) + std::abs(candidates[k].to_beat - core_entry));
+                                     std::abs(candidates[k].from_beat - core_exit) + std::abs(candidates[k].to_beat - core_entry),
+                                     candidates[k].family, candidates[k].edge_distance);
                     std::fclose(f);
                 }
             }

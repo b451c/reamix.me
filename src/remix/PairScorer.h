@@ -108,6 +108,13 @@ struct PairScorerRequest
     double label_match = 0.0;
     double section_sim = 0.0;
     double bar_aligned = 0.0;
+    // ADR-116 step 3 (sesja 130): score the pair as a BOUNDARY cut (leaves
+    // at a phrase end, lands on a phrase start - src/remix/BoundaryFamily.h)
+    // in the substitution view: beat i against beat j-1, no waveform term,
+    // kV2BoundaryQualityWeights, loudness gates on end(i) vs end(j-1) and
+    // rms(i) vs rms(j-1), no continuation penalties. v2 only (the legacy
+    // path ignores it); the caller decides the family by geometry.
+    bool   boundary    = false;
 };
 
 struct PairScore
@@ -122,6 +129,8 @@ struct PairScore
     double successor_sim   = 0.0;
     double edge_splice_sim = 0.0;
     double context_sim     = 0.0;
+    int    family          = 0;       // sesja 130: TransitionCandidate::kFamily* (1 when scored as a boundary cut)
+    double edge_distance   = -1.0;    // sesja 130: normalised edge distance d / scale (-1 = not available)
 };
 
 PairScore scorePair(const PairScorerTrack& track, const PairScorerRequest& req);

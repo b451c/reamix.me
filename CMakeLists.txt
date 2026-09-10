@@ -2156,6 +2156,47 @@ if(REAMIX_BUILD_TESTS)
              COMMAND test_edge_continuity
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    # test_boundary_family — sesja 130 (ADR-116 step 3) self-validation of the
+    # boundary cut family (BoundaryFamily.h phrase starts + pairs, the pool
+    # admission in computeTransitionCosts, SpliceAcceptance tier masks).
+    # Hand-computed fixtures (ADR-065).
+    add_executable(test_boundary_family
+      tests/parity/test_boundary_family.cpp
+      src/remix/TransitionCost.cpp
+      src/remix/RepetitionPrior.cpp
+      src/remix/BeatGrid.cpp
+      src/analysis/Recurrence.cpp
+      src/remix/SegmentData.cpp
+      src/remix/Quality.cpp
+      src/remix/SignalNorm.cpp
+      src/dsp/SosFilt.cpp
+      src/dsp/WaveformXcorr.cpp
+    )
+    target_include_directories(test_boundary_family PRIVATE
+      src
+      ${POCKETFFT_DIR}
+    )
+    target_link_libraries(test_boundary_family PRIVATE
+      juce::juce_core
+    )
+    target_compile_definitions(test_boundary_family PRIVATE
+      JUCE_STANDALONE_APPLICATION=0
+      JUCE_MODAL_LOOPS_PERMITTED=0
+      JUCE_WEB_BROWSER=0
+      JUCE_USE_CURL=0
+      JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
+    )
+    if(MSVC)
+      target_compile_options(test_boundary_family PRIVATE /W3)
+    else()
+      target_compile_options(test_boundary_family PRIVATE
+        -Wall -Wextra -Wno-unused-parameter
+        -ffp-contract=off)
+    endif()
+    add_test(NAME boundary_family_parity
+             COMMAND test_boundary_family
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_parse_weights_field_coverage — sesja 86 ADR-076 CI guardrail.
   # Verifies tools/calibration_harness_parse_weights.h reads every JSONL
   # field that orchestrator.py emits + maps it onto the matching

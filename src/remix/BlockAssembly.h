@@ -182,6 +182,8 @@ struct BlockJunctionCandidate
     double energy_diff_db  = 0.0;   // |end(from) - start(to)| edge view (metadata)
     double waveform_sim    = 0.0;
     double chroma_distance = 0.0;
+    int    family          = 0;      // sesja 130: 0 continuation, 1 boundary (TransitionCandidate::kFamily*)
+    double edge_distance   = -1.0;   // sesja 130: d / scale of the edge-continuity signal (-1 = n/a)
 };
 
 // Sorted candidates kept per junction for the joint resolution (DEV-094).
@@ -297,6 +299,14 @@ struct BlockCompatInputs
     // waveform floor 0.80 / 0.70 / 0.60 holds per junction when at least
     // one candidate with q >= 0.45 survives it. false = active.
     bool disable_phrase_align = false;
+
+    // ADR-116 step 3 (sesja 130): a junction candidate that leaves at a
+    // phrase end and lands on a phrase start (offsets from the USER'S block
+    // starts, 8 grid bars) is scored as a BOUNDARY cut (PairScorerRequest::
+    // boundary: substitution view, no waveform term) and the per-junction
+    // tier masks it by its edge distance instead of the waveform xcorr
+    // (SpliceAcceptance.h). false = active (v2 + downbeat-only pools).
+    bool disable_boundary_family = false;
 
     // ADR-051 (sesja 61) — junction search-window radius (beats either side
     // of the user-authored boundary). Default = BLOCK_SEARCH_WINDOW_BEATS to

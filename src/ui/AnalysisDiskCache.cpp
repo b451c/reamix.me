@@ -27,7 +27,7 @@ namespace
     constexpr char        kMagic[4]       = { 'R', 'X', 'B', 'C' };
     // 7 (sesja 121): bundle.structure carries the LinkSeg model sections;
     // format-6 entries (empty structure) would never get them, so they miss.
-    constexpr juce::uint32 kFormatVersion = 10;  // sesja 129: edgeMelEnd / edgeMelStart (edge-continuity signal)
+    constexpr juce::uint32 kFormatVersion = 11;  // sesja 130: boundary family (candidate family / edge_distance / edge_continuity)
 
     juce::String hashOf (const juce::String& s)
     {
@@ -257,7 +257,10 @@ namespace
                 && writePOD (s, c.chroma_distance)
                 && writePOD (s, c.energy_diff_db)
                 && writePOD (s, (juce::int32) c.alignment_lag_samples)
-                && writePOD (s, c.total_cost))) return false;
+                && writePOD (s, c.total_cost)
+                && writePOD (s, (juce::int32) c.family)        // sesja 130
+                && writePOD (s, c.edge_distance)
+                && writePOD (s, c.edge_continuity))) return false;
         }
         return writePOD (s, (juce::int32) tc.n_beats);
     }
@@ -275,7 +278,7 @@ namespace
         for (juce::uint32 i = 0; i < nCand; ++i)
         {
             reamix::remix::TransitionCandidate c {};
-            juce::int32 fromBeat = 0, toBeat = 0, lag = 0;
+            juce::int32 fromBeat = 0, toBeat = 0, lag = 0, family = 0;
             if (! (readPOD (s, fromBeat)
                 && readPOD (s, toBeat)
                 && readPOD (s, c.quality_score)
@@ -285,10 +288,14 @@ namespace
                 && readPOD (s, c.chroma_distance)
                 && readPOD (s, c.energy_diff_db)
                 && readPOD (s, lag)
-                && readPOD (s, c.total_cost))) return false;
+                && readPOD (s, c.total_cost)
+                && readPOD (s, family)                          // sesja 130
+                && readPOD (s, c.edge_distance)
+                && readPOD (s, c.edge_continuity))) return false;
             c.from_beat = (int) fromBeat;
             c.to_beat   = (int) toBeat;
             c.alignment_lag_samples = (int) lag;
+            c.family    = (int) family;
             tc.candidates[{ c.from_beat, c.to_beat }] = c;
         }
         juce::int32 nBeats = 0;

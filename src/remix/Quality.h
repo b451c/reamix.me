@@ -341,6 +341,45 @@ inline constexpr double kV2QualityWeightsSum =
 static_assert(kV2QualityWeightsSum > 1.0 - 1e-12 && kV2QualityWeightsSum < 1.0 + 1e-12,
               "kV2QualityWeights fields must sum to 1.0.");
 
+// ADR-116 step 3 (sesja 130) — the BOUNDARY cut family (a cut that leaves at
+// a phrase end and lands on a phrase start; src/remix/BoundaryFamily.h).
+// Every input is taken in the SUBSTITUTION view - beat i (the outgoing beat)
+// against beat j-1 (the beat that preceded the landing in the original):
+// the arrangement after the landing changes on purpose, so start_{i+1} vs
+// start_j is not a defect and the waveform xcorr (which compares both halves
+// of the seam) is left out. Edge continuity (the 69 ms end edges, sesja
+// 129: probe cuts 8/8 ordered) carries the sharp half; the whole-beat
+// signals in the same view (energy / edge dB / centroid / onset, sequential
+// = successor + context + mfcc of i vs j-1) the rest. Geometric composite.
+inline constexpr QualityWeights kV2BoundaryQualityWeights{
+    /* waveform              */ 0.0,   // RC-2: not a judge of a section change
+    /* successor             */ 0.0,
+    /* edge_splice           */ 0.0,
+    /* context               */ 0.0,
+    /* label                 */ 0.0,
+    /* bar_align             */ 0.0,
+    /* section               */ 0.0,
+    /* energy                */ 0.10,  // rms_i vs rms_{j-1}
+    /* edge_energy           */ 0.10,  // end dB of i vs end dB of j-1
+    /* centroid              */ 0.10,
+    /* transient_continuity  */ 0.10,
+    /* mfcc_continuity       */ 0.0,
+    /* extra1                */ 0.0,
+    /* vocal_continuity      */ 0.0,
+    /* sequential_continuity */ 0.15,  // successor / context / mfcc, all i vs j-1
+    /* use_harmonic_mean     */ false,
+    /* harmonic_vs_timbre    */ 0.0,
+    /* use_geometric_mean    */ true,
+    /* geometric_floor       */ 0.05,
+    /* edge_continuity       */ 0.45   // end edge of i vs end edge of j-1 (sesja 129 signal)
+};
+inline constexpr double kV2BoundaryQualityWeightsSum =
+    kV2BoundaryQualityWeights.energy + kV2BoundaryQualityWeights.edge_energy
+    + kV2BoundaryQualityWeights.centroid + kV2BoundaryQualityWeights.transient_continuity
+    + kV2BoundaryQualityWeights.sequential_continuity + kV2BoundaryQualityWeights.edge_continuity;
+static_assert(kV2BoundaryQualityWeightsSum > 1.0 - 1e-12 && kV2BoundaryQualityWeightsSum < 1.0 + 1e-12,
+              "kV2BoundaryQualityWeights fields must sum to 1.0.");
+
 // ---------------------------------------------------------------------------
 // Legacy 10-component Python-bit-exact simplex (sesja 81, ADR-068).
 //
