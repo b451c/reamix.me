@@ -1804,6 +1804,29 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_hole_aware_length
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_tail_reach — sesja 127 (DEV-117 a) self-validation: the DP's
+  # tail-first length bands (a loop that overshoots the window still lands
+  # the path on the song's ending; in-window results bit-exact).
+  add_executable(test_tail_reach
+    tests/parity/test_tail_reach.cpp
+    src/remix/ViterbiDP.cpp
+    src/remix/SegmentData.cpp
+  )
+  target_include_directories(test_tail_reach PRIVATE
+    src
+  )
+  if(MSVC)
+    target_compile_options(test_tail_reach PRIVATE /W3)
+  else()
+    target_compile_options(test_tail_reach PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME tail_reach_parity
+           COMMAND test_tail_reach
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_phrase_align — sesja 126 (DEV-116) self-validation: phrase-position
   # gate (header-only src/remix/PhraseAlign.h) on the 11 user-rated cuts.
   add_executable(test_phrase_align

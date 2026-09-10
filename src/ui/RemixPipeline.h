@@ -60,6 +60,11 @@ public:
         std::optional<double> regionEndSec;
         std::set<std::pair<int,int>> blockedTransitions; // session 57 wires SpliceMarker
         int                   variation { 0 };           // session 57 wires Update / Try-different
+        // DEV-117 (sesja 127) — Duration v2: the largest |render - target|
+        // a waveform-floor tier may accept (user spec: 5-8 s, 10 max);
+        // when no tier makes it, the highest tier ending at the song's
+        // ending wins. The harness overrides it for A/B rounds.
+        double                maxLengthDevSec { 10.0 };
 
         // ADR-051 (sesja 61) — Block Assembly mode. Active when
         // userBlocks non-empty AND queue.size() ≥ 2. Mutually exclusive

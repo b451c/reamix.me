@@ -325,12 +325,28 @@ struct ViterbiDPInputs
     // its length no longer matches the target). Falls back to the
     // unconstrained search when no such endpoint is reachable. 0 = legacy.
     int                 end_within_last = 0;
+    // ---- DEV-117 (sesja 127) tail-first length bands -----------------
+    // With `end_within_last` > 0: when no tail endpoint lies inside the
+    // length window [min_target_length, target_length], the search widens
+    // the window by `tail_search_band` slots on each side per step (the
+    // tolerance = one band) and takes the best tail endpoint of the first
+    // band that has one; the DP table is filled up to `target_length +
+    // tail_search_extension` rows for that (rows <= target_length are
+    // untouched, so the in-window result is bit-exact). A lengthening
+    // whose only loop overshoots the window by a second (vocal_solo
+    // x1.25: 3 loops = +0.7 s) ended early and lost the file head and
+    // tail (-40 s) - a length a band off is the lesser fault. Both 0 =
+    // the sesja-126 behaviour (in-window tail, else unconstrained).
+    int                 tail_search_band      = 0;
+    int                 tail_search_extension = 0;
 };
 
 struct ViterbiPath
 {
     std::vector<std::int64_t> path;         // beat indices; empty on "no valid endpoint" Python return
     double                    total_cost;   // INF (= 1e9) when path empty
+    int                       end_t   = 0;  // DEV-117: the endpoint's t (slots); 0 when empty
+    bool                      at_tail = false; // DEV-117: endpoint within the last `end_within_last` beats
 };
 
 ViterbiPath viterbiDP(const ViterbiDPInputs& inputs);

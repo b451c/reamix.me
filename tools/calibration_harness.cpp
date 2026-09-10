@@ -433,6 +433,7 @@ struct Run
     bool         blocksEnergyGate { false };   // sesja 119 - "blocks_energy_gate" (blocks only)
     double       blocksDriftWeight { 0.10 };   // sesja 119 - "blocks_drift_weight" (blocks only; BLOCK_DRIFT_PENALTY_WEIGHT)
     int          editDensityBars  { 0 };       // sesja 123 - "edit_density_bars" (ADR-115 P3: 16/8/4/2/1, 0 = mode default)
+    double       maxLengthDevSec  { 10.0 };    // sesja 127 - "max_length_dev_sec" (DEV-117: tier length cap, Duration v2)
     juce::String outWav;
     juce::String outCsv;
 
@@ -498,6 +499,7 @@ Run parseRun (const juce::var& v)
     r.blocksEnergyGate = (bool) v.getProperty ("blocks_energy_gate", false);
     r.blocksDriftWeight = (double) v.getProperty ("blocks_drift_weight", 0.10);
     r.editDensityBars   = (int) v.getProperty ("edit_density_bars", 0);
+    r.maxLengthDevSec   = (double) v.getProperty ("max_length_dev_sec", 10.0);
     r.outWav = v.getProperty ("out_wav", juce::String()).toString();
     r.outCsv = v.getProperty ("out_csv", juce::String()).toString();
     if (r.outWav.isEmpty() || r.outCsv.isEmpty())
@@ -542,6 +544,7 @@ reamix::ui::RemixOutput driveRemixPipeline (
     pin.block_energy_gate  = run.blocksEnergyGate;   // sesja 119
     pin.driftPenaltyWeight = run.blocksDriftWeight;  // sesja 119
     pin.edit_density_bars  = run.editDensityBars;    // sesja 123 (ADR-115 P3)
+    pin.maxLengthDevSec    = run.maxLengthDevSec;    // sesja 127 (DEV-117)
 
     std::atomic<bool>          done { false };
     reamix::ui::RemixOutput    result;

@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <map>
 #include <string>
 
@@ -659,16 +660,52 @@ void RemixPipeline::run()
             // DEV-116 (sesja 126): waveform-similarity floor with a DP retry.
             // Below ~0.8 the crossfade blends misaligned waveforms (Dylan
             // 0.64 / 0.77 = the two cuts rated bad after the phrase gate,
-            // every cut rated ok had >= 0.84). Tiers 0.8 / 0.7 / 0.6 / none:
-            // a tier is accepted only when the DP still lands inside the
-            // length window with every cut at or above kAcceptMinQ - a
-            // hard pool filter starved Alice in Chains (-48 s, q 0.39).
-            // Legacy path (v2_scoring off) = the single unfiltered run.
+            // every cut rated ok had >= 0.84). Tiers 0.8 / 0.7 / 0.6 / none.
+            // DEV-117 (sesja 127): a tier is accepted only when the path
+            // ends at the song's ending (the renderer appends the head and
+            // the tail only then; vocal_solo x1.25 was accepted at 0.80 with
+            // the path 14 beats short and lost 45 s of head + tail), every
+            // cut is at or above kAcceptMinQ, and the estimated render
+            // length is within kMaxLengthDevSec of the target (user spec:
+            // 5-8 s, 10 max). When no tier manages the length, the highest
+            // tier that ends at the tail wins (length off, logged); the
+            // unfiltered pool is the last resort. Legacy path (v2_scoring
+            // off) = the single unfiltered run.
+            constexpr double kAcceptMinQ      = 0.45;
+            const     double kMaxLengthDevSec = in_.maxLengthDevSec;
             const double tiers[] = { 0.80, 0.70, 0.60, 0.0 };
+            struct TierCand
+            {
+                double tier;
+                reamix::remix::RemixPath path;
+                bool   qOk, tail;
+                double dev;
+            };
+            std::vector<TierCand> cands;
             std::vector<double> maskedW;
             double floorUsed = 0.0;
             reamix::remix::RemixPath best;
             bool haveBest = false;
+            const double trackSec = (bundle.nativeSr > 0)
+                                    ? (double) bundle.nativeSamples / (double) bundle.nativeSr : 0.0;
+            // Estimated render length: beat durations along the path; with
+            // the tail reached the renderer plays the file head and the tail
+            // verbatim (Renderer: runs.front/back extension).
+            auto estimateSec = [&] (const reamix::remix::RemixPath& p, bool tail)
+            {
+                const auto& bt = bundle.beatTimes;
+                if (p.beat_indices.empty() || bt.size() < 2) return 0.0;
+                auto dur = [&] (int b)
+                {
+                    return (b + 1 < (int) bt.size()) ? bt[(std::size_t) b + 1] - bt[(std::size_t) b]
+                                                     : bt[bt.size() - 1] - bt[bt.size() - 2];
+                };
+                double len = 0.0;
+                const std::size_t n = p.beat_indices.size();
+                for (std::size_t k = 0; k + (tail ? 1 : 0) < n; ++k) len += dur (p.beat_indices[k]);
+                if (tail) len += bt.front() + juce::jmax (0.0, trackSec - bt[(std::size_t) p.beat_indices.back()]);
+                return len;
+            };
             for (const double tier : tiers)
             {
                 if (tier > 0.0 && ! in_.v2_scoring) continue;
@@ -687,15 +724,11 @@ void RemixPipeline::run()
                 }
                 reamix::remix::CleanOptimizer opt (oin);
                 reamix::remix::RemixPath cand = runDp (opt);
-                if (tier == 0.0) { best = std::move (cand); floorUsed = 0.0; haveBest = true; break; }
-                // Acceptance: every cut from the pool at q >= kAcceptMinQ and
-                // the path length inside the window (+2 s slack).
+                if (! in_.v2_scoring) { best = std::move (cand); floorUsed = 0.0; haveBest = true; break; }
                 // A remix that changes the length needs >= 1 cut: the DP's
                 // empty-path fallback (a straight run of the first beats =
-                // a truncated song) is never accepted at a tier. The length
-                // window is the DP's own constraint (t in [min, T] slots).
-                constexpr double kAcceptMinQ = 0.45;
-                bool   ok   = ! cand.beat_indices.empty() && ! cand.transitions.empty();
+                // a truncated song) is never accepted at a tier.
+                bool   qOk  = ! cand.beat_indices.empty() && ! cand.transitions.empty();
                 double minQ = 1.0;
                 for (const auto& tr : cand.transitions)
                 {
@@ -704,28 +737,42 @@ void RemixPipeline::run()
                                      ? it->second.at ("quality_score") : 0.0;
                     minQ = std::min (minQ, q);
                 }
-                if (minQ < kAcceptMinQ) ok = false;
-                double len = 0.0;
-                {
-                    const auto& bt = bundle.beatTimes;
-                    for (const int b : cand.beat_indices)
-                        len += (b + 1 < (int) bt.size()) ? bt[(std::size_t) b + 1] - bt[(std::size_t) b]
-                                                         : (bt.size() >= 2 ? bt[bt.size() - 1] - bt[bt.size() - 2] : 0.0);
-                    // (informational: the DP enforces the length window itself;
-                    // the summed beat durations double-count a traversed hole)
-                }
+                if (minQ < kAcceptMinQ) qOk = false;
+                const bool   tail = endsAtTail (cand);
+                const double est  = estimateSec (cand, tail);
+                const double dev  = est - in_.targetDurationSec;
+                const bool   ok   = qOk && tail && std::fabs (dev) <= kMaxLengthDevSec;
                 if (const char* dbg = std::getenv ("REAMIX_DURATION_DEBUG"))
                 {
                     if (FILE* f = std::fopen (dbg, "a"))
                     {
-                        std::fprintf (f, "tier %.2f: cuts %d minQ %.3f len %.1f target %.1f tail %.1f last %d/%d %s -> %s\n",
-                                      tier, (int) cand.transitions.size(), minQ, len, dpTarget, tailSec,
+                        std::fprintf (f, "tier %.2f: cuts %d minQ %.3f est %.1f dev %+.1f dp-target %.1f last %d/%d %s -> %s\n",
+                                      tier, (int) cand.transitions.size(), minQ, est, dev, dpTarget,
                                       cand.beat_indices.empty() ? -1 : cand.beat_indices.back(), nBeatsAll,
-                                      endsAtTail (cand) ? "ends@tail" : "ends-early", ok ? "ACCEPT" : "reject");
+                                      tail ? "ends@tail" : "ends-early", ok ? "ACCEPT" : "reject");
                         std::fclose (f);
                     }
                 }
                 if (ok) { best = std::move (cand); floorUsed = tier; haveBest = true; break; }
+                cands.push_back ({ tier, std::move (cand), qOk, tail, dev });
+            }
+            if (! haveBest)
+            {
+                // Length off at every tier: the highest tier that still ends
+                // at the song's ending with clean cuts, then the unfiltered
+                // pool's path as it is.
+                for (const auto& c : cands)
+                    if (c.qOk && c.tail) { best = c.path; floorUsed = c.tier; haveBest = true; break; }
+                if (! haveBest && ! cands.empty()) { best = cands.back().path; floorUsed = cands.back().tier; haveBest = true; }
+                if (const char* dbg = std::getenv ("REAMIX_DURATION_DEBUG"))
+                {
+                    if (FILE* f = std::fopen (dbg, "a"))
+                    {
+                        std::fprintf (f, "fallback: floor %.2f (%s)\n", floorUsed,
+                                      haveBest && endsAtTail (best) ? "ends@tail, length off" : "ends-early");
+                        std::fclose (f);
+                    }
+                }
             }
             if (! haveBest)
             {

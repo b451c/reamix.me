@@ -395,7 +395,14 @@ viterbiDP(const ViterbiDPInputs& in)
 
     const int n_beats     = in.n_beats;
     const int T           = in.target_length;
-    const int T_rows      = T + 1;      // dp shape (target_length + 1, n_beats)
+    // DEV-117 (sesja 127): with a tail-band search the table is filled past
+    // T so that a tail endpoint a band or two beyond the window can be
+    // found; rows <= T never depend on rows > T (t only grows), so every
+    // in-window result stays bit-exact. Legacy (no band) = T exactly.
+    const bool tail_bands = (in.end_within_last > 0 && in.tail_search_band > 0
+                             && in.tail_search_extension > 0);
+    const int T_fill      = tail_bands ? T + in.tail_search_extension : T;
+    const int T_rows      = T_fill + 1; // dp shape (target_length + 1, n_beats)
 
     // Allocations (Python L167-173).
     std::vector<double>       dp        (static_cast<std::size_t>(T_rows) * n_beats, INF);
@@ -417,7 +424,7 @@ viterbiDP(const ViterbiDPInputs& in)
                  std::min(JUMP_PENALTY_SCALE_CEILING, target_ratio));
 
     // Python L188-189: initialize.
-    if (wgt(0) <= T) {
+    if (wgt(0) <= T_fill) {
         dp [static_cast<std::size_t>(wgt(0)) * n_beats + 0] = 0.0;
         ssj[static_cast<std::size_t>(wgt(0)) * n_beats + 0] = SSJ_NO_RECENT_JUMP_SENTINEL;
     }
@@ -433,7 +440,7 @@ viterbiDP(const ViterbiDPInputs& in)
     }
 
     // Python L197-320: fill DP table.
-    for (int t = 1; t < T; ++t) {
+    for (int t = 1; t < T_fill; ++t) {
         const std::size_t row_t   = static_cast<std::size_t>(t)     * n_beats;
 
         for (int i = 0; i < n_beats; ++i) {
@@ -443,7 +450,7 @@ viterbiDP(const ViterbiDPInputs& in)
             // Python L204-214: intro-lock path.
             if (t < in.intro_beats) {
                 const int j = i + 1;
-                if (j < n_beats && t + wgt(j) <= T) {
+                if (j < n_beats && t + wgt(j) <= T_fill) {
                     const std::size_t row_t1 = static_cast<std::size_t>(t + wgt(j)) * n_beats;
                     const double cost = dp_ti + in.W[static_cast<std::size_t>(i) * n_beats + j];
                     if (cost < dp[row_t1 + j]) {
@@ -460,7 +467,7 @@ viterbiDP(const ViterbiDPInputs& in)
             // Python L216-227: cooldown path.
             if (ssj[row_t + i] < in.min_seq_after_jump) {
                 const int j = i + 1;
-                if (j < n_beats && t + wgt(j) <= T) {
+                if (j < n_beats && t + wgt(j) <= T_fill) {
                     const std::size_t row_t1 = static_cast<std::size_t>(t + wgt(j)) * n_beats;
                     const double cost = dp_ti + in.W[static_cast<std::size_t>(i) * n_beats + j];
                     if (cost < dp[row_t1 + j]) {
@@ -480,7 +487,7 @@ viterbiDP(const ViterbiDPInputs& in)
 
             for (std::int64_t ni = start; ni < end; ++ni) {
                 const int j = static_cast<int>(in.neighbor_indices[ni]);
-                if (t + wgt(j) > T) continue;
+                if (t + wgt(j) > T_fill) continue;
                 const std::size_t row_t1 = static_cast<std::size_t>(t + wgt(j)) * n_beats;
 
                 // Python L237-238: backward must respect min_segment.
@@ -613,12 +620,23 @@ viterbiDP(const ViterbiDPInputs& in)
 
     const int search_start = (in.min_target_length > 0) ? in.min_target_length : T;
 
-    for (int pass = 0; pass < 2; ++pass) {
     // DEV-116: pass 0 = endpoints within the last `end_within_last` beats
-    // only (when requested); pass 1 = unconstrained fallback.
-    const bool require_tail = (in.end_within_last > 0 && pass == 0);
-    if (pass == 1 && (best_end >= 0 || in.end_within_last <= 0)) break;
-    for (int t = search_start; t <= T; ++t) {
+    // only (when requested), inside the window [search_start, T].
+    // DEV-117: passes 1..n_bands = the same tail endpoints, the window
+    // widened by one band per pass (the first band with an endpoint wins;
+    // the legacy scoring below ranks inside it). Last pass = unconstrained
+    // fallback (the sesja-126 behaviour; a truncated song).
+    const int n_bands = tail_bands
+        ? (in.tail_search_extension + in.tail_search_band - 1) / in.tail_search_band
+        : 0;
+    const int last_pass = (in.end_within_last > 0) ? n_bands + 1 : 0;
+    for (int pass = 0; pass <= last_pass; ++pass) {
+    if (pass > 0 && best_end >= 0) break;
+    const bool require_tail = (in.end_within_last > 0 && pass < last_pass);
+    const int  widen        = (pass > 0 && pass < last_pass) ? pass * in.tail_search_band : 0;
+    const int  t_lo         = std::max(1, search_start - widen);
+    const int  t_hi         = std::min(T_fill, T + widen);
+    for (int t = t_lo; t <= t_hi; ++t) {
         const std::size_t row_t = static_cast<std::size_t>(t) * n_beats;
 
         for (int i = 0; i < n_beats; ++i) {
@@ -665,12 +683,14 @@ viterbiDP(const ViterbiDPInputs& in)
             }
         }
     }
-    }   // pass (DEV-116)
+    }   // pass (DEV-116 / DEV-117)
 
     if (best_end < 0) {
         // Python L370-371: empty path.
         return result;  // path empty, total_cost = INF.
     }
+    result.end_t   = best_t;
+    result.at_tail = (in.end_within_last > 0 && best_end >= n_beats - in.end_within_last);
 
     // Python L373-381: backtrace.
     std::vector<std::int64_t> path_rev;

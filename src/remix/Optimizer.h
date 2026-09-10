@@ -369,6 +369,7 @@ private:
         int    outro_beats;
         int    effective_max;
         int    effective_min;
+        int    tolerance_beats;   // DEV-117 sesja 127 (tail-band width)
     };
 
     int      findIntroEnd() const;

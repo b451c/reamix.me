@@ -272,7 +272,14 @@ CleanOptimizer::CleanOptimizer(const CleanOptimizerInputs& in)
         beat_weights_ = holeAwareBeatWeights(beat_times_.data(), n_beats_, &period);
         total_weight_ = 0;
         for (const int w : beat_weights_) total_weight_ += w;
-        if (total_weight_ != n_beats_ && period > 0.0) avg_beat_duration_ = period;
+        // DEV-117 (sesja 127): seconds per SLOT = the beated span over the
+        // slot count, not the median period - on a rubato grid the median
+        // is not the mean (Eno: 0.7169 vs 0.7101 s = +1 % = -12.5 s on a
+        // 21-min remix). Hole-free grids keep the legacy mean.
+        if (total_weight_ != n_beats_ && period > 0.0)
+            avg_beat_duration_ = (beat_times_[static_cast<std::size_t>(n_beats_ - 1)]
+                                  - beat_times_[0] + period)
+                                 / static_cast<double>(total_weight_);
     }
 
     segment_data_ = computeSegmentData(n_beats_,
@@ -503,6 +510,7 @@ CleanOptimizer::computeDpParams(double target_duration) const
     params.outro_beats   = outro_beats;
     params.effective_max = max_beats;
     params.effective_min = std::max(K_MIN_TARGET_BEATS, min_beats);  // Python L235
+    params.tolerance_beats = tolerance_beats;                        // DEV-117
     return params;
 }
 
@@ -612,6 +620,14 @@ CleanOptimizer::runDpAndBuildPath(double* W, const DpParams& params) const
     // shortening. floor 0 = `viterbiDP` verbatim (bit-exact legacy path).
     dp_in.no_backward_jumps = no_backward_when_shortening_ && params.is_shortening;
     dp_in.end_within_last   = end_within_last_beats_;   // DEV-116 sesja 126
+    // DEV-117 sesja 127 — tail-first bands: one band = the tolerance, the
+    // table filled to +max(4 bands, a quarter of the target) so a loop
+    // that overshoots the window still lands the path on the song's end.
+    if (end_within_last_beats_ > 0) {
+        dp_in.tail_search_band      = std::max(1, params.tolerance_beats);
+        dp_in.tail_search_extension = std::max(4 * dp_in.tail_search_band,
+                                               params.target_beats / 4);
+    }
 
     ViterbiPath dp_result = viterbiDPWithJumpFloor(dp_in, min_jumps_floor_);
     std::vector<std::int64_t> path = std::move(dp_result.path);
