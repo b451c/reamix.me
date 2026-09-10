@@ -869,6 +869,9 @@ int main (int argc, char** argv)
         std::fprintf (stderr, "[harness] repetition prior: %s (%d allowed pairs over %d sources, min_run %d cells)\n",
                       tc.repetition_prior_active ? "ACTIVE" : "inactive",
                       tc.repetition_prior_pairs, tc.repetition_prior_sources, tc.repetition_prior_min_run);
+        std::fprintf (stderr, "[harness] phrase align: %s (%d bars, %d allowed pairs over %d sources)\n",
+                      tc.phrase_align_bars > 0 ? "ACTIVE" : "inactive",
+                      tc.phrase_align_bars, tc.phrase_align_pairs, tc.phrase_align_sources);
         {
             std::set<int> sources;
             for (const auto& kv : tc.candidates) sources.insert (kv.second.from_beat);
@@ -886,6 +889,10 @@ int main (int argc, char** argv)
             if ((std::size_t) i >= v.size() || (std::size_t) j >= v.size()) return -1.0;
             return std::abs (std::log (std::max (v[(std::size_t) j], 1e-9))
                            - std::log (std::max (v[(std::size_t) i], 1e-9)));
+        };
+        auto at = [] (const std::vector<double>& v, int i) -> double   // sesja 126: per-beat value or -1
+        {
+            return ((std::size_t) i < v.size()) ? v[(std::size_t) i] : -1.0;
         };
         auto stepLin = [] (const std::vector<double>& v, int i, int j) -> double
         {
@@ -910,7 +917,8 @@ int main (int argc, char** argv)
         s << "from_beat,to_beat,quality,"
              "waveform,successor,edge_splice,context,label,section,bar_align,"
              "energy,edge_energy,centroid,transient_continuity,mfcc_continuity,"
-             "chroma_distance,energy_diff_db,rms_log_step,centroid_log_step,onset_step\n";
+             "chroma_distance,energy_diff_db,rms_log_step,centroid_log_step,onset_step,"
+             "va_i,va_j,eva_end_i,eva_start_j,rel_i,on_j,vocal_penalty,phrase_off_out,phrase_off_in\n";   // sesja 126 audit
         for (const auto& kv : tc.candidates)
         {
             const auto& c = kv.second;
@@ -932,7 +940,20 @@ int main (int argc, char** argv)
               << juce::String (c.energy_diff_db,        3) << ','
               << juce::String (stepLog (rmsv, c.from_beat, c.to_beat), 6) << ','
               << juce::String (stepLog (cenv, c.from_beat, c.to_beat), 6) << ','
-              << juce::String (stepLin (onsv, c.from_beat, c.to_beat), 6) << '\n';
+              << juce::String (stepLin (onsv, c.from_beat, c.to_beat), 6) << ','
+              << juce::String (at (bundle->feat.vocalActivity, c.from_beat), 4) << ','
+              << juce::String (at (bundle->feat.vocalActivity, c.to_beat), 4) << ','
+              << juce::String (at (bundle->feat.edgeVocalActivityEnd, c.from_beat), 4) << ','
+              << juce::String (at (bundle->feat.edgeVocalActivityStart, c.to_beat), 4) << ','
+              << juce::String (at (bundle->feat.edgeVocalReleaseEnd, c.from_beat), 4) << ','
+              << juce::String (at (bundle->feat.edgeVocalOnsetStart, c.to_beat), 4) << ','
+              << juce::String (reamix::remix::computeVocalPenalty (
+                     at (bundle->feat.vocalActivity, c.from_beat), at (bundle->feat.vocalActivity, c.to_beat),
+                     bundle->feat.edgeVocalActivityEnd.empty() ? std::nullopt : std::optional<double> (at (bundle->feat.edgeVocalActivityEnd, c.from_beat)),
+                     bundle->feat.edgeVocalActivityStart.empty() ? std::nullopt : std::optional<double> (at (bundle->feat.edgeVocalActivityStart, c.to_beat))), 4) << ','
+              << ((std::size_t) c.from_beat + 1 < tc.phrase_bar_offset.size() ? tc.phrase_bar_offset[(std::size_t) c.from_beat + 1] : -1) << ','
+              << ((std::size_t) c.to_beat < tc.phrase_bar_offset.size() ? tc.phrase_bar_offset[(std::size_t) c.to_beat] : -1)
+              << '\n';
         }
         std::fprintf (stderr, "[harness] wrote %s (%d pairs)\n",
                       args.dumpComponentsCsv.toRawUTF8(),
@@ -1074,9 +1095,9 @@ int main (int argc, char** argv)
         }
 
         std::fprintf (stderr,
-                      "[row %d %s %s] OK %.2fs · %d splices · %.1fs remix\n",
+                      "[row %d %s %s] OK %.2fs · %d splices · %.1fs remix · wf floor %.2f\n",
                       rowIdx, run.id.toRawUTF8(), run.mode.toRawUTF8(),
-                      sec, out.nTransitions, out.remixDurationSec);
+                      sec, out.nTransitions, out.remixDurationSec, out.waveformFloorUsed);
         ++nOk;
     }
 

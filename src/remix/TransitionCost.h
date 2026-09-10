@@ -370,6 +370,9 @@ struct TransitionCostInputs
     // ADR-115 E4 (sesja 115): set to skip the repetition-diagonal candidate
     // prior while keeping the rest of v2 (diagnostics / A-B of the prior).
     bool disable_repetition_prior = false;
+    // DEV-116 (sesja 126): phrase-position alignment gate on the v2 pool
+    // (src/remix/PhraseAlign.h). false = active whenever the bar grid exists.
+    bool disable_phrase_align = false;
 
     // ---- Reserved 11th cost-component slot, DEV-028 sesja 74 ----------
     // Optional flat (n_beats × n_beats) row-major double matrix indexed
@@ -401,6 +404,11 @@ struct TransitionCostResult
     int  repetition_prior_pairs   = 0;   // allowed (pre-downbeat, downbeat) pairs
     int  repetition_prior_sources = 0;   // pre-downbeat sources with >= 1 allowed target
     int  repetition_prior_min_run = 0;   // cells required (TS = one measure, TS/2 = relaxed)
+    // DEV-116 (sesja 126) phrase-position gate diagnostics.
+    int  phrase_align_bars    = 0;       // 8 / 4 / 0 = inactive
+    int  phrase_align_pairs   = 0;
+    int  phrase_align_sources = 0;
+    std::vector<int> phrase_bar_offset;  // per beat, bars since its section start (-1 unknown)
 
     // Sparse candidate map. Iteration order is lexicographic by (from, to).
     std::map<std::pair<int, int>, TransitionCandidate> candidates;

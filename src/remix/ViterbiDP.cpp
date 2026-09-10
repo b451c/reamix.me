@@ -405,16 +405,22 @@ viterbiDP(const ViterbiDPInputs& in)
     std::vector<double>       worst_jump(static_cast<std::size_t>(T_rows) * n_beats, 0.0);
 
     const bool has_bar_info = (in.pre_downbeat_arr != nullptr && in.downbeat_arr != nullptr);
+    // DEV-114 (sesja 126): a beat advances t by its weight in period slots
+    // (null weights = 1 each = bit-exact legacy).
+    auto wgt = [&](int j) { return in.beat_weights ? std::max(1, in.beat_weights[j]) : 1; };
+    const int total_weight = in.total_weight > 0 ? in.total_weight : n_beats;
 
     // Python L184-185.
-    const double target_ratio      = static_cast<double>(T) / std::max(1, n_beats);
+    const double target_ratio      = static_cast<double>(T) / std::max(1, total_weight);
     const double jump_penalty_scale =
         std::max(JUMP_PENALTY_SCALE_FLOOR,
                  std::min(JUMP_PENALTY_SCALE_CEILING, target_ratio));
 
     // Python L188-189: initialize.
-    dp [1 * n_beats + 0] = 0.0;
-    ssj[1 * n_beats + 0] = SSJ_NO_RECENT_JUMP_SENTINEL;
+    if (wgt(0) <= T) {
+        dp [static_cast<std::size_t>(wgt(0)) * n_beats + 0] = 0.0;
+        ssj[static_cast<std::size_t>(wgt(0)) * n_beats + 0] = SSJ_NO_RECENT_JUMP_SENTINEL;
+    }
 
     // Python L191-195: boundary_set from beat_to_segment transitions.
     std::vector<std::uint8_t> is_boundary(static_cast<std::size_t>(n_beats), 0);
@@ -429,7 +435,6 @@ viterbiDP(const ViterbiDPInputs& in)
     // Python L197-320: fill DP table.
     for (int t = 1; t < T; ++t) {
         const std::size_t row_t   = static_cast<std::size_t>(t)     * n_beats;
-        const std::size_t row_t1  = static_cast<std::size_t>(t + 1) * n_beats;
 
         for (int i = 0; i < n_beats; ++i) {
             const double dp_ti = dp[row_t + i];
@@ -438,7 +443,8 @@ viterbiDP(const ViterbiDPInputs& in)
             // Python L204-214: intro-lock path.
             if (t < in.intro_beats) {
                 const int j = i + 1;
-                if (j < n_beats) {
+                if (j < n_beats && t + wgt(j) <= T) {
+                    const std::size_t row_t1 = static_cast<std::size_t>(t + wgt(j)) * n_beats;
                     const double cost = dp_ti + in.W[static_cast<std::size_t>(i) * n_beats + j];
                     if (cost < dp[row_t1 + j]) {
                         dp        [row_t1 + j] = cost;
@@ -454,7 +460,8 @@ viterbiDP(const ViterbiDPInputs& in)
             // Python L216-227: cooldown path.
             if (ssj[row_t + i] < in.min_seq_after_jump) {
                 const int j = i + 1;
-                if (j < n_beats) {
+                if (j < n_beats && t + wgt(j) <= T) {
+                    const std::size_t row_t1 = static_cast<std::size_t>(t + wgt(j)) * n_beats;
                     const double cost = dp_ti + in.W[static_cast<std::size_t>(i) * n_beats + j];
                     if (cost < dp[row_t1 + j]) {
                         dp        [row_t1 + j] = cost;
@@ -473,6 +480,8 @@ viterbiDP(const ViterbiDPInputs& in)
 
             for (std::int64_t ni = start; ni < end; ++ni) {
                 const int j = static_cast<int>(in.neighbor_indices[ni]);
+                if (t + wgt(j) > T) continue;
+                const std::size_t row_t1 = static_cast<std::size_t>(t + wgt(j)) * n_beats;
 
                 // Python L237-238: backward must respect min_segment.
                 if (j < i && (i - j) < in.min_segment_beats) continue;
@@ -604,6 +613,11 @@ viterbiDP(const ViterbiDPInputs& in)
 
     const int search_start = (in.min_target_length > 0) ? in.min_target_length : T;
 
+    for (int pass = 0; pass < 2; ++pass) {
+    // DEV-116: pass 0 = endpoints within the last `end_within_last` beats
+    // only (when requested); pass 1 = unconstrained fallback.
+    const bool require_tail = (in.end_within_last > 0 && pass == 0);
+    if (pass == 1 && (best_end >= 0 || in.end_within_last <= 0)) break;
     for (int t = search_start; t <= T; ++t) {
         const std::size_t row_t = static_cast<std::size_t>(t) * n_beats;
 
@@ -613,6 +627,7 @@ viterbiDP(const ViterbiDPInputs& in)
 
             // Python L338-339: min_jumps gate.
             if (n_jumps[row_t + i] < in.min_jumps) continue;
+            if (require_tail && i < n_beats - in.end_within_last) continue;
 
             // Python L341-356: terminal scoring.
             double terminal_penalty;
@@ -650,6 +665,7 @@ viterbiDP(const ViterbiDPInputs& in)
             }
         }
     }
+    }   // pass (DEV-116)
 
     if (best_end < 0) {
         // Python L370-371: empty path.
@@ -660,9 +676,11 @@ viterbiDP(const ViterbiDPInputs& in)
     std::vector<std::int64_t> path_rev;
     path_rev.reserve(static_cast<std::size_t>(best_t));
     int cur = best_end;
-    for (int t = best_t; t > 0; --t) {
+    for (int t = best_t; t > 0 && cur >= 0;) {
         path_rev.push_back(cur);
-        cur = static_cast<int>(parent[static_cast<std::size_t>(t) * n_beats + cur]);
+        const int prev = static_cast<int>(parent[static_cast<std::size_t>(t) * n_beats + cur]);
+        t  -= wgt(cur);
+        cur = prev;
     }
     result.path.assign(path_rev.rbegin(), path_rev.rend());
     result.total_cost = best_cost;
@@ -719,6 +737,27 @@ viterbiDPWithJumpFloor(ViterbiDPInputs in, int min_jumps_floor)
         }
     }
     return at_hi;
+}
+
+std::vector<int>
+holeAwareBeatWeights(const double* beat_times, int n_beats, double* period_out)
+{
+    std::vector<int> w(static_cast<std::size_t>(std::max(0, n_beats)), 1);
+    if (period_out) *period_out = 0.0;
+    if (beat_times == nullptr || n_beats < 3) {
+        if (period_out && n_beats == 2) *period_out = beat_times[1] - beat_times[0];
+        return w;
+    }
+    std::vector<double> d(static_cast<std::size_t>(n_beats - 1));
+    for (int k = 0; k + 1 < n_beats; ++k) d[static_cast<std::size_t>(k)] = beat_times[k + 1] - beat_times[k];
+    std::vector<double> s = d;
+    std::nth_element(s.begin(), s.begin() + static_cast<std::ptrdiff_t>(s.size() / 2), s.end());
+    const double period = s[s.size() / 2];
+    if (period_out) *period_out = period;
+    if (period <= 0.0) return w;
+    for (int k = 0; k + 1 < n_beats; ++k)
+        w[static_cast<std::size_t>(k)] = std::max(1, static_cast<int>(std::lround(d[static_cast<std::size_t>(k)] / period)));
+    return w;
 }
 
 } // namespace reamix::remix

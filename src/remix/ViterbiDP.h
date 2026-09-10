@@ -305,6 +305,26 @@ struct ViterbiDPInputs
     // 4-cut path exists). Every cut is still the globally cheapest choice
     // under that price.
     double              jump_bonus = 0.0;
+    // ---- DEV-114 (sesja 126) hole-aware length ------------------------
+    // The DP counts length in beats and assumes every beat lasts one
+    // period; a beat that spans a beat-tracker hole (Drake's 53 s outro,
+    // Alice in Chains' 60-period rubato) counts as ONE beat, so the remix
+    // overshoots the target (Drake x0.5 +30 s) and the path ranks by a
+    // wrong length. `beat_weights[j]` = the number of period slots beat j
+    // occupies (`holeAwareBeatWeights`); the DP advances t by that weight.
+    // nullptr = every beat weighs 1 = bit-exact legacy. `total_weight` =
+    // sum of the weights (0 = n_beats) for the target ratio.
+    // CANONICAL DEFINITION (no Python reference); self-validated by
+    // `tests/parity/test_hole_aware_length.cpp`.
+    const int*          beat_weights = nullptr;
+    int                 total_weight = 0;
+    // ---- DEV-116 (sesja 126) end at the song's ending ----------------
+    // > 0: the terminal search accepts only endpoints i >= n_beats - k
+    // (the renderer appends the file tail only when the path ends within
+    // its last 3 beats; a path that stops earlier truncates the song and
+    // its length no longer matches the target). Falls back to the
+    // unconstrained search when no such endpoint is reachable. 0 = legacy.
+    int                 end_within_last = 0;
 };
 
 struct ViterbiPath
@@ -324,5 +344,11 @@ ViterbiPath viterbiDP(const ViterbiDPInputs& inputs);
 inline constexpr double kJumpBonusMax   = 2.0;   // ~ the largest per-jump tax on the v2 path
 inline constexpr int    kJumpBonusSteps = 6;     // bisection iterations (resolution 1/64 of the range)
 ViterbiPath viterbiDPWithJumpFloor(ViterbiDPInputs inputs, int min_jumps_floor);
+
+// DEV-114 (sesja 126): per-beat weight in period slots = max(1,
+// round(duration / median period)); the last beat weighs 1. `period_out`
+// (optional) receives the median beat period. Uniform grid = all ones.
+std::vector<int> holeAwareBeatWeights(const double* beat_times, int n_beats,
+                                      double* period_out = nullptr);
 
 } // namespace reamix::remix

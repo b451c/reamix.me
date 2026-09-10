@@ -1,4 +1,5 @@
 #include "remix/TransitionCost.h"
+#include "remix/PhraseAlign.h"
 
 #include "remix/Quality.h"
 #include "remix/SignalNorm.h"  // ADR-115 v2 scoring
@@ -557,6 +558,17 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
     res.repetition_prior_pairs   = rep_prior.n_allowed;
     res.repetition_prior_sources = rep_prior.n_sources;
     res.repetition_prior_min_run = rep_prior.min_run_used;
+    // DEV-116 (sesja 126): phrase-position alignment on top of the bar +
+    // repetition gates (8 bars, relaxed to 4, off when it would starve).
+    const PhraseAlign phrase = v2_bar_constraint && ! in.disable_phrase_align
+        ? PhraseAlign::build(in.beat_times, n, db_idx.db_set, db_idx.pre_db_set,
+                             in.segments, in.n_segments,
+                             [&] (int a, int b) { return rep_prior.allowed(a, b); })
+        : PhraseAlign{};
+    res.phrase_align_bars    = phrase.phrase_bars;
+    res.phrase_align_pairs   = phrase.n_allowed;
+    res.phrase_align_sources = phrase.n_sources;
+    res.phrase_bar_offset    = phrase.bar_offset;
 
     // ADR-066 (sesja 77): pre-compute MFCC + delta-MFCC L2 similarity matrix
     // once for per-pair `mfcc_continuity` composition inside the inner
@@ -676,7 +688,8 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
         // is active for this track.
         if (v2_bar_constraint) {
             for (int k = 0; k < n; ++k)
-                if (db_idx.db_set.count(k) == 0 || ! rep_prior.allowed(i, k)) chroma_row[k] = INF;
+                if (db_idx.db_set.count(k) == 0 || ! rep_prior.allowed(i, k)
+                    || ! phrase.allowed(i, k)) chroma_row[k] = INF;
         }
 
         // Top-k by chroma (UNSORTED — matches np.argpartition).

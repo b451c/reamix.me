@@ -104,6 +104,13 @@ struct RendererConfig
     // ~2 beats) — preview and REAPER Insert then disagree by overlap - cap.
     // Python-parity tests only; production overlays the whole window.
     bool   legacyPreviewOverlapCap      = false;
+    // DEV-115 (sesja 126): longest anchor overlap accepted, in seconds; 0 =
+    // no cap (Python parity). The anchor geometry overlays the two clips
+    // over its whole matching window (Drake 3.49 s = 4 grid beats): the user
+    // hears two passages playing at once ("slychac jak sie klocki
+    // przemiksowuja"). Above the cap the splice keeps the planned cut with
+    // the standard multi-band crossfade. The v2 path sets 1.0 s.
+    double anchorMaxOverlapSec          = 0.0;
     SpliceConfig splice;                          // delegated to Splice composite methods
 };
 

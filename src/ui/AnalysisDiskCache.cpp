@@ -27,7 +27,7 @@ namespace
     constexpr char        kMagic[4]       = { 'R', 'X', 'B', 'C' };
     // 7 (sesja 121): bundle.structure carries the LinkSeg model sections;
     // format-6 entries (empty structure) would never get them, so they miss.
-    constexpr juce::uint32 kFormatVersion = 8;   // sesja 124: DEV-088 consistent grid in the bundle
+    constexpr juce::uint32 kFormatVersion = 9;   // sesja 126: DEV-116 phrase-position gate baked into bundle.tc
 
     juce::String hashOf (const juce::String& s)
     {

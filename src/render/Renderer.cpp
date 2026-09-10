@@ -328,10 +328,15 @@ Renderer::ResolvedTransition Renderer::resolveTransitionEdit(
         const double improvementThreshold = cfg_.anchorImprovementThreshold;
         const double vocalThreshold       = cfg_.splice.vocalActivityThreshold;
         const double vocalPresence        = metaGet(meta, "vocal_presence_level", 0.0);
-        const bool accept =
+        // DEV-115 (sesja 126): overlap cap on the v2 path (0 = parity).
+        const bool overlapOk =
+            cfg_.anchorMaxOverlapSec <= 0.0
+            || static_cast<double>(anchor.anchorOverlapSamples)
+               <= cfg_.anchorMaxOverlapSec * static_cast<double>(sr_);
+        const bool accept = overlapOk && (
             (anchorQuality >= baselineQuality + improvementThreshold)
             || (vocalPresence >= vocalThreshold
-                && localQuality >= baselineQuality + 0.01);
+                && localQuality >= baselineQuality + 0.01));
         if (accept) {
             // Python L202: meta.update(anchor_geometry). Anchor writes 15 keys
             // per searchAnchorTransitionGeometry (splice.py:319-330):

@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <string>
 
 #include <utility>
 
@@ -573,6 +574,12 @@ void RemixPipeline::run()
             oin.n_downbeats = (int) gridDownbeats.size();
 
             oin.time_signature = gridBarBeats;
+            oin.hole_aware_length = in_.v2_scoring;   // DEV-114 sesja 126
+            if (in_.v2_scoring)                        // DEV-116 sesja 126: +-8 s flat
+            {
+                oin.duration_tolerance_sec = reamix::remix::kDurationToleranceSecV2;
+                oin.flat_tolerance         = true;
+            }
             oin.sample_rate    = kAnalysisSampleRate;
 
             // ADR-115 P3 (sesja 123) + DEV-112 (sesja 124) — Edit density in
@@ -610,17 +617,124 @@ void RemixPipeline::run()
                 }
             }
 
-            reamix::remix::CleanOptimizer opt (oin);
-
             // DEV-027 fix landed sesja 58 (ADR-048): when variation > 0, dispatch
             // through `remix_variation` which calls `remix_k_best(target,
             // max(2, v+1), blocked)` and indexes `paths[min(v, len-1)]`. For
             // variation == 0 stay on the fast path `remix(target, blocked)` —
             // identical result, skips k-best machinery.
             // Empty blocked set ⇒ pass nullptr per CleanOptimizer::remix signature.
-            path = (in_.variation > 0)
-                 ? opt.remix_variation (in_.targetDurationSec, in_.variation, blockedPtr)
-                 : opt.remix           (in_.targetDurationSec,                blockedPtr);
+            // DEV-116 (sesja 126): the optimizer's duration universe is
+            // [first beat, last beat + period] while the renderer keeps the
+            // un-beated head (0 .. first beat) and tail (last beat .. file end)
+            // verbatim (Renderer: runs.front/back extension), so the DP target
+            // must exclude them or every remix overshoots by head + tail
+            // (Alice in Chains: 33 s intro + 23 s tail = +53 s at every ratio).
+            double dpTarget = in_.targetDurationSec;
+            double tailSec  = 0.0;
+            if (in_.v2_scoring && bundle.beatTimes.size() >= 2 && bundle.nativeSr > 0)
+            {
+                const double trackSec = (double) bundle.nativeSamples / (double) bundle.nativeSr;
+                const double period   = (bundle.beatTimes.back() - bundle.beatTimes.front())
+                                        / (double) (bundle.beatTimes.size() - 1);
+                const double head     = bundle.beatTimes.front();
+                tailSec  = juce::jmax (0.0, trackSec - (bundle.beatTimes.back() + period));
+                dpTarget = juce::jmax (4.0 * period, in_.targetDurationSec - head - tailSec);
+            }
+            // The renderer appends the file tail only when the path ends
+            // within its last 3 beats (Renderer: isRegion / skipExtension), so
+            // the v2 DP is told to end there (end_within_last_beats = 3,
+            // ViterbiDP fallback when unreachable) and the target excludes the
+            // tail consistently.
+            oin.end_within_last_beats = in_.v2_scoring ? 3 : 0;
+            const int  nBeatsAll = (int) bundle.beatTimes.size();
+            auto endsAtTail = [&] (const reamix::remix::RemixPath& p)
+            {
+                return ! p.beat_indices.empty() && p.beat_indices.back() >= nBeatsAll - 3;
+            };
+            auto runDp = [&] (reamix::remix::CleanOptimizer& opt)
+            {
+                return (in_.variation > 0) ? opt.remix_variation (dpTarget, in_.variation, blockedPtr)
+                                           : opt.remix (dpTarget, blockedPtr);
+            };
+            // DEV-116 (sesja 126): waveform-similarity floor with a DP retry.
+            // Below ~0.8 the crossfade blends misaligned waveforms (Dylan
+            // 0.64 / 0.77 = the two cuts rated bad after the phrase gate,
+            // every cut rated ok had >= 0.84). Tiers 0.8 / 0.7 / 0.6 / none:
+            // a tier is accepted only when the DP still lands inside the
+            // length window with every cut at or above kAcceptMinQ - a
+            // hard pool filter starved Alice in Chains (-48 s, q 0.39).
+            // Legacy path (v2_scoring off) = the single unfiltered run.
+            const double tiers[] = { 0.80, 0.70, 0.60, 0.0 };
+            std::vector<double> maskedW;
+            double floorUsed = 0.0;
+            reamix::remix::RemixPath best;
+            bool haveBest = false;
+            for (const double tier : tiers)
+            {
+                if (tier > 0.0 && ! in_.v2_scoring) continue;
+                if (tier > 0.0)
+                {
+                    maskedW = tcSrc->W;
+                    for (const auto& kv : tcSrc->candidates)
+                        if (kv.second.waveform_similarity < tier)
+                            maskedW[(std::size_t) kv.first.first * (std::size_t) tcSrc->n_beats
+                                    + (std::size_t) kv.first.second] = reamix::remix::INF;
+                    oin.W = maskedW.data();
+                }
+                else
+                {
+                    oin.W = tcSrc->W.data();
+                }
+                reamix::remix::CleanOptimizer opt (oin);
+                reamix::remix::RemixPath cand = runDp (opt);
+                if (tier == 0.0) { best = std::move (cand); floorUsed = 0.0; haveBest = true; break; }
+                // Acceptance: every cut from the pool at q >= kAcceptMinQ and
+                // the path length inside the window (+2 s slack).
+                // A remix that changes the length needs >= 1 cut: the DP's
+                // empty-path fallback (a straight run of the first beats =
+                // a truncated song) is never accepted at a tier. The length
+                // window is the DP's own constraint (t in [min, T] slots).
+                constexpr double kAcceptMinQ = 0.45;
+                bool   ok   = ! cand.beat_indices.empty() && ! cand.transitions.empty();
+                double minQ = 1.0;
+                for (const auto& tr : cand.transitions)
+                {
+                    auto it = cand.transition_metadata.find (tr);
+                    const double q = (it != cand.transition_metadata.end() && it->second.count ("quality_score"))
+                                     ? it->second.at ("quality_score") : 0.0;
+                    minQ = std::min (minQ, q);
+                }
+                if (minQ < kAcceptMinQ) ok = false;
+                double len = 0.0;
+                {
+                    const auto& bt = bundle.beatTimes;
+                    for (const int b : cand.beat_indices)
+                        len += (b + 1 < (int) bt.size()) ? bt[(std::size_t) b + 1] - bt[(std::size_t) b]
+                                                         : (bt.size() >= 2 ? bt[bt.size() - 1] - bt[bt.size() - 2] : 0.0);
+                    // (informational: the DP enforces the length window itself;
+                    // the summed beat durations double-count a traversed hole)
+                }
+                if (const char* dbg = std::getenv ("REAMIX_DURATION_DEBUG"))
+                {
+                    if (FILE* f = std::fopen (dbg, "a"))
+                    {
+                        std::fprintf (f, "tier %.2f: cuts %d minQ %.3f len %.1f target %.1f tail %.1f last %d/%d %s -> %s\n",
+                                      tier, (int) cand.transitions.size(), minQ, len, dpTarget, tailSec,
+                                      cand.beat_indices.empty() ? -1 : cand.beat_indices.back(), nBeatsAll,
+                                      endsAtTail (cand) ? "ends@tail" : "ends-early", ok ? "ACCEPT" : "reject");
+                        std::fclose (f);
+                    }
+                }
+                if (ok) { best = std::move (cand); floorUsed = tier; haveBest = true; break; }
+            }
+            if (! haveBest)
+            {
+                oin.W = tcSrc->W.data();
+                reamix::remix::CleanOptimizer opt (oin);
+                best = runDp (opt);
+            }
+            out.waveformFloorUsed = floorUsed;
+            path = std::move (best);
         }
     }
     catch (const std::exception& e)
@@ -635,6 +749,11 @@ void RemixPipeline::run()
     postProgress ("Rendering remix", kPOptimize);
 
     reamix::render::RendererConfig rcfg{};
+    // DEV-115 (sesja 126): on the v2 path an anchor splice may overlay the
+    // clips for at most 1 s (the corpus anchor overlaps were 1.8-3.5 s and
+    // the user hears them as two passages at once); legacy = uncapped.
+    if (in_.v2_scoring)
+        rcfg.anchorMaxOverlapSec = 1.0;
     reamix::render::RenderResult renderOut;
     try
     {

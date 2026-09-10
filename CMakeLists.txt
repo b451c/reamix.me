@@ -1782,6 +1782,48 @@ if(REAMIX_BUILD_TESTS)
            COMMAND test_edit_density
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+  # test_hole_aware_length — sesja 126 (DEV-114) self-validation: the DP's
+  # per-beat weights in period slots (holes) + holeAwareBeatWeights.
+  add_executable(test_hole_aware_length
+    tests/parity/test_hole_aware_length.cpp
+    src/remix/ViterbiDP.cpp
+    src/remix/SegmentData.cpp
+  )
+  target_include_directories(test_hole_aware_length PRIVATE
+    src
+  )
+  if(MSVC)
+    target_compile_options(test_hole_aware_length PRIVATE /W3)
+  else()
+    target_compile_options(test_hole_aware_length PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME hole_aware_length_parity
+           COMMAND test_hole_aware_length
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+  # test_phrase_align — sesja 126 (DEV-116) self-validation: phrase-position
+  # gate (header-only src/remix/PhraseAlign.h) on the 11 user-rated cuts.
+  add_executable(test_phrase_align
+    tests/parity/test_phrase_align.cpp
+  )
+  target_include_directories(test_phrase_align PRIVATE
+    src
+  )
+  if(MSVC)
+    target_compile_options(test_phrase_align PRIVATE /W3)
+  else()
+    target_compile_options(test_phrase_align PRIVATE
+      -Wall -Wextra -Wno-unused-parameter
+      -ffp-contract=off
+    )
+  endif()
+  add_test(NAME phrase_align_parity
+           COMMAND test_phrase_align
+           WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_region_inner_loop — sesja 94 (ADR-081 STATUS UPDATE 1) self-validation.
   # Validates Region β-model "inner-loop synthesizer" cost-function rebalance
   # (cap 1.0→5.0, backward penalty 0.5→0.05, jump base 0.8→0.3 in beta path).

@@ -258,6 +258,23 @@ CleanOptimizer::CleanOptimizer(const CleanOptimizerInputs& in)
     const analysis::Segment* seg_ptr =
         segments_.empty() ? nullptr : segments_.data();
     const int seg_n = static_cast<int>(segments_.size());
+    // DEV-114 (sesja 126): hole-aware length. Weights = period slots per
+    // beat; when any beat spans a hole the beat average is the median
+    // period (the legacy (last - first) / (n - 1) average is inflated by
+    // the holes: Drake 1.13 s vs the 0.89 s period). Hole-free grid = the
+    // legacy numbers exactly.
+    flat_tolerance_ = in.flat_tolerance;
+    end_within_last_beats_ = in.end_within_last_beats;
+    beat_weights_.assign(static_cast<std::size_t>(std::max(0, n_beats_)), 1);
+    total_weight_ = n_beats_;
+    if (in.hole_aware_length && n_beats_ > 1) {
+        double period = 0.0;
+        beat_weights_ = holeAwareBeatWeights(beat_times_.data(), n_beats_, &period);
+        total_weight_ = 0;
+        for (const int w : beat_weights_) total_weight_ += w;
+        if (total_weight_ != n_beats_ && period > 0.0) avg_beat_duration_ = period;
+    }
+
     segment_data_ = computeSegmentData(n_beats_,
                                        seg_ptr,
                                        seg_n,
@@ -421,9 +438,9 @@ CleanOptimizer::computeDpParams(double target_duration) const
         (duration_tolerance_sec_ < K_MIN_ADAPTIVE_TOLERANCE_SEC)
             ? std::max(0.5, duration_tolerance_sec_)   // user-explicit <2 → relaxed
             : K_MIN_ADAPTIVE_TOLERANCE_SEC;            // default behavior preserved
-    const double adaptive_tolerance = std::max(
-        effective_tol_floor,
-        duration_tolerance_sec_ * clipped_tol_ratio);
+    const double adaptive_tolerance = flat_tolerance_
+        ? duration_tolerance_sec_                                   // DEV-116: the window as given
+        : std::max(effective_tol_floor, duration_tolerance_sec_ * clipped_tol_ratio);
 
     // D4: tolerance_beats floor at 2 (relaxed to 1 when explicit <2 sec).
     // Python L208-211: `max(2, int(round(adaptive_tolerance / avg)))`.
@@ -507,7 +524,7 @@ CleanOptimizer::runDpAndBuildPath(double* W, const DpParams& params) const
     //                  `min_jumps = 1 if ratio<0.45 and is_shortening else 0`.
     const double target_ratio =
         static_cast<double>(params.target_beats)
-        / static_cast<double>(std::max(1, n_beats_));
+        / static_cast<double>(std::max(1, total_weight_));   // DEV-114: period slots
     const int min_jumps =
         (target_ratio < K_MIN_JUMPS_RATIO_THRESHOLD && params.is_shortening)
             ? 1
@@ -553,6 +570,8 @@ CleanOptimizer::runDpAndBuildPath(double* W, const DpParams& params) const
     ViterbiDPInputs dp_in{};
     dp_in.W                   = W;
     dp_in.n_beats             = n_beats_;
+    dp_in.beat_weights        = beat_weights_.data();   // DEV-114 sesja 126 (all 1 = legacy)
+    dp_in.total_weight        = total_weight_;
     dp_in.target_length       = params.effective_max;
     dp_in.min_target_length   = params.effective_min;
     dp_in.intro_beats         = params.intro_beats;
@@ -592,6 +611,7 @@ CleanOptimizer::runDpAndBuildPath(double* W, const DpParams& params) const
     // DEV-112 sesja 124 — density floor (jump-bonus search) + forward-only
     // shortening. floor 0 = `viterbiDP` verbatim (bit-exact legacy path).
     dp_in.no_backward_jumps = no_backward_when_shortening_ && params.is_shortening;
+    dp_in.end_within_last   = end_within_last_beats_;   // DEV-116 sesja 126
 
     ViterbiPath dp_result = viterbiDPWithJumpFloor(dp_in, min_jumps_floor_);
     std::vector<std::int64_t> path = std::move(dp_result.path);

@@ -143,6 +143,7 @@ inline constexpr int kMaxTransitionsDefaultOpt = 6;
 // -20 ADR-026 addendum documented this as the facade canonical default.
 // Source-of-truth: `optimizer.py:95 (2026-04-22)`.
 inline constexpr double kDurationToleranceSecDefault = 5.0;
+inline constexpr double kDurationToleranceSecV2      = 8.0;   // DEV-116 sesja 126 (user spec: +-5-8 s, 10 max)
 
 // A1: time_signature default. FALLBACK-DEFAULT — production always passes
 // the BeatDetector-derived value (typically 4 for 4/4; 3 for 3/4; 6 for
@@ -241,6 +242,21 @@ struct CleanOptimizerInputs
     // count prunes feasible k-cut paths).
     int    min_jumps_floor            = 0;
     bool   no_backward_when_shortening = false;
+    // DEV-114 sesja 126 — hole-aware length accounting (v2 path). Beats
+    // that span a beat-tracker hole weigh round(duration / median period)
+    // period slots in the DP and the target / tolerance convert with the
+    // median period instead of (last - first) / (n - 1). Identity on a
+    // hole-free grid (all weights 1, legacy average kept). Default false =
+    // bit-exact legacy (Python parity).
+    bool   hole_aware_length          = false;
+    // DEV-116 sesja 126 — flat duration tolerance (v2 path): the window is
+    // `duration_tolerance_sec` as given, not max(2, tol x clip(ratio)).
+    // The user's spec: length may differ by 5-8 s (10 max) when a cleaner
+    // cut is available; quality outranks length. Default false = legacy.
+    bool   flat_tolerance             = false;
+    // DEV-116 sesja 126 — the path must end within the last k beats (the
+    // renderer's tail rule); 0 = legacy. See ViterbiDPInputs::end_within_last.
+    int    end_within_last_beats      = 0;
 
     // A6/A7: waveform_sample_rate / boundary_waveforms — stored by Python
     // `__init__` (L101-102) but NOT consumed by `optimize()` main-path.
@@ -387,6 +403,8 @@ private:
     double                                                      edit_length_jump_scale_ = 1.0;  // ADR-084 sesja 93
     int                                                         min_jumps_floor_ = 0;              // DEV-112 sesja 124
     bool                                                        no_backward_when_shortening_ = false; // DEV-112 sesja 124
+    bool                                                        flat_tolerance_ = false;               // DEV-116 sesja 126
+    int                                                         end_within_last_beats_ = 0;            // DEV-116 sesja 126
     // ADR-083 sesja 92 — true when UI Min cut slider was dragged off
     // default 16. When set, _run_dp_and_build_path uses min_seq_after_jump_
     // directly instead of adaptive cooldown scaling — user explicit override
@@ -396,6 +414,8 @@ private:
 
     double                                                      avg_beat_duration_;
     std::vector<double>                                         cumulative_;  // size n_beats + 1
+    std::vector<int>                                            beat_weights_;   // DEV-114 sesja 126 (period slots per beat)
+    int                                                         total_weight_ = 0;
 
     SegmentData                                                 segment_data_;
     DownbeatArrays                                              downbeat_arrays_;
