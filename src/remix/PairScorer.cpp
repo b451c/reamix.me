@@ -191,7 +191,7 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
     if (t.spectral_centroid != nullptr)
         centroid_match = std::max(0.0, 1.0 - std::abs(t.spectral_centroid[i] - t.spectral_centroid[jp]) * 5.0);
     if (t.v2 && t.baselines != nullptr) {   // ADR-115 E1 / E2
-        if (t.rms_energy != nullptr && have_edge_db
+        if (t.rms_energy != nullptr && have_edge_db && ! req.skip_loudness_reject
             && loudnessRejectV2(*t.baselines, t.rms_energy[i], t.rms_energy[jp], edge_step)) {
             out.rejected = true; out.gate = 2; return out;
         }

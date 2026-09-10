@@ -70,6 +70,11 @@ public:
         // Reaches the pool only on the weights-override path (the plugin's
         // analysis-time pool always carries the family).
         bool                  disable_boundary_family { false };
+        // ADR-117 (sesja 131): skip the shape-first planner for extreme
+        // shortening (Duration v2, target below kShapePlannerMaxRatio of the
+        // track) - harness key "disable_shape_planner" = the sesja-130 engine
+        // on the current build (A/B rounds).
+        bool                  disable_shape_planner { false };
 
         // ADR-051 (sesja 61) — Block Assembly mode. Active when
         // userBlocks non-empty AND queue.size() ≥ 2. Mutually exclusive

@@ -28,6 +28,10 @@ struct RemixOutput
     // DEV-116 (sesja 126): waveform-similarity floor the Duration v2 path
     // settled on (0.8 / 0.7 / 0.6 / 0 = none) - see RemixPipeline.
     double waveformFloorUsed = 0.0;
+    // ADR-117 (sesja 131): the Duration path came from the shape-first
+    // planner (whole sections, seams at section boundaries) instead of the
+    // beat-level DP - see RemixPipeline / remix/ShapePlanner.h.
+    bool   shapePlanUsed     = false;
     bool         ok           { false };
     juce::String errorMessage;
     // Sesja 119 (DEV-095): non-fatal note shown next to "Remix ready"

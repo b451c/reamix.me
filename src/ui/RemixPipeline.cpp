@@ -13,6 +13,8 @@
 #include "remix/RegionOptimizer.h"
 #include "remix/TransitionCost.h"
 #include "remix/SpliceAcceptance.h"   // ADR-116 step 3 (sesja 130)
+#include "remix/SeamJudge.h"          // ADR-117 (sesja 131)
+#include "remix/ShapePlanner.h"       // ADR-117 (sesja 131)
 #include "render/Renderer.h"
 #include "ui/RemixCache.h"
 
@@ -785,6 +787,96 @@ void RemixPipeline::run()
             // both families, only when no tier accepted in pass 0 (extreme
             // ratios: High Hopes 3:11 -> 0:30, corpus 0.15-0.33). The
             // fallback then prefers the pass-1 pool (richer) over pass 0.
+            std::optional<reamix::remix::RemixPath> shapeEffort;   // ADR-117 tier F (see the fallback below)
+            double shapeEffortDev = 0.0;
+            // ADR-117 (sesja 131): shape-first planner for extreme shortening.
+            // Below kShapePlannerMaxRatio of the track the plan is whole
+            // sections of the grid-snapped section map in the original order,
+            // seams only at section boundaries judged as boundary cuts
+            // (SeamJudge on the shared pair scorer); no plan = the beat-level
+            // engine below runs as before. Ratios >= the switch never enter.
+            if (in_.v2_scoring && ! in_.disable_shape_planner && trackSec > 0.0
+                && in_.targetDurationSec < reamix::remix::kShapePlannerMaxRatio * trackSec
+                && (int) bundle.uiSegments.size() >= reamix::remix::kShapeMinSections)
+            {
+                std::vector<double> segStarts, segEnds;
+                std::vector<int>    segKinds;
+                for (const auto& s : bundle.uiSegments)
+                {
+                    segStarts.push_back (s.startSec);
+                    segEnds.push_back (s.endSec);
+                    segKinds.push_back ((int) s.kind);
+                }
+                const auto sections = reamix::remix::shapeSectionsFromSeconds (
+                    bundle.beatTimes.data(), nBeatsAll, segStarts.data(), segEnds.data(),
+                    segKinds.data(), (int) segStarts.size());
+                std::set<int> dbSet (v2Grid.downbeat_idx.begin(), v2Grid.downbeat_idx.end());
+
+                reamix::remix::BlockCompatInputs jin{};
+                fillBlockCompatInputs (jin, bundle, gridDownbeats, gridBarBeats);
+                jin.v2_scoring = true;
+                const reamix::remix::BoundarySeamJudge judge (jin);
+
+                reamix::remix::ShapePlannerInputs sin;
+                sin.beat_times  = bundle.beatTimes.data();
+                sin.n_beats     = nBeatsAll;
+                sin.track_sec   = trackSec;
+                sin.sections    = sections.data();
+                sin.n_sections  = (int) sections.size();
+                sin.db_set      = &dbSet;
+                sin.rms_energy  = bundle.feat.rmsEnergy.empty() ? nullptr : bundle.feat.rmsEnergy.data();
+                sin.target_sec  = in_.targetDurationSec;
+                sin.window_sec  = reamix::remix::kDurationToleranceSecV2;
+                sin.window_relaxed_sec = kMaxLengthDevSec;
+                sin.min_q       = kAcceptMinQ;
+                auto judgeFn = [&judge] (bool relaxed)
+                {
+                    return [&judge, relaxed] (int i, int j) -> std::optional<reamix::remix::ShapeSeamScore>
+                    {
+                        const auto s = judge.score (i, j, relaxed);
+                        if (s.rejected) return std::nullopt;
+                        return reamix::remix::ShapeSeamScore { s.quality, s.energy_diff_db, s.edge_distance };
+                    };
+                };
+                sin.seam         = judgeFn (false);
+                sin.seam_relaxed = judgeFn (true);
+                const reamix::remix::ShapePlan plan = judge.valid() ? reamix::remix::planShape (sin)
+                                                                    : reamix::remix::ShapePlan{};
+                if (const char* dbg = std::getenv ("REAMIX_DURATION_DEBUG"))
+                {
+                    if (FILE* f = std::fopen (dbg, "a"))
+                    {
+                        std::fprintf (f, "shape: sections %d judge %s -> %s tier %c pieces %d seams %d minQ %.3f est %.1f dev %+.1f"
+                                         " | pieces whole %d trim %d, seams tried %d strict-ok %d relaxed-ok %d, closest |dev| whole %.1f relaxed/trim %.1f\n",
+                                      (int) sections.size(), judge.valid() ? "ok" : "invalid",
+                                      plan.ok ? "PLAN" : "no plan", plan.tier, (int) plan.pieces.size(),
+                                      (int) plan.seams.size(), plan.min_q, plan.est_sec, plan.dev_sec,
+                                      plan.diag.pieces_whole, plan.diag.pieces_trim, plan.diag.seams_tried,
+                                      plan.diag.seams_strict, plan.diag.seams_relaxed,
+                                      plan.diag.closest_dev_whole, plan.diag.closest_dev_trim);
+                        for (const auto& pc : plan.pieces)
+                            std::fprintf (f, "  piece section %d kind %d beats %d-%d %s\n", pc.section, pc.kind, pc.b0, pc.b1,
+                                          pc.trim == reamix::remix::ShapePiece::Trim::Whole ? "whole"
+                                          : pc.trim == reamix::remix::ShapePiece::Trim::Head ? "head" : "tail");
+                        for (const auto& sm : plan.seams)
+                            std::fprintf (f, "  seam %d -> %d q %.3f ed %.2f excess %+.1f dB\n",
+                                          sm.i, sm.j, sm.score.q, sm.score.edge_distance, sm.excess_db);
+                        std::fclose (f);
+                    }
+                }
+                if (plan.ok)
+                {
+                    best = plan.toPath();
+                    haveBest = true;
+                    out.shapePlanUsed = true;
+                }
+                else if (plan.best_effort)
+                {
+                    shapeEffort    = plan.toPath();
+                    shapeEffortDev = plan.dev_sec;
+                }
+            }
+
             bool hasBoundary = false;
             for (const auto& kv : tcSrc->candidates)
                 if (kv.second.family == reamix::remix::TransitionCandidate::kFamilyBoundary) { hasBoundary = true; break; }
@@ -864,18 +956,31 @@ void RemixPipeline::run()
                 // the tail inside the cap, whatever its cuts; then the
                 // highest tier ending at the tail with clean cuts (length
                 // off); then the unfiltered pool's path as it is.
+                double chosenDev   = 0.0;
+                bool   insideCap   = false;
                 for (const auto& c : cands)
-                    if (c.tail && std::fabs (c.dev) <= kMaxLengthDevSec) { best = c.path; floorUsed = c.tier; haveBest = true; break; }
+                    if (c.tail && std::fabs (c.dev) <= kMaxLengthDevSec) { best = c.path; floorUsed = c.tier; haveBest = true; chosenDev = c.dev; insideCap = true; break; }
                 if (! haveBest)
                     for (const auto& c : cands)
-                        if (c.qOk && c.tail) { best = c.path; floorUsed = c.tier; haveBest = true; break; }
-                if (! haveBest && ! cands.empty()) { best = cands.back().path; floorUsed = cands.back().tier; haveBest = true; }
+                        if (c.qOk && c.tail) { best = c.path; floorUsed = c.tier; haveBest = true; chosenDev = c.dev; break; }
+                if (! haveBest && ! cands.empty()) { best = cands.back().path; floorUsed = cands.back().tier; haveBest = true; chosenDev = cands.back().dev; }
+                // ADR-117 (sesja 131): when the beat-level fallback also misses
+                // the cap, the shape planner's best-effort plan wins if it is
+                // closer to the requested length (Drake x0.25: 80 s vs 125 s).
+                bool shapeTaken = false;
+                if (shapeEffort.has_value() && ! insideCap
+                    && (! haveBest || std::fabs (shapeEffortDev) < std::fabs (chosenDev)))
+                {
+                    best = *shapeEffort; floorUsed = 0.0; haveBest = true; shapeTaken = true;
+                    out.shapePlanUsed = true;
+                }
                 if (const char* dbg = std::getenv ("REAMIX_DURATION_DEBUG"))
                 {
                     if (FILE* f = std::fopen (dbg, "a"))
                     {
-                        std::fprintf (f, "fallback: floor %.2f (%s)\n", floorUsed,
-                                      haveBest && endsAtTail (best) ? "ends@tail, length off" : "ends-early");
+                        std::fprintf (f, "fallback: floor %.2f (%s)%s\n", floorUsed,
+                                      haveBest && endsAtTail (best) ? "ends@tail, length off" : "ends-early",
+                                      shapeTaken ? " -> shape best effort (closer to the target)" : "");
                         std::fclose (f);
                     }
                 }

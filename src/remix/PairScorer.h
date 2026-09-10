@@ -115,6 +115,13 @@ struct PairScorerRequest
     // rms(i) vs rms(j-1), no continuation penalties. v2 only (the legacy
     // path ignores it); the caller decides the family by geometry.
     bool   boundary    = false;
+    // ADR-117 (sesja 131): the shape planner's relaxed tiers judge a
+    // section-to-section seam without the per-track p98 loudness reject
+    // (gate 2) - the natural section changes ARE the tail of that
+    // distribution, so the reject removes every seam as large as the song's
+    // own biggest step. The 8 dB hard block stays. Default off = every other
+    // caller unchanged.
+    bool   skip_loudness_reject = false;
 };
 
 struct PairScore
