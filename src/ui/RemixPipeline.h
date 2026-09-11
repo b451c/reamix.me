@@ -75,6 +75,11 @@ public:
         // track) - harness key "disable_shape_planner" = the sesja-130 engine
         // on the current build (A/B rounds).
         bool                  disable_shape_planner { false };
+        // Sesja 134 (ADR-117 step 3, DEV-121): crossfade of the planner's
+        // seams in beats (Audition: one beat; the Renderer then overlays the
+        // whole window with one equal-power crossfade). 0 = the Renderer's
+        // default 0.15-beat multi-band seam - harness key "shape_seam_beats".
+        double                shapeSeamCrossfadeBeats { 1.0 };
 
         // ADR-051 (sesja 61) — Block Assembly mode. Active when
         // userBlocks non-empty AND queue.size() ≥ 2. Mutually exclusive

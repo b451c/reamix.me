@@ -99,7 +99,7 @@ BoundarySeamJudge::BoundarySeamJudge(const BlockCompatInputs& in)
     valid_ = true;
 }
 
-PairScore BoundarySeamJudge::score(int i, int j, bool relaxed) const
+PairScore BoundarySeamJudge::score(int i, int j, bool relaxed, bool open) const
 {
     PairScore out;
     if (! valid_ || i < 0 || j <= 0 || i >= track_.n_total || j >= track_.n_total) {
@@ -111,13 +111,14 @@ PairScore BoundarySeamJudge::score(int i, int j, bool relaxed) const
     req.abs_j       = j;
     req.bar_aligned = 1.0;
     req.boundary    = true;
-    req.skip_loudness_reject = relaxed;
+    req.skip_loudness_reject = relaxed || open;
+    req.skip_energy_gate     = open;
     return scorePair(track_, req);
 }
 
-std::optional<double> BoundarySeamJudge::quality(int i, int j, bool relaxed) const
+std::optional<double> BoundarySeamJudge::quality(int i, int j, bool relaxed, bool open) const
 {
-    const PairScore s = score(i, j, relaxed);
+    const PairScore s = score(i, j, relaxed, open);
     if (s.rejected) return std::nullopt;
     return s.quality;
 }

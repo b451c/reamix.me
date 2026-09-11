@@ -33,11 +33,13 @@ public:
 
     // Full pair score (rejected + gate id when a hard gate fired).
     // `relaxed` = without the per-track p98 loudness reject (the 8 dB hard
-    // block stays) - the shape planner's tiers D / E.
-    PairScore score(int i, int j, bool relaxed = false) const;
+    // block stays) - the shape planner's tiers D / E. `open` (sesja 134,
+    // DEV-121) = every loudness gate off - the planner's open seams (landing
+    // on a section start or inside the last section).
+    PairScore score(int i, int j, bool relaxed = false, bool open = false) const;
 
     // Convenience: quality when no gate fired, nullopt otherwise.
-    std::optional<double> quality(int i, int j, bool relaxed = false) const;
+    std::optional<double> quality(int i, int j, bool relaxed = false, bool open = false) const;
 
     bool valid() const noexcept { return valid_; }
     int  nBeats() const noexcept { return track_.n_total; }

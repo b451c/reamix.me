@@ -30,6 +30,15 @@
 // A plan needs every seam at or above `min_q` (kAcceptMinQ). No plan = the
 // caller falls back to the beat-level engine.
 //
+// Sesja 134 (ADR-117 step 3, DEV-121) - Audition's structure: the windows
+// are kShapeLengthSlackSec (5 s) at every tier, the trim tiers also offer
+// bar-granular ends (`bar_ends`), a seam landing on a section start or inside
+// the last section is OPEN (`seam_open`: every loudness gate off, no q floor,
+// the score is a cost only) and every seam carries a one-beat crossfade
+// (`seam_crossfade_beats`) for the Renderer. Isolation round (Audition's exact
+// segments through our Renderer): 10 ties / 1 Audition / 1 both bad - the
+// structure is the lever, the one-beat seam only smooths the big-step cut-ins.
+//
 // Cost (lower wins inside a tier): sum(1 - q) over seams + kSeamTax per seam
 // + kTrimTax per trimmed piece + kNoChorusTax when the track has a chorus and
 // the plan keeps none (the hook must survive) + a soft dynamics term: the
@@ -58,6 +67,14 @@ namespace reamix::remix
 // (Duration mode, v2). The corpus tables at 0.15 / 0.25 / 0.33 are the
 // planner's cases; 0.5 / 0.75 / 1.25 stay on the beat-level engine.
 inline constexpr double kShapePlannerMaxRatio = 0.35;
+
+// Sesja 134 (ADR-117 step 3, DEV-121): the length slack below the switch.
+// Adobe Audition's Remix (blinded round sesja 133: Audition 8 / reamix 0 /
+// tie 4) never misses its request by more than its 5 s slack; the user's
+// verdicts put the requested length above a clean-but-long version. Replaces
+// the +-8 / 10 s windows for the planner's tiers (the beat-level fallback
+// keeps its own cap).
+inline constexpr double kShapeLengthSlackSec = 5.0;
 
 struct ShapeSection
 {
@@ -93,6 +110,24 @@ struct ShapePlannerInputs
     // The same judge without the p98 loudness reject (tiers D / E); empty =
     // those tiers are skipped.
     std::function<std::optional<ShapeSeamScore>(int i, int j)> seam_relaxed;
+    // Sesja 134 (DEV-121): the judge with every loudness gate off, for OPEN
+    // seams = landings on a section start or anywhere inside the last section
+    // (the ending piece). Audition's intro -> ending cut-ins with +7..+11 dB
+    // steps were rated clean, and on the 16 Audition seams our composite does
+    // not separate the one cut the ear rejected (q 0.62) from the accepted
+    // ones (q 0.26 .. 0.93): on an open seam the score is a cost only, never
+    // a gate, and `min_q` does not apply. Empty = open seams are judged like
+    // every other seam (sesja-132 behaviour).
+    std::function<std::optional<ShapeSeamScore>(int i, int j)> seam_open;
+    // Sesja 134: bar-granular ends in the trim tiers - the first piece may
+    // stop at any downbeat of the first section, the last piece may start at
+    // any downbeat of the last section (Audition: 1 s intros, 6.5 s endings).
+    bool bar_ends = false;
+    // Sesja 134: seam crossfade in beats written to the path's metadata
+    // (`preferred_overlap_sec`; the Renderer overlays the whole window with
+    // one equal-power crossfade above the 200 ms band cap). 0 = the
+    // Renderer's default (0.15 beat multi-band). Audition: one beat.
+    double seam_crossfade_beats = 0.0;
 };
 
 struct ShapePiece
@@ -109,6 +144,8 @@ struct ShapeSeam
     int            i = 0, j = 0;   // cut leaves after beat i, lands on beat j
     ShapeSeamScore score;
     double         excess_db = 0.0;
+    bool           open      = false;   // sesja 134: judged by `seam_open`, no q floor
+    double         overlap_sec = 0.0;   // sesja 134: crossfade for the Renderer (0 = default)
 };
 
 struct ShapePlan
@@ -119,7 +156,7 @@ struct ShapePlan
     double est_sec = 0.0;          // estimated render length (head + pieces + tail)
     double dev_sec = 0.0;          // est - target
     double cost    = 0.0;
-    double min_q   = 1.0;
+    double min_q   = 1.0;          // over every seam (open seams included; the floor applies to the others)
     std::vector<ShapePiece> pieces;
     std::vector<ShapeSeam>  seams;
 
@@ -147,6 +184,11 @@ inline constexpr double kShapeDynamicsDbPerCost= 10.0;
 inline constexpr int    kShapeContextBeats     = 8;
 inline constexpr double kShapeBinSec           = 0.5;
 inline constexpr int    kShapeMinSections      = 3;
+// Sesja 134: a trimmed piece (phrase or bar trim, head or tail) is at least
+// this many beats - Audition's shortest ending is 6.4 s (its minimum loop is
+// 8 beats); with the edge caps the DP otherwise closes with 2 beats of the
+// last chorus + the file tail (Dance Monkey x0.15: 336-338), a truncation.
+inline constexpr int    kShapeMinEndBeats      = 8;
 
 ShapePlan planShape(const ShapePlannerInputs& in);
 

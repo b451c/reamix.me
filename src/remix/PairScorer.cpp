@@ -105,7 +105,16 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
                     break;
             }
         }
-        if (! ok) { out.rejected = true; out.gate = 1; return out; }
+        out.tail_step_db = boundary ? tail_step : energy_diff;
+        if (! ok && ! req.skip_energy_gate) { out.rejected = true; out.gate = 1; return out; }
+        if (req.skip_energy_gate) {
+            // Open seam (sesja 134): the edge-view caps replace both gates.
+            const double rms_jump_db = (t.rms_energy != nullptr)
+                ? 20.0 * std::log10(std::max(t.rms_energy[j], 1e-6) / std::max(t.rms_energy[i], 1e-6)) : 0.0;
+            if (energy_diff > kOpenSeamMaxEdgeStepDb || rms_jump_db > kOpenSeamMaxRmsJumpDb) {
+                out.rejected = true; out.gate = 3; return out;
+            }
+        }
     }
 
     // --- Vocal readouts (track-level gate, region_cost.py:98-102) -----------
@@ -215,6 +224,9 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
     q.energy_match      = energy_match;
     q.edge_energy_match = edge_energy_match;
     q.centroid_match    = centroid_match;
+    out.energy_match      = energy_match;
+    out.edge_energy_match = edge_energy_match;
+    out.centroid_match    = centroid_match;
     if (t.onset_norm != nullptr && i < t.onset_norm_n && jp < t.onset_norm_n) {   // ADR-064
         q.transient_continuity = 1.0 - std::abs(t.onset_norm[i] - t.onset_norm[jp]);
         if (t.v2 && t.baselines != nullptr && t.onset_strength != nullptr)
@@ -238,6 +250,9 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
         const EdgeContinuityValue ec = edgeContinuityV2(*t.baselines, t.edge_mel_end, t.n_edge_mel, n_total, i, j);
         if (ec.available) { q.edge_continuity = ec.quality; out.edge_distance = ec.distance; }
     }
+    out.transient_continuity = q.transient_continuity.value_or(-1.0);
+    out.mfcc_continuity      = q.mfcc_continuity.value_or(-1.0);
+    out.edge_continuity      = q.edge_continuity.value_or(-1.0);
     double quality = computeQualityScore(q, boundary ? kV2BoundaryQualityWeights : *t.weights);
 
     // --- Penalties (continuation heuristics; none on a boundary cut) --------

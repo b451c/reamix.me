@@ -59,6 +59,10 @@
 #include "analysis/SectionClassifier.h" // sesja 121 --dump-sections
 #include "analysis/ModelManager.h"
 #include "io/AudioLoader.h"
+#include "render/Renderer.h"       // sesja 134 --render-segments
+#include "remix/SeamJudge.h"       // sesja 134 --judge-seams
+#include "remix/ShapePlanner.h"    // sesja 134 --judge-seams (grid-snapped sections)
+#include "ui/BlockCompatWiring.h"  // sesja 134 --judge-seams
 #include "calibration_harness_parse_weights.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -88,6 +92,11 @@ struct Args
     bool         dumpLoopSpots { false };   // sesja 117 - ADR-115 E11 loop-spot map, exits after dump
     juce::String dumpRegionPool;            // sesja 119 - "start:end" seconds, prints the v2 Region pool at full precision
     juce::String dumpSectionsJson;          // sesja 121 - LinkSeg section model run on the bundle audio, exits after dump
+    juce::String renderSegments;            // sesja 134 - text file "start_sec end_sec" per line: render those exact
+                                            // source spans back to back through our Renderer (seam isolation test)
+    juce::String renderOutWav;              // sesja 134 - WAV written by --render-segments
+    double       seamOverlapSec { 0.0 };    // sesja 134 - seam overlap; 0 = the Renderer's default (crossfadeBeats x beat)
+    juce::String judgeSeams;                // sesja 134 - text file "from_sec to_sec" per line: boundary judge readout per seam
 };
 
 int printUsage (const char* argv0)
@@ -97,8 +106,10 @@ int printUsage (const char* argv0)
         "       %s --source <abs/audio> --dump-beats <out.json>           (sesja 74 helper)\n"
         "       %s --source <abs/audio> --dump-components <out.csv> [--v2] (sesja 80 D1 helper; --v2 = ADR-115 scoring)\n"
         "       %s --source <abs/audio> --dump-loop-spots                  (sesja 117 ADR-115 E11 loop-spot map)\n"
-        "       %s --source <abs/audio> --dump-sections <out.json>        (sesja 121 DEV-098 LinkSeg section model)\n",
-        argv0, argv0, argv0, argv0, argv0);
+        "       %s --source <abs/audio> --dump-sections <out.json>        (sesja 121 DEV-098 LinkSeg section model)\n"
+        "       %s --source <abs/audio> --render-segments <spans.txt> --out-wav <out.wav> [--seam-overlap-sec s]\n"
+        "                                                                 (sesja 134 seam isolation: exact source spans through our seams)\n",
+        argv0, argv0, argv0, argv0, argv0, argv0);
     return 2;
 }
 
@@ -115,6 +126,10 @@ bool parseArgs (int argc, char** argv, Args& out)
         else if (a == "--dump-loop-spots")                 out.dumpLoopSpots       = true;
         else if (a == "--dump-region-pool" && i + 1 < argc) out.dumpRegionPool     = juce::String (argv[++i]);
         else if (a == "--dump-sections"   && i + 1 < argc) out.dumpSectionsJson    = juce::String (argv[++i]);
+        else if (a == "--render-segments" && i + 1 < argc) out.renderSegments      = juce::String (argv[++i]);
+        else if (a == "--out-wav"         && i + 1 < argc) out.renderOutWav        = juce::String (argv[++i]);
+        else if (a == "--seam-overlap-sec" && i + 1 < argc) out.seamOverlapSec     = std::atof (argv[++i]);
+        else if (a == "--judge-seams"     && i + 1 < argc) out.judgeSeams          = juce::String (argv[++i]);
         else
         {
             std::fprintf (stderr, "unknown arg: %s\n", a.c_str());
@@ -127,7 +142,9 @@ bool parseArgs (int argc, char** argv, Args& out)
         || out.dumpComponentsCsv.isNotEmpty()
         || out.dumpLoopSpots
         || out.dumpRegionPool.isNotEmpty()
-        || out.dumpSectionsJson.isNotEmpty();
+        || out.dumpSectionsJson.isNotEmpty()
+        || (out.renderSegments.isNotEmpty() && out.renderOutWav.isNotEmpty())
+        || out.judgeSeams.isNotEmpty();
 }
 
 // parseWeights — extracted to tools/calibration_harness_parse_weights.h
@@ -439,6 +456,7 @@ struct Run
     double       maxLengthDevSec  { 10.0 };    // sesja 127 - "max_length_dev_sec" (DEV-117: tier length cap, Duration v2)
     bool         disableBoundaryFamily { false };   // sesja 130 - "disable_boundary_family" (ADR-116 step 3 A/B)
     bool         disableShapePlanner   { false };   // sesja 131 - "disable_shape_planner" (ADR-117 A/B)
+    double       shapeSeamBeats        { 1.0 };     // sesja 134 - "shape_seam_beats" (planner seam crossfade; 0 = Renderer default)
     juce::String outWav;
     juce::String outCsv;
 
@@ -507,6 +525,7 @@ Run parseRun (const juce::var& v)
     r.maxLengthDevSec   = (double) v.getProperty ("max_length_dev_sec", 10.0);
     r.disableBoundaryFamily = (bool) v.getProperty ("disable_boundary_family", false);   // sesja 130
     r.disableShapePlanner   = (bool) v.getProperty ("disable_shape_planner", false);     // sesja 131 (ADR-117)
+    r.shapeSeamBeats        = (double) v.getProperty ("shape_seam_beats", 1.0);         // sesja 134
     r.outWav = v.getProperty ("out_wav", juce::String()).toString();
     r.outCsv = v.getProperty ("out_csv", juce::String()).toString();
     if (r.outWav.isEmpty() || r.outCsv.isEmpty())
@@ -554,6 +573,7 @@ reamix::ui::RemixOutput driveRemixPipeline (
     pin.maxLengthDevSec    = run.maxLengthDevSec;    // sesja 127 (DEV-117)
     pin.disable_boundary_family = run.disableBoundaryFamily;   // sesja 130 (ADR-116 step 3)
     pin.disable_shape_planner   = run.disableShapePlanner;     // sesja 131 (ADR-117)
+    pin.shapeSeamCrossfadeBeats = run.shapeSeamBeats;          // sesja 134
 
     std::atomic<bool>          done { false };
     reamix::ui::RemixOutput    result;
@@ -648,6 +668,164 @@ int main (int argc, char** argv)
     std::fprintf (stderr, "  OK %d beats · %.1f BPM · %d native samples\n",
                   (int) bundle->beatTimes.size(), bundle->bpm,
                   (int) bundle->nativeSamples);
+
+    // sesja 134 helper (DEV-121): --judge-seams scores "leave at from_sec,
+    // land at to_sec" seams (Audition's exact cuts) with the boundary seam
+    // judge three ways - strict, relaxed (gate 2 off), no gates (1 + 2 off) -
+    // and prints the composite inputs, so the gates and the terms that hold
+    // a cut-in below kAcceptMinQ can be read off per seam.
+    if (args.judgeSeams.isNotEmpty())
+    {
+        const auto& bt = bundle->beatTimes;
+        const int n = (int) bt.size();
+        const auto grid = reamix::remix::cleanBeatGrid (bt.data(), n,
+            bundle->downbeatTimes.empty() ? nullptr : bundle->downbeatTimes.data(),
+            (int) bundle->downbeatTimes.size(), std::max (1, (int) bundle->timeSigNum));
+        reamix::remix::BlockCompatInputs jin{};
+        reamix::ui::fillBlockCompatInputs (jin, *bundle, grid.downbeats, grid.bar_beats);
+        jin.v2_scoring = true;
+        const reamix::remix::BoundarySeamJudge judge (jin);
+        if (! judge.valid()) { std::fprintf (stderr, "  ERROR: judge invalid\n"); return 1; }
+        std::set<int> dbSet (grid.downbeat_idx.begin(), grid.downbeat_idx.end());
+        auto nearestBeat = [&] (double t) {
+            int b = (int) std::distance (bt.begin(), std::lower_bound (bt.begin(), bt.end(), t));
+            if (b >= n) b = n - 1;
+            if (b > 0 && std::fabs (bt[(std::size_t) b - 1] - t) < std::fabs (bt[(std::size_t) b] - t)) --b;
+            return b; };
+        // Grid-snapped sections as the planner sees them (shapeSectionsFromSeconds).
+        std::vector<double> segStarts, segEnds; std::vector<int> segKinds;
+        for (const auto& sg : bundle->uiSegments) { segStarts.push_back (sg.startSec); segEnds.push_back (sg.endSec); segKinds.push_back ((int) sg.kind); }
+        const auto sections = reamix::remix::shapeSectionsFromSeconds (bt.data(), n, segStarts.data(), segEnds.data(), segKinds.data(), (int) segStarts.size());
+        auto sectionAt = [&] (int j) {   // beats from j to the nearest section start (signed: + = j after it) and that section's kind
+            int best = 1 << 20, kind = -1;
+            for (const auto& sc : sections) if (std::abs (j - sc.b0) < std::abs (best)) { best = j - sc.b0; kind = sc.kind; }
+            return std::make_pair (best, kind); };
+        std::printf ("# from_sec,to_sec,i,j,snap_from_ms,snap_to_ms,j_is_downbeat,j_section_start,"
+                     "strict_q,strict_gate,relaxed_q,relaxed_gate,nogate_q,tail_step_db,energy,edge_energy,centroid,transient,mfcc,edge_cont,edge_dist,sec_kind,n_beats,head_sec,tail_sec,"
+                     "edge_step_db,cent_ij,rms_ij_db,onset_ij,cent_i,cent_j,cent_jp\n");
+        std::ifstream f (args.judgeSeams.toStdString());
+        std::string ta, tb;
+        while (f >> ta >> tb)
+        {
+            // "from_sec to_sec" (Audition segments: leaves at from_sec = end of beat i) or
+            // "b<i> b<j>" beat indices (our render CSVs / planner seams).
+            const bool byBeat = ! ta.empty() && ta[0] == 'b';
+            const double a = byBeat ? 0.0 : std::atof (ta.c_str());
+            const double b = byBeat ? 0.0 : std::atof (tb.c_str());
+            const int i = byBeat ? std::atoi (ta.c_str() + 1) : std::max (0, nearestBeat (a) - 1);   // leaves after beat i: end(i) = bt[i+1] ~ a
+            const int j = byBeat ? std::atoi (tb.c_str() + 1) : nearestBeat (b);
+            if (i < 0 || j < 0 || i >= n || j >= n) continue;
+            const double snapFrom = (i + 1 < n ? bt[(std::size_t) i + 1] : bt.back()) - a;
+            const double snapTo   = bt[(std::size_t) j] - b;
+            reamix::remix::PairScorerRequest req; req.abs_i = i; req.abs_j = j; req.bar_aligned = 1.0; req.boundary = true;
+            const auto strict = reamix::remix::scorePair (judge.track(), req);
+            req.skip_loudness_reject = true;
+            const auto relaxed = reamix::remix::scorePair (judge.track(), req);
+            req.skip_energy_gate = true;
+            const auto nogate = reamix::remix::scorePair (judge.track(), req);
+            // Edge view (what the ear hears across the seam): beat i vs beat j.
+            const auto& sc_ = bundle->feat.spectralCentroid; const auto& rm_ = bundle->feat.rmsEnergy; const auto& on_ = bundle->feat.onsetStrength;
+            const double ci = sc_.empty() ? 0.0 : sc_[(std::size_t) i], cj = sc_.empty() ? 0.0 : sc_[(std::size_t) j], cjp = sc_.empty() || j == 0 ? 0.0 : sc_[(std::size_t) j - 1];
+            const double rmsDb = rm_.empty() ? 0.0 : 20.0 * std::log10 (std::max (rm_[(std::size_t) j], 1e-6) / std::max (rm_[(std::size_t) i], 1e-6));
+            const double onIJ = on_.empty() ? 0.0 : on_[(std::size_t) j] - on_[(std::size_t) i];
+            std::printf ("%.3f,%.3f,%d,%d,%.0f,%.0f,%d,%d,%.3f,%d,%.3f,%d,%.3f,%.1f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.2f,%d,%d,%.1f,%.1f,%.1f,%.3f,%.1f,%.3f,%.3f,%.3f,%.3f\n",
+                         a, b, i, j, snapFrom * 1000.0, snapTo * 1000.0, dbSet.count (j) ? 1 : 0, sectionAt (j).first,
+                         strict.rejected ? -1.0 : strict.quality, strict.gate,
+                         relaxed.rejected ? -1.0 : relaxed.quality, relaxed.gate,
+                         nogate.rejected ? -1.0 : nogate.quality, nogate.tail_step_db,
+                         nogate.energy_match, nogate.edge_energy_match, nogate.centroid_match,
+                         nogate.transient_continuity, nogate.mfcc_continuity, nogate.edge_continuity, nogate.edge_distance,
+                         sectionAt (j).second, n, bt.front(), (double) bundle->nativeSamples / (double) bundle->nativeSr - bt.back(),
+                         nogate.energy_diff_db, std::max (0.0, 1.0 - std::fabs (ci - cj) * 5.0), rmsDb, onIJ, ci, cj, cjp);
+        }
+        std::printf ("# sections (beat ranges, kind):");
+        for (const auto& sc : sections) std::printf (" %d-%d/%d", sc.b0, sc.b1, sc.kind);
+        std::printf ("\n");
+        return 0;
+    }
+
+    // sesja 134 helper (ADR-117 step 3, seam isolation): --render-segments
+    // plays the given source spans back to back through our Renderer and
+    // nothing else - no DP, no phrase gate, no anchor / onset refinement.
+    // Every seam gets the production geometry (outgoing runs half the
+    // overlap past its span end, incoming starts half the overlap before its
+    // span start) and the production blend: overlaps within the widest band
+    // (200 ms) = multi-band phase-aligned adaptive crossfade, longer = one
+    // full-window equal-power crossfade (what REAPER Insert plays). Used to
+    // render Adobe Audition's exact segments through our seams.
+    if (args.renderSegments.isNotEmpty())
+    {
+        std::vector<std::pair<double, double>> spans;
+        {
+            std::ifstream f (args.renderSegments.toStdString());
+            double s0 = 0.0, s1 = 0.0;
+            while (f >> s0 >> s1) spans.emplace_back (s0, s1);
+        }
+        if (spans.empty())
+        {
+            std::fprintf (stderr, "  ERROR: no spans in %s\n", args.renderSegments.toRawUTF8());
+            return 1;
+        }
+        reamix::render::RendererConfig rcfg{};
+        rcfg.anchorMaxOverlapSec = 1.0;   // v2 path value (unused here: no anchor search)
+        reamix::render::Renderer renderer (
+            bundle->sourcePath.toStdString(), bundle->stereoNative.data(),
+            (std::size_t) bundle->nChannels, bundle->nativeSamples, bundle->nativeSr,
+            bundle->beatTimes.data(), bundle->beatTimes.size(), /*crossfadeMsOrNeg*/ -1.0, rcfg);
+        const int    sr = renderer.sampleRate();
+        const double trackSec = (double) bundle->nativeSamples / (double) sr;
+        const double ov = args.seamOverlapSec > 0.0 ? args.seamOverlapSec
+                                                    : (double) renderer.crossfadeSamples() / (double) sr;
+        const double half = ov * 0.5;
+        reamix::render::EditPlan plan;
+        double timelinePos = 0.0;
+        for (std::size_t i = 0; i < spans.size(); ++i)
+        {
+            reamix::render::EditClip c;
+            c.clipIndex  = (int) i + 1;
+            c.sourcePath = bundle->sourcePath.toStdString();
+            c.sourceStartSec = juce::jmax (0.0, spans[i].first  - (i > 0 ? half : 0.0));
+            c.sourceEndSec   = juce::jmin (trackSec, spans[i].second + (i + 1 < spans.size() ? half : 0.0));
+            c.durationSec    = c.sourceEndSec - c.sourceStartSec;
+            c.timelineStartSec = timelinePos;
+            c.timelineEndSec   = timelinePos + c.durationSec;
+            if (i > 0)                 { c.fadeInSec  = ov; c.overlapBeforeSec = ov; }
+            if (i + 1 < spans.size())  { c.fadeOutSec = ov; c.overlapAfterSec  = ov; }
+            plan.clips.push_back (c);
+            timelinePos = c.timelineEndSec - c.overlapAfterSec;
+        }
+        plan.duration     = plan.clips.back().timelineEndSec;
+        plan.nTransitions = (int) spans.size() - 1;
+
+        std::vector<float> audio; std::size_t nCh = 0, nSamp = 0; std::vector<double> seams;
+        renderer.renderEditPlan (plan, audio, nCh, nSamp, seams);
+
+        juce::File outFile (args.renderOutWav);
+        outFile.deleteFile();
+        auto stream = outFile.createOutputStream();
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatWriter> writer (
+            wav.createWriterFor (stream.get(), (double) sr, (unsigned int) nCh, 24, {}, 0));
+        if (writer == nullptr)
+        {
+            std::fprintf (stderr, "  ERROR: cannot write %s\n", args.renderOutWav.toRawUTF8());
+            return 1;
+        }
+        (void) stream.release();
+        std::vector<const float*> planes (nCh);
+        for (std::size_t ch = 0; ch < nCh; ++ch) planes[ch] = audio.data() + ch * nSamp;
+        writer->writeFromFloatArrays (planes.data(), (int) nCh, (int) nSamp);
+        writer->flush();
+        writer.reset();
+
+        std::printf ("# render-segments: %d spans, overlap %.4f s (%s), %.2f s rendered\n",
+                     (int) spans.size(), ov, args.seamOverlapSec > 0.0 ? "explicit" : "renderer default",
+                     (double) nSamp / (double) sr);
+        std::printf ("# seam_idx,remix_time_sec,from_time_sec,to_time_sec,overlap_sec\n");
+        for (std::size_t k = 0; k < seams.size(); ++k)
+            std::printf ("%d,%.6f,%.6f,%.6f,%.4f\n", (int) k, seams[k], spans[k].second, spans[k + 1].first, ov);
+        return 0;
+    }
 
     // sesja 117 helper (ADR-115 E11): --dump-loop-spots prints the whole-track
     // loop-spot map (all backward bar-aligned pairs, best first) + the chips

@@ -57,6 +57,7 @@ std::vector<Piece> buildPieces(const ShapePlannerInputs& in, bool allow_trim, co
         const ShapeSection& sec = in.sections[s];
         if (sec.b1 <= sec.b0) continue;
         auto push = [&] (int b0, int b1, ShapePiece::Trim trim) {
+            if (trim != ShapePiece::Trim::Whole && b1 - b0 < kShapeMinEndBeats) return;   // sesja 134
             Piece pc;
             pc.p.section = s; pc.p.b0 = b0; pc.p.b1 = b1; pc.p.kind = sec.kind; pc.p.trim = trim;
             pc.dur = beatEndTime(in, b1) - in.beat_times[b0];
@@ -67,6 +68,16 @@ std::vector<Piece> buildPieces(const ShapePlannerInputs& in, bool allow_trim, co
         for (auto it = ps.upper_bound(sec.b0); it != ps.end() && *it < sec.b1; ++it) {
             push(sec.b0, *it, ShapePiece::Trim::Head);
             push(*it, sec.b1, ShapePiece::Trim::Tail);
+        }
+        // Sesja 134: bar-granular ends. First section: head pieces ending at
+        // every downbeat; last section: tail pieces starting at every downbeat
+        // (both skip the phrase starts already pushed above).
+        if (in.bar_ends && in.db_set != nullptr && (s == 0 || s == in.n_sections - 1)) {
+            for (auto it = in.db_set->upper_bound(sec.b0); it != in.db_set->end() && *it < sec.b1; ++it) {
+                if (ps.count(*it)) continue;
+                if (s == 0)                 push(sec.b0, *it, ShapePiece::Trim::Head);
+                if (s == in.n_sections - 1) push(*it, sec.b1, ShapePiece::Trim::Tail);
+            }
         }
     }
     std::sort(out.begin(), out.end(), [] (const Piece& a, const Piece& b) {
@@ -109,6 +120,16 @@ struct Search
     State& at(int p, int bin, int c) { return table[(static_cast<std::size_t>(p) * nb + bin) * 2 + c]; }
 };
 
+// Sesja 134: an OPEN seam lands on a section start or inside the last
+// section (see ShapePlannerInputs::seam_open).
+bool openLanding(const ShapePlannerInputs& in, int j)
+{
+    if (! in.seam_open) return false;
+    if (in.n_sections > 0 && j >= in.sections[in.n_sections - 1].b0) return true;
+    for (int s = 0; s < in.n_sections; ++s) if (in.sections[s].b0 == j) return true;
+    return false;
+}
+
 using SeamFn    = std::function<std::optional<ShapeSeamScore>(int, int)>;
 struct SeamCache
 {
@@ -125,7 +146,7 @@ const std::optional<ShapeSeamScore>& seamScore(SeamCache& cache, int i, int j)
     return it->second;
 }
 
-void runSearch(const ShapePlannerInputs& in, Search& s, SeamCache& cache, double max_len)
+void runSearch(const ShapePlannerInputs& in, Search& s, SeamCache& cache, SeamCache& open, double max_len)
 {
     const int P = static_cast<int>(s.pieces.size());
     s.nb = static_cast<int>(std::ceil(max_len / kShapeBinSec)) + 2;
@@ -158,11 +179,12 @@ void runSearch(const ShapePlannerInputs& in, Search& s, SeamCache& cache, double
                 double min_q = cur.min_q;
                 if (qc.p.b0 != pc.p.b1) {
                     const int i = pc.p.b1 - 1, j = qc.p.b0;
-                    const auto& sc = seamScore(cache, i, j);
-                    if (! sc.has_value() || sc->q < in.min_q) continue;
+                    const bool is_open = openLanding(in, j);
+                    const auto& sc = seamScore(is_open ? open : cache, i, j);
+                    if (! sc.has_value() || (! is_open && sc->q < in.min_q)) continue;
                     add  += (1.0 - sc->q) + kShapeSeamTax
                           + std::max(0.0, seamExcessDb(in, i, j)) / kShapeDynamicsDbPerCost;
-                    min_q = std::min(min_q, sc->q);
+                    if (! is_open) min_q = std::min(min_q, sc->q);   // the floor tracks gated seams only
                 }
                 State st;
                 st.cost = cur.cost + add; st.min_q = min_q; st.prev_p = p; st.prev_bin = bin; st.prev_c = c;
@@ -195,7 +217,7 @@ int passing(const SeamCache& c, double min_q)
     return n;
 }
 
-std::optional<ShapePlan> pickPlan(const ShapePlannerInputs& in, Search& s, SeamCache& cache,
+std::optional<ShapePlan> pickPlan(const ShapePlannerInputs& in, Search& s, SeamCache& cache, SeamCache& open,
                                   double window, bool has_chorus, char tier)
 {
     const int P = static_cast<int>(s.pieces.size());
@@ -239,8 +261,13 @@ std::optional<ShapePlan> pickPlan(const ShapePlannerInputs& in, Search& s, SeamC
         if (b.b0 == a.b1) continue;
         ShapeSeam sm;
         sm.i = a.b1 - 1; sm.j = b.b0;
-        sm.score     = seamScore(cache, sm.i, sm.j).value_or(ShapeSeamScore{});
+        sm.open      = openLanding(in, sm.j);
+        sm.score     = seamScore(sm.open ? open : cache, sm.i, sm.j).value_or(ShapeSeamScore{});
         sm.excess_db = seamExcessDb(in, sm.i, sm.j);
+        if (in.seam_crossfade_beats > 0.0 && in.n_beats > 1) {
+            const int k = std::min(sm.j, in.n_beats - 2);   // the beat period at the landing (its predecessor's on the last beat)
+            sm.overlap_sec = in.seam_crossfade_beats * (in.beat_times[k + 1] - in.beat_times[k]);
+        }
         plan.min_q   = std::min(plan.min_q, sm.score.q);
         plan.seams.push_back(sm);
     }
@@ -262,6 +289,8 @@ RemixPath ShapePlan::toPath() const
         md["edge_distance"]  = sm.score.edge_distance;
         md["family"]         = 1.0;
         md["shape_seam"]     = 1.0;
+        md["open_seam"]      = sm.open ? 1.0 : 0.0;
+        if (sm.overlap_sec > 0.0) md["preferred_overlap_sec"] = sm.overlap_sec;
     }
     path.duration_beats = static_cast<int>(path.beat_indices.size());
     path.total_cost     = cost;
@@ -283,6 +312,7 @@ ShapePlan planShape(const ShapePlannerInputs& in)
     const double max_len = in.target_sec + std::max(in.window_sec, in.window_relaxed_sec) + kShapeBinSec;
     SeamCache strict;  strict.fn  = &in.seam;
     SeamCache relaxed; relaxed.fn = &in.seam_relaxed;
+    SeamCache open;    open.fn    = &in.seam_open;   // sesja 134: open seams, every tier
 
     ShapePlan::Diag diag;
     auto finish = [&] (ShapePlan p) {
@@ -306,28 +336,28 @@ ShapePlan planShape(const ShapePlannerInputs& in)
     Search whole;
     whole.pieces = buildPieces(in, false, ps);
     diag.pieces_whole = static_cast<int>(whole.pieces.size());
-    runSearch(in, whole, strict, max_len);
+    runSearch(in, whole, strict, open, max_len);
     diag.closest_dev_whole = closestDev(in, whole);
-    if (auto p = pickPlan(in, whole, strict, in.window_sec, has_chorus, 'A')) return finish(*p);
+    if (auto p = pickPlan(in, whole, strict, open, in.window_sec, has_chorus, 'A')) return finish(*p);
 
     Search trimmed;
     trimmed.pieces = buildPieces(in, true, ps);
     const bool trims = trimmed.pieces.size() > whole.pieces.size();
     diag.pieces_trim = trims ? static_cast<int>(trimmed.pieces.size()) : 0;
     if (trims) {
-        runSearch(in, trimmed, strict, max_len);
+        runSearch(in, trimmed, strict, open, max_len);
         diag.closest_dev_trim = closestDev(in, trimmed);
-        if (auto p = pickPlan(in, trimmed, strict, in.window_sec, has_chorus, 'B')) return finish(*p);
-        if (auto p = pickPlan(in, trimmed, strict, in.window_relaxed_sec, has_chorus, 'C')) return finish(*p);
-    } else if (auto p = pickPlan(in, whole, strict, in.window_relaxed_sec, has_chorus, 'C')) {
+        if (auto p = pickPlan(in, trimmed, strict, open, in.window_sec, has_chorus, 'B')) return finish(*p);
+        if (auto p = pickPlan(in, trimmed, strict, open, in.window_relaxed_sec, has_chorus, 'C')) return finish(*p);
+    } else if (auto p = pickPlan(in, whole, strict, open, in.window_relaxed_sec, has_chorus, 'C')) {
         return finish(*p);
     }
     Search& wide = trims ? trimmed : whole;
     if (in.seam_relaxed) {
-        runSearch(in, wide, relaxed, max_len);
+        runSearch(in, wide, relaxed, open, max_len);
         diag.closest_dev_trim = closestDev(in, wide);
-        if (auto p = pickPlan(in, wide, relaxed, in.window_sec, has_chorus, 'D')) return finish(*p);
-        if (auto p = pickPlan(in, wide, relaxed, in.window_relaxed_sec, has_chorus, 'E')) return finish(*p);
+        if (auto p = pickPlan(in, wide, relaxed, open, in.window_sec, has_chorus, 'D')) return finish(*p);
+        if (auto p = pickPlan(in, wide, relaxed, open, in.window_relaxed_sec, has_chorus, 'E')) return finish(*p);
     }
 
     // Tier F: the complete plan closest to the target at any length (the
@@ -336,8 +366,8 @@ ShapePlan planShape(const ShapePlannerInputs& in)
     SeamCache& fcache = in.seam_relaxed ? relaxed : strict;
     Search effort;
     effort.pieces = wide.pieces;
-    runSearch(in, effort, fcache, std::max(max_len, 2.0 * in.target_sec + 20.0));
-    if (auto p = pickPlan(in, effort, fcache, std::numeric_limits<double>::infinity(), has_chorus, 'F')) {
+    runSearch(in, effort, fcache, open, std::max(max_len, 2.0 * in.target_sec + 20.0));
+    if (auto p = pickPlan(in, effort, fcache, open, std::numeric_limits<double>::infinity(), has_chorus, 'F')) {
         p->ok = false; p->best_effort = true;
         return finish(*p);
     }

@@ -826,20 +826,31 @@ void RemixPipeline::run()
                 sin.db_set      = &dbSet;
                 sin.rms_energy  = bundle.feat.rmsEnergy.empty() ? nullptr : bundle.feat.rmsEnergy.data();
                 sin.target_sec  = in_.targetDurationSec;
-                sin.window_sec  = reamix::remix::kDurationToleranceSecV2;
-                sin.window_relaxed_sec = kMaxLengthDevSec;
+                // Sesja 134 (ADR-117 step 3, DEV-121): Audition's structure -
+                // the length slack is 5 s at every tier, the first / last piece
+                // may stop / start at any bar of the first / last section, a
+                // seam landing on a section start or inside the last section is
+                // judged with every loudness gate off and no q floor (the
+                // Audition round: such cut-ins with +7..+11 dB steps were rated
+                // clean; our composite does not separate the one rejected cut
+                // from the accepted ones), and the seam crossfade is one beat.
+                sin.window_sec  = reamix::remix::kShapeLengthSlackSec;
+                sin.window_relaxed_sec = reamix::remix::kShapeLengthSlackSec;
                 sin.min_q       = kAcceptMinQ;
-                auto judgeFn = [&judge] (bool relaxed)
+                sin.bar_ends    = true;
+                sin.seam_crossfade_beats = in_.shapeSeamCrossfadeBeats;
+                auto judgeFn = [&judge] (bool relaxed, bool open)
                 {
-                    return [&judge, relaxed] (int i, int j) -> std::optional<reamix::remix::ShapeSeamScore>
+                    return [&judge, relaxed, open] (int i, int j) -> std::optional<reamix::remix::ShapeSeamScore>
                     {
-                        const auto s = judge.score (i, j, relaxed);
+                        const auto s = judge.score (i, j, relaxed, open);
                         if (s.rejected) return std::nullopt;
                         return reamix::remix::ShapeSeamScore { s.quality, s.energy_diff_db, s.edge_distance };
                     };
                 };
-                sin.seam         = judgeFn (false);
-                sin.seam_relaxed = judgeFn (true);
+                sin.seam         = judgeFn (false, false);
+                sin.seam_relaxed = judgeFn (true, false);
+                sin.seam_open    = judgeFn (true, true);
                 const reamix::remix::ShapePlan plan = judge.valid() ? reamix::remix::planShape (sin)
                                                                     : reamix::remix::ShapePlan{};
                 if (const char* dbg = std::getenv ("REAMIX_DURATION_DEBUG"))
@@ -859,8 +870,9 @@ void RemixPipeline::run()
                                           pc.trim == reamix::remix::ShapePiece::Trim::Whole ? "whole"
                                           : pc.trim == reamix::remix::ShapePiece::Trim::Head ? "head" : "tail");
                         for (const auto& sm : plan.seams)
-                            std::fprintf (f, "  seam %d -> %d q %.3f ed %.2f excess %+.1f dB\n",
-                                          sm.i, sm.j, sm.score.q, sm.score.edge_distance, sm.excess_db);
+                            std::fprintf (f, "  seam %d -> %d q %.3f ed %.2f excess %+.1f dB%s xfade %.3f s\n",
+                                          sm.i, sm.j, sm.score.q, sm.score.edge_distance, sm.excess_db,
+                                          sm.open ? " OPEN" : "", sm.overlap_sec);
                         if (std::getenv ("REAMIX_SHAPE_SEAMS") != nullptr)
                         {
                             // Every seam the search asked about: section-boundary pairs with the

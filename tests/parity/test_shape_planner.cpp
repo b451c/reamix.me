@@ -212,6 +212,58 @@ bool test7_sections_from_seconds()
     CHECK (secs[3].b0 == 112, "55.9 s -> beat 112 (56.0 s)");
     return true;
 }
+// Sesja 134 (ADR-117 step 3, DEV-121).
+bool test10_bar_ends()
+{
+    Fixture f;
+    // Only the intro -> outro seam exists, at bar granularity: 15 -> 112 is
+    // the whole-section seam (16 s), the bar-end seams are shorter pieces.
+    f.judge = [] (int i, int j) -> std::optional<ShapeSeamScore> {
+        if (j >= 112 && i < 16) return ShapeSeamScore { 0.70, 1.0, 0.5 };
+        return std::nullopt;
+    };
+    ShapePlannerInputs in = f.inputs (12.0);
+    in.window_sec = 1.0; in.window_relaxed_sec = 1.0;   // only 12 s fits (10 / 14 s cost the same: one trim tax)
+    CHECK (! planShape (in).ok, "whole intro + outro = 16 s misses a 1 s window; phrase trims cannot help");
+    in.bar_ends = true;
+    const ShapePlan p = planShape (in);
+    CHECK (p.ok && p.tier == 'B', "bar-granular ends make the length");
+    CHECK (p.pieces.size() == 2, "intro head + outro tail");
+    CHECK (p.pieces[0].b0 == 0 && p.pieces[0].trim == ShapePiece::Trim::Head, "first piece from beat 0, cut at a bar");
+    // 4 s of intro + the whole 8 s outro is the cheapest 12 s (one trim tax);
+    // a bar-granular outro tail would cost a second trim tax.
+    CHECK (p.pieces[1].b1 == kBeats, "last piece to the tail");
+    CHECK (p.pieces[0].b1 % 4 == 0 && p.pieces[0].b1 < 16 && p.pieces[1].b0 % 4 == 0, "bar boundaries, intro shorter than the section");
+    CHECK (std::fabs (p.est_sec - 12.0) < 1e-9, "6 + 6 s");
+    return true;
+}
+
+bool test11_open_seam_no_floor()
+{
+    Fixture f;
+    f.judge = [] (int, int) -> std::optional<ShapeSeamScore> { return std::nullopt; };   // strict: everything gated
+    ShapePlannerInputs in = f.inputs (16.0);
+    CHECK (! planShape (in).ok, "strict judge starves the plan");
+    // The open judge accepts every seam at q 0.20 - below min_q.
+    in.seam_open = [] (int, int) -> std::optional<ShapeSeamScore> { return ShapeSeamScore { 0.20, 9.0, 1.5 }; };
+    const ShapePlan p = planShape (in);
+    CHECK (p.ok && p.tier == 'A', "an open seam (landing on the outro start) needs no q floor");
+    CHECK (p.seams.size() == 1 && p.seams[0].i == 15 && p.seams[0].j == 112 && p.seams[0].open, "intro end -> outro start, open");
+    CHECK (std::fabs (p.min_q - 0.20) < 1e-12, "plan min_q reports the open seam");
+    // A landing inside a middle section (chorus phrase start 80) is not open:
+    // with the strict judge gated it stays unreachable.
+    in.target_sec = 32.0;
+    const ShapePlan q = planShape (in);
+    CHECK (! q.ok || q.seams.empty() || q.seams[0].j != 80, "the chorus phrase start is not an open landing");
+    // Seam crossfade metadata: one beat at the landing.
+    in.target_sec = 16.0; in.seam_crossfade_beats = 1.0;
+    const ShapePlan r = planShape (in);
+    CHECK (r.ok && std::fabs (r.seams[0].overlap_sec - kPeriod) < 1e-12, "one beat overlap");
+    const RemixPath path = r.toPath();
+    const auto md = path.transition_metadata.at ({ 15, 112 });
+    CHECK (std::fabs (md.at ("preferred_overlap_sec") - kPeriod) < 1e-12 && md.at ("open_seam") == 1.0, "metadata carries the overlap + open flag");
+    return true;
+}
 } // namespace
 
 int main()
@@ -231,6 +283,8 @@ int main()
     run ("7 sections from seconds",            test7_sections_from_seconds);
     run ("8 relaxed judge tier D",             test8_relaxed_tier);
     run ("9 best effort tier F",               test9_best_effort);
+    run ("10 bar-granular ends",               test10_bar_ends);
+    run ("11 open seam, no floor, one beat",   test11_open_seam_no_floor);
     std::printf (failed == 0 ? "ALL PASS\n" : "%d FAILED\n", failed);
     return failed == 0 ? 0 : 1;
 }

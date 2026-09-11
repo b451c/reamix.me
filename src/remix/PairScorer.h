@@ -122,12 +122,29 @@ struct PairScorerRequest
     // own biggest step. The 8 dB hard block stays. Default off = every other
     // caller unchanged.
     bool   skip_loudness_reject = false;
+    // Sesja 134 (ADR-117 step 3, DEV-121): also skip the 8 dB edge-energy
+    // hard block (gate 1). The Audition round rated intro -> ending cut-ins
+    // with +10 dB steps clean when the landing is a section start; the
+    // planner asks for this only on such landings. Default off.
+    bool   skip_energy_gate = false;
 };
+
+// Sesja 134 open-seam caps (edge view: the beat the ear leaves vs the beat
+// it lands on). On the 27 rated seams of the two sesja-134 rounds (16
+// Audition, 11 ours) the substitution-view gates and the composite do not
+// separate "dynamika" from clean, the edge view does: every clean seam has
+// |end(i) - start(j)| <= 11.3 dB and rms(j) / rms(i) <= 11.7 dB; the five
+// cut-ins rated bad for their jump sit at 13.2 / 25 dB and 16 / 27 dB. The
+// three remaining bad seams (Daft Punk verse -> outro) are not separable by
+// any current signal (DEV-121). References/listening/2026-09-11-sesja134-
+// audition-path/rated_seams_s134.json is the table.
+inline constexpr double kOpenSeamMaxEdgeStepDb = 12.0;
+inline constexpr double kOpenSeamMaxRmsJumpDb  = 14.0;
 
 struct PairScore
 {
     bool   rejected        = false;   // a hard gate fired; quality is 0
-    int    gate            = 0;       // 1 = edge-energy gate, 2 = loudness reject
+    int    gate            = 0;       // 1 = edge-energy gate, 2 = loudness reject, 3 = open-seam edge cap (sesja 134)
     double quality         = 0.0;     // composite minus penalties, clamped >= 0
     double energy_diff_db  = 0.0;     // |end(i) - start(j)| (legacy edge view)
     bool   has_waveform    = false;
@@ -138,6 +155,15 @@ struct PairScore
     double context_sim     = 0.0;
     int    family          = 0;       // sesja 130: TransitionCandidate::kFamily* (1 when scored as a boundary cut)
     double edge_distance   = -1.0;    // sesja 130: normalised edge distance d / scale (-1 = not available)
+    // Sesja 134 diagnostics (harness --judge-seams): the composite's inputs
+    // on the boundary path, so a gated or low-q seam can be read out.
+    double tail_step_db    = 0.0;     // |end(i) - end(j-1)| (boundary view) or |end(i) - start(j)|
+    double energy_match    = 0.0;
+    double edge_energy_match = 0.0;
+    double centroid_match  = 0.0;
+    double transient_continuity = -1.0;   // -1 = not available
+    double mfcc_continuity = -1.0;
+    double edge_continuity = -1.0;
 };
 
 PairScore scorePair(const PairScorerTrack& track, const PairScorerRequest& req);
