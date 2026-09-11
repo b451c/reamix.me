@@ -27,7 +27,7 @@ namespace
     constexpr char        kMagic[4]       = { 'R', 'X', 'B', 'C' };
     // 7 (sesja 121): bundle.structure carries the LinkSeg model sections;
     // format-6 entries (empty structure) would never get them, so they miss.
-    constexpr juce::uint32 kFormatVersion = 13;  // sesja 132: DEV-120 boundary-family phrase starts from downbeat-snapped section boundaries (continuation gate unchanged)
+    constexpr juce::uint32 kFormatVersion = 15;  // sesja 135: DEV-122 lattice beats across beatless zones of >= 8 beats (beatIsSynthetic; features on the extended grid, the section model on the detector beats)
 
     juce::String hashOf (const juce::String& s)
     {
@@ -425,6 +425,7 @@ bool AnalysisDiskCache::save (const AnalysisBundle& bundle)
         if (! writeVec (out, bundle.beatTimes)) return false;
         if (! writeVec (out, bundle.downbeatTimes)) return false;
         if (! writeVecBool (out, bundle.beatIsDownbeat)) return false;
+        if (! writeVecBool (out, bundle.beatIsSynthetic)) return false;   // sesja 135 (format 14)
 
         // FeatureExtractor / Structure / TransitionCost / uiSegments
         if (! writeFeatureResult (out, bundle.feat)) return false;
@@ -482,6 +483,7 @@ AnalysisBundlePtr AnalysisDiskCache::tryLoad (const juce::String& sourcePath)
         && readVec (in, bundle->beatTimes)
         && readVec (in, bundle->downbeatTimes)
         && readVecBool (in, bundle->beatIsDownbeat)
+        && readVecBool (in, bundle->beatIsSynthetic)   // sesja 135 (format 14)
         && readFeatureResult (in, bundle->feat)
         && readStructure (in, bundle->structure)
         && readTC (in, bundle->tc)

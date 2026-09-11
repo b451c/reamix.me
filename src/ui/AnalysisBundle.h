@@ -60,6 +60,11 @@ struct AnalysisBundle
     std::vector<double> beatTimes;
     std::vector<double> downbeatTimes;
     std::vector<bool>   beatIsDownbeat; // length == beatTimes.size()
+    // Sesja 135 (DEV-122): lattice beats laid across the un-beated head /
+    // tail / holes (analysis/GridConsistency.h step 4). Same length as
+    // beatTimes (empty on bundles built without the analysis stage). No
+    // engine downbeat lies on or next to one; the UI draws no tick for one.
+    std::vector<bool>   beatIsSynthetic;
 
     // ── FeatureExtractor (stage 3) — moved in, not copied ────────────
     reamix::analysis::FeatureExtractor::Result feat;

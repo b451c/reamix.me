@@ -116,6 +116,16 @@ PairScore scorePair(const PairScorerTrack& t, const PairScorerRequest& req)
             }
         }
     }
+    if (req.skip_energy_gate && t.v2 && t.baselines != nullptr && t.spectral_centroid != nullptr) {
+        // Open seam, sesja 135 (DEV-121): brightness collapse cap (gate 4) -
+        // the landing context is far darker than the outgoing one and the
+        // song itself does not darken into that landing (see SignalNorm.h).
+        out.centroid_collapse = centroidCollapseV2(*t.baselines, t.spectral_centroid, n_total, i, j,
+                                                   kOpenSeamContextBeats);
+        if (out.centroid_collapse < -kOpenSeamMaxCentroidCollapse) {
+            out.rejected = true; out.gate = 4; return out;
+        }
+    }
 
     // --- Vocal readouts (track-level gate, region_cost.py:98-102) -----------
     double va_i = 0.0, va_j = 0.0;

@@ -811,6 +811,10 @@ void RemixPipeline::run()
                     bundle.beatTimes.data(), nBeatsAll, segStarts.data(), segEnds.data(),
                     segKinds.data(), (int) segStarts.size());
                 std::set<int> dbSet (v2Grid.downbeat_idx.begin(), v2Grid.downbeat_idx.end());
+                // Sesja 135 (DEV-122): bar starts continued into the lattice
+                // zones, for the planner only (the engine grid has none there).
+                for (int idx : reamix::remix::latticeDownbeatIdx (bundle.beatIsSynthetic, v2Grid.downbeat_idx, v2Grid.bar_beats))
+                    dbSet.insert (idx);
 
                 reamix::remix::BlockCompatInputs jin{};
                 fillBlockCompatInputs (jin, bundle, gridDownbeats, gridBarBeats);
@@ -838,6 +842,8 @@ void RemixPipeline::run()
                 sin.window_relaxed_sec = reamix::remix::kShapeLengthSlackSec;
                 sin.min_q       = kAcceptMinQ;
                 sin.bar_ends    = true;
+                sin.bar_beats   = gridBarBeats;   // sesja 135: section-start zone = the first bar
+                sin.beat_is_synthetic = bundle.beatIsSynthetic.empty() ? nullptr : &bundle.beatIsSynthetic;   // sesja 135 (DEV-122)
                 sin.seam_crossfade_beats = in_.shapeSeamCrossfadeBeats;
                 auto judgeFn = [&judge] (bool relaxed, bool open)
                 {

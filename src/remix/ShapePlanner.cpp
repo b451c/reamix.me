@@ -22,13 +22,28 @@ struct Piece
 struct State
 {
     double cost      = std::numeric_limits<double>::infinity();
-    double min_q     = 1.0;
+    double min_q     = 1.0;     // over the floored seams (the min_q gate)
+    double min_q_all = 1.0;     // sesja 135: over EVERY seam (the maximin key)
     int    prev_p    = -1;
     int    prev_bin  = -1;
     int    prev_c    = 0;
     bool   chorus    = false;
     bool   valid() const noexcept { return std::isfinite(cost); }
 };
+
+// Sesja 135 (round-1 verdict): the worst seam decides. Plans are ranked by
+// the quality of their weakest seam in kShapeMaximinBucket steps, cost
+// breaks ties inside a step. On Daft Punk x0.25 the cheapest plan was one
+// intro -> outro seam at q 0.25 (rated "zgrzyt, dynamika, fragment"), while
+// Audition's structure (intro -> solo -> outro head -> ending, two seams at
+// q 0.40) cost more; every rated-clean open seam but Tiesto's two intro ->
+// outro cut-ins scores >= 0.39, the rated-bad ones mostly below 0.42.
+int maximinBucket(double q) { return static_cast<int>(std::floor(q / kShapeMaximinBucket + 1e-9)); }
+bool betterState(const State& a, const State& b)
+{
+    const int ba = maximinBucket(a.min_q_all), bb = maximinBucket(b.min_q_all);
+    return ba != bb ? ba > bb : a.cost < b.cost;
+}
 
 double beatEndTime(const ShapePlannerInputs& in, int b)
 {
@@ -64,19 +79,26 @@ std::vector<Piece> buildPieces(const ShapePlannerInputs& in, bool allow_trim, co
             out.push_back(pc);
         };
         push(sec.b0, sec.b1, ShapePiece::Trim::Whole);
+        // Sesja 135: the section start is a zone - pieces starting inside the
+        // first bar (every tier; the piece is a head trim, so the tax keeps the
+        // exact start unless the judge prefers a later landing).
+        if (s > 0)
+            for (int k = 1; k < std::max(1, in.bar_beats) && sec.b0 + k < sec.b1; ++k)
+                push(sec.b0 + k, sec.b1, ShapePiece::Trim::Head);
         if (! allow_trim) continue;
         for (auto it = ps.upper_bound(sec.b0); it != ps.end() && *it < sec.b1; ++it) {
             push(sec.b0, *it, ShapePiece::Trim::Head);
             push(*it, sec.b1, ShapePiece::Trim::Tail);
         }
-        // Sesja 134: bar-granular ends. First section: head pieces ending at
-        // every downbeat; last section: tail pieces starting at every downbeat
-        // (both skip the phrase starts already pushed above).
-        if (in.bar_ends && in.db_set != nullptr && (s == 0 || s == in.n_sections - 1)) {
+        // Sesja 134: bar-granular ends - head pieces ending at every downbeat,
+        // tail pieces starting at every downbeat (skipping the phrase starts
+        // already pushed above). Sesja 134: first / last section only; sesja
+        // 135: every section.
+        if (in.bar_ends && in.db_set != nullptr) {
             for (auto it = in.db_set->upper_bound(sec.b0); it != in.db_set->end() && *it < sec.b1; ++it) {
                 if (ps.count(*it)) continue;
-                if (s == 0)                 push(sec.b0, *it, ShapePiece::Trim::Head);
-                if (s == in.n_sections - 1) push(*it, sec.b1, ShapePiece::Trim::Tail);
+                push(sec.b0, *it, ShapePiece::Trim::Head);
+                push(*it, sec.b1, ShapePiece::Trim::Tail);
             }
         }
     }
@@ -122,12 +144,36 @@ struct Search
 
 // Sesja 134: an OPEN seam lands on a section start or inside the last
 // section (see ShapePlannerInputs::seam_open).
+// Sesja 135 (DEV-121): an open seam is free of the q floor only when it lands
+// in a section-start ZONE (the first bar of a section, see
+// ShapePlannerInputs::bar_beats). Inside the last section beyond its first
+// bar (a bar-granular ending piece) the open judge still drops every
+// loudness gate, but the composite must reach `min_q`: on the rated
+// inside-section landings the composite separates the ear's verdicts (bad
+// 0.33 / 0.37 / 0.39 / 0.40 vs clean >= 0.48; Dance Monkey 47 -> 328, Daft
+// Punk 127 -> 411, Tiesto 51 -> 308), while Audition's accepted section-start
+// cut-ins score as low as 0.11.
+bool sectionStartLanding(const ShapePlannerInputs& in, int j)
+{
+    const int zone = std::max(1, in.bar_beats);
+    for (int s = 1; s < in.n_sections; ++s)
+        if (j >= in.sections[s].b0 && j < std::min(in.sections[s].b1, in.sections[s].b0 + zone)) return true;
+    return false;
+}
+
+// Sesja 135 (DEV-122): a landing on a lattice beat (see ShapePlannerInputs::
+// beat_is_synthetic) is floor-free like a section-start zone.
+bool latticeLanding(const ShapePlannerInputs& in, int j)
+{
+    return in.beat_is_synthetic != nullptr && j >= 0 && j < static_cast<int>(in.beat_is_synthetic->size())
+        && (*in.beat_is_synthetic)[static_cast<std::size_t>(j)];
+}
+
 bool openLanding(const ShapePlannerInputs& in, int j)
 {
     if (! in.seam_open) return false;
     if (in.n_sections > 0 && j >= in.sections[in.n_sections - 1].b0) return true;
-    for (int s = 0; s < in.n_sections; ++s) if (in.sections[s].b0 == j) return true;
-    return false;
+    return sectionStartLanding(in, j) || latticeLanding(in, j);
 }
 
 using SeamFn    = std::function<std::optional<ShapeSeamScore>(int, int)>;
@@ -156,7 +202,7 @@ void runSearch(const ShapePlannerInputs& in, Search& s, SeamCache& cache, SeamCa
     auto put = [&] (int p, int bin, const State& st) {
         if (bin < 0 || bin >= s.nb) return;
         State& cur = s.at(p, bin, st.chorus ? 1 : 0);
-        if (! cur.valid() || st.cost < cur.cost) cur = st;
+        if (! cur.valid() || betterState(st, cur)) cur = st;
     };
     for (int p = 0; p < P; ++p) {
         const Piece& pc = s.pieces[p];
@@ -177,17 +223,20 @@ void runSearch(const ShapePlannerInputs& in, Search& s, SeamCache& cache, SeamCa
                 if (qc.p.b0 < pc.p.b1) continue;
                 double add   = qc.p.trim == ShapePiece::Trim::Whole ? 0.0 : kShapeTrimTax;
                 double min_q = cur.min_q;
+                double min_q_all = cur.min_q_all;
                 if (qc.p.b0 != pc.p.b1) {
                     const int i = pc.p.b1 - 1, j = qc.p.b0;
-                    const bool is_open = openLanding(in, j);
+                    const bool is_open    = openLanding(in, j);
+                    const bool floor_free = is_open && (sectionStartLanding(in, j) || latticeLanding(in, j));   // sesja 135
                     const auto& sc = seamScore(is_open ? open : cache, i, j);
-                    if (! sc.has_value() || (! is_open && sc->q < in.min_q)) continue;
+                    if (! sc.has_value() || (! floor_free && sc->q < in.min_q)) continue;
                     add  += (1.0 - sc->q) + kShapeSeamTax
                           + std::max(0.0, seamExcessDb(in, i, j)) / kShapeDynamicsDbPerCost;
-                    if (! is_open) min_q = std::min(min_q, sc->q);   // the floor tracks gated seams only
+                    if (! floor_free) min_q = std::min(min_q, sc->q);   // the floor skips section-start landings only
+                    min_q_all = std::min(min_q_all, sc->q);
                 }
                 State st;
-                st.cost = cur.cost + add; st.min_q = min_q; st.prev_p = p; st.prev_bin = bin; st.prev_c = c;
+                st.cost = cur.cost + add; st.min_q = min_q; st.min_q_all = min_q_all; st.prev_p = p; st.prev_bin = bin; st.prev_c = c;
                 st.chorus = cur.chorus || qc.p.kind == kChorusKind;
                 put(q, bin + binOf(qc.dur), st);
             }
@@ -223,6 +272,7 @@ std::optional<ShapePlan> pickPlan(const ShapePlannerInputs& in, Search& s, SeamC
     const int P = static_cast<int>(s.pieces.size());
     const double head = in.beat_times[0];
     double best_cost = std::numeric_limits<double>::infinity();
+    int best_bucket = std::numeric_limits<int>::min();
     int best_p = -1, best_bin = -1, best_c = 0;
     for (int p = 0; p < P; ++p) {
         if (s.pieces[p].p.b1 != in.n_beats) continue;
@@ -232,12 +282,19 @@ std::optional<ShapePlan> pickPlan(const ShapePlannerInputs& in, Search& s, SeamC
             if (! st.valid() || st.min_q < in.min_q) continue;
             const double dev = bin * kShapeBinSec - in.target_sec;
             if (std::fabs(dev) > window) continue;
-            // Inside a window the cheapest plan wins; with no window (tier F)
-            // the closest length wins, cost breaks ties.
+            // Inside a window: the best worst seam wins (sesja 135 maximin),
+            // the cheapest plan inside that step; with no window (tier F) the
+            // closest length wins, cost breaks ties.
             const double cost = std::isfinite(window)
                 ? st.cost + ((has_chorus && ! st.chorus) ? kShapeNoChorusTax : 0.0)
                 : std::fabs(dev) * 1e3 + st.cost;
-            if (cost < best_cost) { best_cost = cost; best_p = p; best_bin = bin; best_c = c; }
+            // The no-chorus tax keeps its weight in maximin units (0.5 = 10 steps).
+            const int bucket = std::isfinite(window)
+                ? maximinBucket(st.min_q_all) - ((has_chorus && ! st.chorus) ? static_cast<int>(std::lround(kShapeNoChorusTax / kShapeMaximinBucket)) : 0)
+                : 0;
+            if (bucket > best_bucket || (bucket == best_bucket && cost < best_cost)) {
+                best_bucket = bucket; best_cost = cost; best_p = p; best_bin = bin; best_c = c;
+            }
         }
     }
     if (best_p < 0) return std::nullopt;

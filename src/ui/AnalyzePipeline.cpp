@@ -206,14 +206,19 @@ void AnalyzePipeline::run()
     // consistent gaps filled, downbeats on the grid (off-grid / hole-
     // adjacent dropped), bar length measured, tempo = the grid's own
     // (the detector's octave-corrected BPM could be 2x the beat rate).
+    // Sesja 135 (DEV-122): the beatless head / tail / holes get a lattice at
+    // the grid period (flagged beatIsSynthetic); the section model and the
+    // feature extractor below run on the extended grid.
     {
+        const double durationSec = (double) audio.mono22050.size() / kAnalysisSampleRate;
         const auto grid = reamix::analysis::makeConsistentGrid (
-            toDoubles (det.beats), toDoubles (det.downbeats), (int) det.timeSigNum);
-        bundle->bpm            = grid.bpm;
-        bundle->timeSigNum     = grid.bar_beats;
-        bundle->beatTimes      = grid.beats;
-        bundle->downbeatTimes  = grid.downbeats;
-        bundle->beatIsDownbeat = grid.beatIsDownbeat;
+            toDoubles (det.beats), toDoubles (det.downbeats), (int) det.timeSigNum, durationSec);
+        bundle->bpm             = grid.bpm;
+        bundle->timeSigNum      = grid.bar_beats;
+        bundle->beatTimes       = grid.beats;
+        bundle->downbeatTimes   = grid.downbeats;
+        bundle->beatIsDownbeat  = grid.beatIsDownbeat;
+        bundle->beatIsSynthetic = grid.beatIsSynthetic;
     }
 
     // ── Stage 2b — SectionClassifier (sesja 121, DEV-098) ──────────
@@ -226,8 +231,18 @@ void AnalyzePipeline::run()
     {
         postProgress ("Finding sections", kPBeatDetect);
         std::string sectionErr;
+        // Sesja 135 (DEV-122): the model sees the DETECTOR's beats only - the
+        // lattice beats are cut positions for the planner, not musical beats;
+        // on the extended grid the model relabelled Alice in Chains' choruses
+        // as instrumental (its input had changed), and the section map was
+        // validated on the detector grid (sesja 121).
+        std::vector<double> modelBeats;
+        modelBeats.reserve (bundle->beatTimes.size());
+        for (std::size_t i = 0; i < bundle->beatTimes.size(); ++i)
+            if (i >= bundle->beatIsSynthetic.size() || ! bundle->beatIsSynthetic[i])
+                modelBeats.push_back (bundle->beatTimes[i]);
         const auto modelOut = sections_->run (audio.mono22050.data(), audio.mono22050.size(),
-                                              bundle->beatTimes, &sectionErr);
+                                              modelBeats, &sectionErr);
         if (! modelOut.beatTimes.empty())
         {
             const double durationSec = (double) audio.mono22050.size() / kAnalysisSampleRate;

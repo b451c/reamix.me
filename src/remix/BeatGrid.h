@@ -55,4 +55,16 @@ BeatGridResult cleanBeatGrid(const double* beat_times, int n_beats,
                              double snap_tol_beats = 0.25,
                              double hole_ratio = 1.5);
 
+// Sesja 135 (DEV-122): bar starts continued into the synthetic (lattice)
+// zones of the analysis grid (analysis/GridConsistency.h step 4) for the
+// shape planner's bar-granular ends and phrase starts. Every maximal run of
+// synthetic beats takes the bar phase of the nearest real downbeat before it
+// (after it for the head zone) and gets a downbeat every `bar_beats` inside
+// the run. The engine grid itself carries no downbeat in those zones, so the
+// continuation candidates never splice there. Sorted, unique, empty when the
+// mask or the real downbeats are empty.
+std::vector<int> latticeDownbeatIdx(const std::vector<bool>& beat_is_synthetic,
+                                    const std::vector<int>& real_downbeat_idx,
+                                    int bar_beats);
+
 } // namespace reamix::remix

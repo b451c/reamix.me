@@ -8,14 +8,18 @@
 //   1. Clean grid: beats unchanged, bar 4, bpm 120, no fills, no drops.
 //   2. A 6-period gap (5 beats removed) is filled back within 1e-9, with
 //      the downbeat inside it kept (it lies on a filled beat).
-//   3. A gap of 6.4 periods (the right side shifted by 0.4 period) stays a
-//      hole; the downbeats adjacent to it are dropped.
-//   4. A 30-period gap stays a hole even though it is phase-consistent.
+//   3. A gap of 6.4 periods (the right side shifted by 0.4 period) is not
+//      filled; it gets a phase-free lattice (sesja 135) and the downbeats
+//      adjacent to it are dropped.
+//   4. A 30-period gap is not filled (beyond max_fill_periods); its lattice
+//      reproduces the removed beats, flagged synthetic.
+//   6. Un-beated head / tail lattice when the file length is known.
 //   5. An off-grid downbeat (0.4 period) is dropped; bpm follows the grid
 //      (a 100 BPM grid reports 100, never an octave away).
 
 #include "analysis/GridConsistency.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -73,10 +77,23 @@ bool test_inconsistent_gap_kept()
     auto d = downbeatsEvery4();
     for (auto& t : d) if (t > 40 * kPeriod) t += 0.4 * kPeriod;
     const auto g = makeConsistentGrid(b, d, 4);
-    const bool ok = g.n_filled_gaps == 0 && g.n_holes == 1 && g.beats.size() == b.size()
-                 && g.n_dropped_downbeats >= 1 && g.bar_beats == 4;
-    std::fprintf(stderr, "[%s] 6.4-period gap kept as a hole (%d holes, %d downbeats dropped)\n",
-                 ok ? "PASS" : "FAIL", g.n_holes, g.n_dropped_downbeats);
+    // Sesja 135 (DEV-122): the phase-inconsistent gap is not FILLED and, at
+    // 5 lattice beats (6.4 - k >= 0.5 -> k <= 5), too short for a lattice
+    // zone (min 8): it stays a hole, the adjacent downbeats are dropped.
+    bool ok = g.n_filled_gaps == 0 && g.n_holes == 1 && g.n_lattice_zones == 0 && g.n_lattice_beats == 0
+           && g.beats.size() == b.size() && g.n_dropped_downbeats >= 1 && g.bar_beats == 4
+           && std::none_of(g.beatIsSynthetic.begin(), g.beatIsSynthetic.end(), [](bool x) { return x; });
+    // With min_lattice_beats 4 the same gap gets its 5-beat lattice.
+    const auto g4 = makeConsistentGrid(b, d, 4, 0.0, /*min_lattice_beats*/ 4);
+    ok = ok && g4.n_lattice_zones == 1 && g4.n_lattice_beats == 5 && g4.beats.size() == b.size() + 5;
+    for (int k = 1; ok && k <= 5; ++k) {
+        const std::size_t idx = 40 + static_cast<std::size_t>(k);
+        ok = std::fabs(g4.beats[idx] - (40 * kPeriod + k * kPeriod)) < 1e-9 && g4.beatIsSynthetic[idx] && !g4.beatIsDownbeat[idx];
+    }
+    ok = ok && !g4.beatIsSynthetic[40] && !g4.beatIsSynthetic[46] && !g4.beatIsDownbeat[40]   // 40: real downbeat next to the zone -> dropped
+            && g4.beatIsDownbeat[36];
+    std::fprintf(stderr, "[%s] 6.4-period gap: hole at min 8 (%d lattice beats), lattice of %d at min 4, %d downbeats dropped\n",
+                 ok ? "PASS" : "FAIL", g.n_lattice_beats, g4.n_lattice_beats, g4.n_dropped_downbeats);
     return ok;
 }
 
@@ -85,8 +102,43 @@ bool test_long_gap_kept()
     auto b = cleanBeats();
     b.erase(b.begin() + 41, b.begin() + 70);   // 29 beats removed: gap = 30 periods
     const auto g = makeConsistentGrid(b, downbeatsEvery4(), 4);
-    const bool ok = g.n_filled_gaps == 0 && g.n_holes == 1 && g.beats.size() == b.size();
-    std::fprintf(stderr, "[%s] 30-period gap kept as a hole\n", ok ? "PASS" : "FAIL");
+    // Sesja 135 (DEV-122): a 30-period gap is beyond max_fill_periods, so it
+    // is a lattice zone: 29 beats from the left edge at the period - on an
+    // exactly consistent gap they coincide with the removed beats - all
+    // synthetic; the detector downbeats inside (44 .. 68) snap onto lattice
+    // beats and are dropped, so is the real downbeat 40 next to the zone.
+    bool ok = g.n_filled_gaps == 0 && g.n_holes == 1 && g.n_lattice_zones == 1 && g.n_lattice_beats == 29
+           && g.beats.size() == 121 && g.n_dropped_downbeats == 8;
+    for (std::size_t i = 0; ok && i < g.beats.size(); ++i)
+        ok = std::fabs(g.beats[i] - i * kPeriod) < 1e-9 && g.beatIsSynthetic[i] == (i >= 41 && i <= 69);
+    ok = ok && !g.beatIsDownbeat[40] && !g.beatIsDownbeat[44] && !g.beatIsDownbeat[68] && g.beatIsDownbeat[72] && g.beatIsDownbeat[36];
+    std::fprintf(stderr, "[%s] 30-period gap: lattice of %d beats, %d downbeats dropped\n",
+                 ok ? "PASS" : "FAIL", g.n_lattice_beats, g.n_dropped_downbeats);
+    return ok;
+}
+
+// Sesja 135 (DEV-122): un-beated head and tail get a lattice when the file
+// length is known; the first / last real downbeats next to a zone are dropped.
+bool test_head_tail_lattice()
+{
+    std::vector<double> b, d;
+    for (int i = 40; i <= 120; ++i) b.push_back(i * kPeriod);      // real beats 20 .. 60 s
+    for (int i = 40; i <= 120; i += 4) d.push_back(i * kPeriod);
+    const auto g = makeConsistentGrid(b, d, 4, /*duration*/ 70.0);
+    // head: 19.5, 19.0, .., 0.5 (39 beats); tail: 60.5 .. 69.5 (19 beats: t <= 69.75)
+    bool ok = g.n_lattice_zones == 2 && g.n_lattice_beats == 58 && g.beats.size() == 81 + 58
+           && std::fabs(g.beats.front() - 0.5) < 1e-9 && std::fabs(g.beats.back() - 69.5) < 1e-9
+           && std::fabs(g.bpm - 120.0) < 1e-9 && g.bar_beats == 4;
+    for (std::size_t i = 0; ok && i < g.beats.size(); ++i)
+        ok = std::fabs(g.beats[i] - (i + 1) * kPeriod) < 1e-9 && g.beatIsSynthetic[i] == (i < 39 || i >= 120);
+    // real downbeats at 20 s (idx 39, next to the head zone) and 60 s (idx 119, next to the tail zone) dropped
+    ok = ok && !g.beatIsDownbeat[39] && g.beatIsDownbeat[43] && g.beatIsDownbeat[115] && !g.beatIsDownbeat[119]
+            && g.n_dropped_downbeats == 2 && g.downbeats.size() == d.size() - 2;
+    // no lattice without a known duration: only the head zone
+    const auto h = makeConsistentGrid(b, d, 4);
+    ok = ok && h.n_lattice_zones == 1 && h.beats.size() == 81 + 39;
+    std::fprintf(stderr, "[%s] head + tail lattice: %d beats in %d zones, %zu beats, %d downbeats dropped\n",
+                 ok ? "PASS" : "FAIL", g.n_lattice_beats, g.n_lattice_zones, g.beats.size(), g.n_dropped_downbeats);
     return ok;
 }
 
@@ -115,6 +167,7 @@ int main()
     ok = test_inconsistent_gap_kept()   && ok;
     ok = test_long_gap_kept()           && ok;
     ok = test_offgrid_downbeat_and_bpm() && ok;
+    ok = test_head_tail_lattice()       && ok;
     std::fprintf(stderr, ok ? "test_grid_consistency: ALL PASS\n" : "test_grid_consistency: FAIL\n");
     return ok ? 0 : 1;
 }

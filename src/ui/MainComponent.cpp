@@ -3118,8 +3118,11 @@ void MainComponent::applyAnalysisToUi (const reamix::ui::AnalysisBundle& bundle,
     std::vector<reamix::ui::WaveformView::Beat> wvBeats;
     wvBeats.reserve (bundle.beatTimes.size());
     for (size_t i = 0; i < bundle.beatTimes.size(); ++i)
+    {
+        if (i < bundle.beatIsSynthetic.size() && bundle.beatIsSynthetic[i]) continue;   // sesja 135: no tick for a lattice beat
         wvBeats.push_back ({ bundle.beatTimes[i],
                               i < bundle.beatIsDownbeat.size() ? bundle.beatIsDownbeat[i] : false });
+    }
     waveformView_.setBeats (std::move (wvBeats));
 
     // Sesja 120 (DEV-097/098): minimum block = one measured bar; lengths in
@@ -3199,6 +3202,7 @@ void MainComponent::applyRemixToUi (const reamix::ui::RemixOutput& remix)
             constexpr double kEps = 1e-6;
             for (std::size_t i = 0; i < bundle.beatTimes.size(); ++i)
             {
+                if (i < bundle.beatIsSynthetic.size() && bundle.beatIsSynthetic[i]) continue;   // sesja 135
                 const double srcT = bundle.beatTimes[i];
                 const bool   isDb = (i < bundle.beatIsDownbeat.size())
                                     ? bundle.beatIsDownbeat[i] : false;
@@ -3795,8 +3799,11 @@ void MainComponent::pushSourceBeats()
         const auto& bundle = *it->second;
         wvBeats.reserve (bundle.beatTimes.size());
         for (std::size_t i = 0; i < bundle.beatTimes.size(); ++i)
+        {
+            if (i < bundle.beatIsSynthetic.size() && bundle.beatIsSynthetic[i]) continue;   // sesja 135
             wvBeats.push_back ({ bundle.beatTimes[i],
                                  i < bundle.beatIsDownbeat.size() ? bundle.beatIsDownbeat[i] : false });
+        }
     }
     waveformView_.setBeats (std::move (wvBeats));
 }

@@ -87,8 +87,9 @@ bool test1_chorus_kept()
     // The chorus seam scores LOWER than the verse seam: the raw-cheaper plan
     // without a chorus must not shadow the chorus plan inside the DP (the
     // no-chorus tax is applied at pick time; the chorus flag is DP state).
+    // Sesja 135: the chorus start is a zone (48 .. 51) - score all of it 0.60.
     f.judge = [] (int i, int j) -> std::optional<ShapeSeamScore> {
-        if (i == 15 && j == 48) return ShapeSeamScore { 0.60, 1.0, 0.5 };
+        if (i == 15 && j >= 48 && j < 52) return ShapeSeamScore { 0.60, 1.0, 0.5 };
         return ShapeSeamScore { 0.70, 1.0, 0.5 };
     };
     const ShapePlan p = planShape (f.inputs (40.0));
@@ -104,8 +105,9 @@ bool test1_chorus_kept()
 bool test2_gated_seam()
 {
     Fixture f;
+    // Sesja 135: the section start is a zone (48 .. 51) - gate all of it.
     f.judge = [] (int i, int j) -> std::optional<ShapeSeamScore> {
-        if (i == 15 && j == 48) return std::nullopt;
+        if (i == 15 && j >= 48 && j < 52) return std::nullopt;
         return ShapeSeamScore { 0.70, 1.0, 0.5 };
     };
     const ShapePlan p = planShape (f.inputs (40.0));
@@ -191,10 +193,12 @@ bool test8_relaxed_tier()
 bool test9_best_effort()
 {
     Fixture f;
-    const ShapePlan p = planShape (f.inputs (3.0));   // intro + outro = 16 s is the closest complete plan
+    // Sesja 135: intro + the outro from the last beat of its start zone (115)
+    // = 8 + 6.5 s is the closest complete plan (was intro + whole outro, 16 s).
+    const ShapePlan p = planShape (f.inputs (3.0));
     CHECK (! p.ok && p.best_effort && p.tier == 'F', "best effort outside every window");
-    CHECK (std::fabs (p.est_sec - 16.0) < 1e-9, "closest length: intro + outro");
-    CHECK (p.seams.size() == 1 && p.seams[0].i == 15 && p.seams[0].j == 112, "seam intro end -> outro start");
+    CHECK (std::fabs (p.est_sec - 14.5) < 1e-9, "closest length: intro + outro from beat 115");
+    CHECK (p.seams.size() == 1 && p.seams[0].i == 15 && p.seams[0].j == 115, "seam intro end -> outro zone");
     return true;
 }
 
@@ -264,6 +268,133 @@ bool test11_open_seam_no_floor()
     CHECK (std::fabs (md.at ("preferred_overlap_sec") - kPeriod) < 1e-12 && md.at ("open_seam") == 1.0, "metadata carries the overlap + open flag");
     return true;
 }
+
+// Sesja 135 (DEV-121): an open landing INSIDE the last section keeps the q
+// floor; only a section-start landing is floor-free.
+bool test12_inside_last_section_floor()
+{
+    Fixture f;
+    f.judge = [] (int, int) -> std::optional<ShapeSeamScore> { return std::nullopt; };   // strict: everything gated
+    ShapePlannerInputs in = f.inputs (14.0);
+    in.bar_ends = true;
+    in.window_sec = 0.25; in.window_relaxed_sec = 0.25;   // sesja 135: excludes the 14.5 s zone plan (outro from 115)
+    // Open judge: q 0.20 everywhere (below min_q 0.45). 14 s = the whole
+    // intro (8 s) + an outro tail from beat 116 (6 s) - an inside-the-outro
+    // landing - or an intro head to beat 12 (6 s) + the whole outro (8 s),
+    // landing on the outro start. Both cost one trim tax; the inside landing
+    // is below the floor, so only the section-start plan may be picked.
+    in.seam_open = [] (int, int) -> std::optional<ShapeSeamScore> { return ShapeSeamScore { 0.20, 9.0, 1.5 }; };
+    const ShapePlan p = planShape (in);
+    CHECK (p.ok, "plan expected");
+    CHECK (p.seams.size() == 1 && p.seams[0].j == 112 && p.seams[0].open, "the open seam lands on the outro START");
+    CHECK (p.pieces.size() == 2 && p.pieces[0].b1 == 12 && p.pieces[1].b0 == 112, "intro head to beat 12 + whole outro");
+    // With the inside landing at q 0.60 (above the floor) it becomes eligible:
+    // the whole intro (no trim tax) + outro tail from 116 (one trim tax) costs
+    // 0.40 + 0.10 + 0.15 = 0.65 against 0.80 + 0.10 + 0.15 = 1.05 -> it wins.
+    in.seam_open = [] (int i, int j) -> std::optional<ShapeSeamScore> {
+        return ShapeSeamScore { (i == 15 && j == 116) ? 0.60 : 0.20, 9.0, 1.5 };
+    };
+    const ShapePlan q = planShape (in);
+    CHECK (q.ok && q.seams.size() == 1 && q.seams[0].i == 15 && q.seams[0].j == 116, "an inside landing at or above the floor is allowed");
+    CHECK (std::fabs (q.min_q - 0.60) < 1e-12, "plan min_q tracks the inside landing");
+    // Sesja 135 (DEV-122): a landing on a lattice beat is floor-free. With
+    // beats 116 .. 127 flagged synthetic, the q 0.20 landing at 116 is allowed
+    // again (the whole intro + the outro from 116 = 14 s, one trim tax = the
+    // same cost as the intro-head plan; the earlier piece index wins the tie).
+    in.seam_open = [] (int, int) -> std::optional<ShapeSeamScore> { return ShapeSeamScore { 0.20, 9.0, 1.5 }; };
+    std::vector<bool> synth ((std::size_t) kBeats, false);
+    for (int b = 116; b < kBeats; ++b) synth[(std::size_t) b] = true;
+    in.beat_is_synthetic = &synth;
+    // (With the chorus tax in maximin units the planner keeps a 2-bar chorus
+    // head: intro head + chorus head + outro from 116, every seam open.)
+    const ShapePlan r = planShape (in);
+    CHECK (r.ok && ! r.seams.empty(), "plan with the lattice landing allowed");
+    for (const auto& sm : r.seams)
+        CHECK (sm.open && (sm.j == 48 || sm.j == 112 || sm.j >= 116), "every landing is a section start or a lattice beat, never a floored one");
+    CHECK (std::fabs (r.est_sec - 14.0) < 1e-9, "14 s");
+    return true;
+}
+
+// Sesja 135 (round-1 verdict): the section start is a zone - a landing 1 ..
+// bar_beats-1 beats after the start is offered in every tier as a taxed head
+// trim, open and floor-free; the judge's preference decides.
+bool test13_section_start_zone()
+{
+    Fixture f;
+    f.judge = [] (int, int) -> std::optional<ShapeSeamScore> { return std::nullopt; };   // strict: gated
+    ShapePlannerInputs in = f.inputs (40.0);
+    in.bar_beats = 4;
+    // Open judge: intro end -> chorus start scores 0.20, two beats later 0.70
+    // (the chord ringing over the bar line has faded); outro landings 0.70.
+    in.seam_open = [] (int i, int j) -> std::optional<ShapeSeamScore> {
+        if (i == 15 && j == 48) return ShapeSeamScore { 0.20, 9.0, 1.5 };
+        if (i == 15 && j == 50) return ShapeSeamScore { 0.70, 2.0, 0.5 };
+        if (j == 112)           return ShapeSeamScore { 0.70, 1.0, 0.5 };
+        return std::nullopt;
+    };
+    const ShapePlan p = planShape (in);
+    CHECK (p.ok && p.tier == 'A', "a zone landing is available in tier A");
+    CHECK (p.seams.size() == 1 && p.seams[0].i == 15 && p.seams[0].j == 50 && p.seams[0].open, "lands two beats into the chorus (0.30 + tax 0.15 beats 0.80)");
+    CHECK (p.pieces.size() == 3 && p.pieces[1].b0 == 50 && p.pieces[1].b1 == 112 && p.pieces[1].trim == ShapePiece::Trim::Head, "chorus from beat 50 to its end");
+    CHECK (std::fabs (p.est_sec - 47.0) < 1e-9, "8 + 31 + 8 s");
+    // A landing a whole bar in (52) is not part of the zone: never offered here.
+    in.seam_open = [] (int i, int j) -> std::optional<ShapeSeamScore> {
+        if (i == 15 && j == 52) return ShapeSeamScore { 0.90, 1.0, 0.5 };
+        if (j == 112)           return ShapeSeamScore { 0.70, 1.0, 0.5 };
+        return std::nullopt;
+    };
+    const ShapePlan r = planShape (in);
+    CHECK (! r.ok || r.seams.empty() || r.seams[0].j != 52, "beat 52 (a full bar in) is outside the zone: never landed on");
+    return true;
+}
+
+// Sesja 135: bar-granular ends for every section in the trim tiers.
+bool test14_bar_ends_everywhere()
+{
+    Fixture f;
+    f.judge = [] (int, int) -> std::optional<ShapeSeamScore> { return std::nullopt; };
+    ShapePlannerInputs in = f.inputs (20.0);
+    in.window_sec = 1.0; in.window_relaxed_sec = 1.0;
+    in.seam_open = [] (int, int) -> std::optional<ShapeSeamScore> { return ShapeSeamScore { 0.70, 1.0, 0.5 }; };
+    in.seam = [] (int, int) -> std::optional<ShapeSeamScore> { return ShapeSeamScore { 0.70, 1.0, 0.5 }; };
+    in.bar_ends = false;
+    CHECK (! planShape (in).ok, "20 s needs a 2-bar head of a middle section");
+    in.bar_ends = true;
+    const ShapePlan p = planShape (in);
+    CHECK (p.ok && p.tier == 'B', "bar-granular head of a middle section makes the length");
+    bool middle_bar_piece = false;
+    for (const auto& pc : p.pieces)
+        if ((pc.section == 1 || pc.section == 2) && pc.trim != ShapePiece::Trim::Whole && (pc.b1 - pc.b0) % 4 == 0 && pc.b1 - pc.b0 < 32)
+            middle_bar_piece = true;
+    CHECK (middle_bar_piece, "a bar-granular piece of a middle section is in the plan");
+    CHECK (std::fabs (p.est_sec - 20.0) <= 1.0 + 1e-9, "length within the 1 s window");
+    return true;
+}
+
+// Sesja 135 (round-1 verdict): the worst seam decides. Two seams at q 0.60
+// beat one seam at q 0.45 although they cost more (1.0 vs 0.65).
+bool test15_maximin()
+{
+    Fixture f;
+    // intro, A, B, C, outro - no chorus, 96 beats.
+    f.secs = { { 0, 16, 0 }, { 16, 40, 1 }, { 40, 64, 1 }, { 64, 80, 1 }, { 80, 96, 11 } };
+    f.judge = [] (int i, int j) -> std::optional<ShapeSeamScore> {
+        if (i == 39 && j == 80) return ShapeSeamScore { 0.45, 1.0, 0.5 };   // intro + A + outro: one seam
+        if (i == 15 && j == 40) return ShapeSeamScore { 0.60, 1.0, 0.5 };   // intro + B + outro: two seams
+        if (i == 63 && j == 80) return ShapeSeamScore { 0.60, 1.0, 0.5 };
+        return std::nullopt;
+    };
+    // Target 30 +-5: intro + A + outro and intro + B + outro (28 s each) fit,
+    // the seamless intro + A + B + outro (40 s) does not.
+    ShapePlannerInputs in = f.inputs (30.0);
+    in.n_beats = 96; in.track_sec = 48.0;
+    in.window_sec = 5.0; in.window_relaxed_sec = 5.0;
+    const ShapePlan p = planShape (in);
+    CHECK (p.ok, "plan expected");
+    CHECK (p.seams.size() == 2 && p.seams[0].j == 40 && p.seams[1].j == 80, "the plan with the better worst seam wins over the cheaper one");
+    CHECK (std::fabs (p.min_q - 0.60) < 1e-12 && p.pieces[1].b0 == 40, "intro + B + outro");
+    return true;
+}
 } // namespace
 
 int main()
@@ -285,6 +416,10 @@ int main()
     run ("9 best effort tier F",               test9_best_effort);
     run ("10 bar-granular ends",               test10_bar_ends);
     run ("11 open seam, no floor, one beat",   test11_open_seam_no_floor);
+    run ("12 inside-last-section floor",       test12_inside_last_section_floor);
+    run ("13 section-start zone",              test13_section_start_zone);
+    run ("14 bar-granular ends everywhere",    test14_bar_ends_everywhere);
+    run ("15 maximin: the worst seam decides", test15_maximin);
     std::printf (failed == 0 ? "ALL PASS\n" : "%d FAILED\n", failed);
     return failed == 0 ? 0 : 1;
 }

@@ -186,4 +186,27 @@ bool loudnessRejectV2(const SignalBaselines& b, double rms_i, double rms_j,
         || b.edge_energy.reject(energy_diff_db);
 }
 
+double centroidCollapseV2(const SignalBaselines& b, const double* spectral_centroid,
+                          int n_beats, int i, int j, int context_beats) noexcept
+{
+    if (! b.centroid.valid() || spectral_centroid == nullptr || context_beats <= 0) return 0.0;
+    if (i < 0 || j <= 0 || i >= n_beats || j >= n_beats) return 0.0;
+    auto meanOf = [&](int lo, int hi) -> double {
+        lo = std::max(0, lo); hi = std::min(n_beats, hi);
+        if (hi <= lo) return -1.0;
+        double m = 0.0;
+        for (int k = lo; k < hi; ++k) m += spectral_centroid[k];
+        return m / static_cast<double>(hi - lo);
+    };
+    const double mO = meanOf(i - context_beats + 1, i + 1);
+    const double mL = meanOf(j, j + context_beats);
+    const double mP = meanOf(j - context_beats, j);
+    if (mO < 0.0 || mL < 0.0) return 0.0;
+    auto lg = [](double x) { return std::log(std::max(x, kLogFloor)); };
+    const double remix   = lg(mL) - lg(mO);
+    const double natural = mP < 0.0 ? 0.0 : lg(mL) - lg(mP);
+    const double excess  = remix - std::min(natural, 0.0);
+    return std::isfinite(excess) ? excess / b.centroid.scale() : 0.0;
+}
+
 } // namespace reamix::remix

@@ -140,11 +140,24 @@ struct PairScorerRequest
 // audition-path/rated_seams_s134.json is the table.
 inline constexpr double kOpenSeamMaxEdgeStepDb = 12.0;
 inline constexpr double kOpenSeamMaxRmsJumpDb  = 14.0;
+// Sesja 135 (DEV-121) open-seam gate 4: brightness collapse. The remaining
+// "dynamika" family after the caps was Daft Punk's verse -> filtered-outro
+// cut-ins (63 / 95 / 109 / 127 -> 379 / 393 / 411): a bright riff cut into
+// the low-passed version of itself. centroidCollapseV2 (SignalNorm.h: the
+// 8-beat context step in log centroid minus the song's own drop into the
+// landing, in p90 consecutive-step units) puts them at -1.95 .. -2.52 and
+// every rated-clean open seam at >= -1.00 (the two Alice seams from the
+// un-beated head; real contexts >= -0.44); on the 51-case extreme corpus
+// only those three planner seams and Woodkid x0.33 (-1.14, unrated) are
+// below -1.0. Table: tools/dev/shape_eval/cutin_probe.py on
+// references/listening/2026-09-11-sesja134-audition-path/rated_seams_s134.json.
+inline constexpr int    kOpenSeamContextBeats        = 8;
+inline constexpr double kOpenSeamMaxCentroidCollapse = 1.5;
 
 struct PairScore
 {
     bool   rejected        = false;   // a hard gate fired; quality is 0
-    int    gate            = 0;       // 1 = edge-energy gate, 2 = loudness reject, 3 = open-seam edge cap (sesja 134)
+    int    gate            = 0;       // 1 = edge-energy gate, 2 = loudness reject, 3 = open-seam edge cap (sesja 134), 4 = open-seam brightness collapse (sesja 135)
     double quality         = 0.0;     // composite minus penalties, clamped >= 0
     double energy_diff_db  = 0.0;     // |end(i) - start(j)| (legacy edge view)
     bool   has_waveform    = false;
@@ -164,6 +177,9 @@ struct PairScore
     double transient_continuity = -1.0;   // -1 = not available
     double mfcc_continuity = -1.0;
     double edge_continuity = -1.0;
+    // Sesja 135: centroidCollapseV2 of the pair on an open seam (0 when not
+    // computed: gated earlier, not an open seam, or no centroid baseline).
+    double centroid_collapse = 0.0;
 };
 
 PairScore scorePair(const PairScorerTrack& track, const PairScorerRequest& req);

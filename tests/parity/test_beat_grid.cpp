@@ -71,6 +71,33 @@ int main()
     expectEq("synthetic bar = hint 4", g5.bar_beats, 4);
     expectEq("synthetic downbeats every 4 beats", (int) g5.downbeats.size(), 10);
 
+    // Sesja 135 (DEV-122): lattice bar starts for the planner. 139 beats:
+    // head zone 0..38 synthetic, real 39..119 with real downbeats at
+    // 43, 47, .., 115 (39 and 119 dropped as zone-adjacent), tail zone
+    // 120..138 synthetic. Head takes the phase of 43 -> 39 is outside the
+    // zone, so 35, 31, .., 3 (9); tail takes 115 -> 123, 127, 131, 135 (4).
+    {
+        std::vector<bool> synth(139, false);
+        for (int i = 0; i < 39; ++i) synth[static_cast<std::size_t>(i)] = true;
+        for (int i = 120; i < 139; ++i) synth[static_cast<std::size_t>(i)] = true;
+        std::vector<int> real;
+        for (int i = 43; i <= 115; i += 4) real.push_back(i);
+        const auto lat = latticeDownbeatIdx(synth, real, 4);
+        expectEq("lattice downbeats: 9 head + 4 tail", (int) lat.size(), 13);
+        expectTrue("head lattice 3, 7, .., 35", lat.size() >= 9 && lat[0] == 3 && lat[8] == 35);
+        expectTrue("tail lattice 123 .. 135", lat.size() == 13 && lat[9] == 123 && lat[12] == 135);
+        expectTrue("every lattice downbeat lies on a synthetic beat",
+                   [&] { for (int i : lat) if (! synth[static_cast<std::size_t>(i)]) return false; return true; }());
+        // A hole zone in the middle takes the phase of the downbeat before it.
+        std::vector<bool> hole(60, false);
+        for (int i = 21; i < 41; ++i) hole[static_cast<std::size_t>(i)] = true;   // zone 21..40
+        std::vector<int> realh { 0, 4, 8, 12, 16, 44, 48, 52, 56 };                 // 20 / 40 dropped as adjacent
+        const auto lh = latticeDownbeatIdx(hole, realh, 4);
+        expectEq("hole lattice: 24, 28, 32, 36, 40", (int) lh.size(), 5);
+        expectTrue("hole lattice phase from 16", lh.size() == 5 && lh[0] == 24 && lh[4] == 40);
+        expectEq("no mask -> none", (int) latticeDownbeatIdx({}, real, 4).size(), 0);
+    }
+
     std::printf(g_fail == 0 ? "test_beat_grid PASS\n" : "test_beat_grid FAIL (%d)\n", g_fail);
     return g_fail == 0 ? 0 : 1;
 }

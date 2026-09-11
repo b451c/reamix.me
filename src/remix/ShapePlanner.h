@@ -33,13 +33,20 @@
 // Sesja 134 (ADR-117 step 3, DEV-121) - Audition's structure: the windows
 // are kShapeLengthSlackSec (5 s) at every tier, the trim tiers also offer
 // bar-granular ends (`bar_ends`), a seam landing on a section start or inside
-// the last section is OPEN (`seam_open`: every loudness gate off, no q floor,
-// the score is a cost only) and every seam carries a one-beat crossfade
+// the last section is OPEN (`seam_open`: every loudness gate off, the score is
+// a cost only) and every seam carries a one-beat crossfade
 // (`seam_crossfade_beats`) for the Renderer. Isolation round (Audition's exact
 // segments through our Renderer): 10 ties / 1 Audition / 1 both bad - the
 // structure is the lever, the one-beat seam only smooths the big-step cut-ins.
+// Sesja 135 (DEV-121, the lost "dynamika" cut-ins): the q floor is waived
+// only for landings exactly on a section start; an open landing inside the
+// last section keeps the floor (the composite separates the rated verdicts
+// there), and the open judge carries the brightness-collapse cap
+// (PairScorer.h gate 4) for the verse -> filtered-outro family.
 //
-// Cost (lower wins inside a tier): sum(1 - q) over seams + kSeamTax per seam
+// Selection inside a tier (sesja 135, round-1 verdict): the plan whose WORST
+// seam is best wins (kShapeMaximinBucket steps); the cost below breaks ties.
+// Cost (lower wins inside a step): sum(1 - q) over seams + kSeamTax per seam
 // + kTrimTax per trimmed piece + kNoChorusTax when the track has a chorus and
 // the plan keeps none (the hook must survive) + a soft dynamics term: the
 // section-context loudness excess of the seam in the substitution view
@@ -99,6 +106,22 @@ struct ShapePlannerInputs
     int                 n_sections  = 0;
     const std::set<int>* db_set     = nullptr; // downbeat beat indices (cleaned grid)
     int                 phrase_bars = 8;      // PhraseAlign::kPhraseBars
+    // Sesja 135 (round-1 verdict on Daft Punk x0.25 / x0.33): a section
+    // START is a zone, not a beat - the model boundary sits on the bar line
+    // while the previous section's last chord still rings over it (Daft
+    // Punk 283: -9.6 dB decaying, q 0.10; Audition landed two beats later
+    // at -13.6 dB, q 0.59, rated clean). Every section but the first also
+    // offers pieces starting 1 .. bar_beats-1 beats after its start (head
+    // trims, taxed, every tier), and a landing anywhere inside that first
+    // bar is an OPEN, floor-free landing like the exact start.
+    int                 bar_beats   = 4;
+    // Sesja 135 (DEV-122): the analysis grid's lattice mask (AnalysisBundle::
+    // beatIsSynthetic, same length as beat_times; null = none). A landing on
+    // a lattice beat (a beatless intro / outro / hole) is open and floor-free
+    // like a section-start zone: the q floor guards against landing inside a
+    // phrase, and a lattice zone has no phrases - Audition's rated-clean Drake
+    // x0.15 lands 17 s into the beatless outro (our open judge: q 0.25).
+    const std::vector<bool>* beat_is_synthetic = nullptr;
     const double*       rms_energy  = nullptr; // per beat, optional (soft dynamics term)
     double              target_sec  = 0.0;
     double              window_sec         = 8.0;
@@ -115,13 +138,19 @@ struct ShapePlannerInputs
     // (the ending piece). Audition's intro -> ending cut-ins with +7..+11 dB
     // steps were rated clean, and on the 16 Audition seams our composite does
     // not separate the one cut the ear rejected (q 0.62) from the accepted
-    // ones (q 0.26 .. 0.93): on an open seam the score is a cost only, never
-    // a gate, and `min_q` does not apply. Empty = open seams are judged like
-    // every other seam (sesja-132 behaviour).
+    // ones (q 0.26 .. 0.93): on a section-start landing the score is a cost
+    // only, never a gate, and `min_q` does not apply. Sesja 135: a landing
+    // inside the last section that is not its start keeps the `min_q` floor.
+    // Empty = open seams are judged like every other seam (sesja-132
+    // behaviour).
     std::function<std::optional<ShapeSeamScore>(int i, int j)> seam_open;
     // Sesja 134: bar-granular ends in the trim tiers - the first piece may
     // stop at any downbeat of the first section, the last piece may start at
     // any downbeat of the last section (Audition: 1 s intros, 6.5 s endings).
+    // Sesja 135: every section offers bar-granular head / tail pieces in
+    // the trim tiers (Audition's rated-clean Daft Punk x0.25 keeps 11 beats
+    // of the outro's first part before its 6 s ending; our whole-section
+    // alternative was a quiet -> loud jump rated "dynamika").
     bool bar_ends = false;
     // Sesja 134: seam crossfade in beats written to the path's metadata
     // (`preferred_overlap_sec`; the Renderer overlays the whole window with
@@ -156,7 +185,7 @@ struct ShapePlan
     double est_sec = 0.0;          // estimated render length (head + pieces + tail)
     double dev_sec = 0.0;          // est - target
     double cost    = 0.0;
-    double min_q   = 1.0;          // over every seam (open seams included; the floor applies to the others)
+    double min_q   = 1.0;          // over every seam (section-start landings included; the floor applies to the others)
     std::vector<ShapePiece> pieces;
     std::vector<ShapeSeam>  seams;
 
@@ -178,6 +207,9 @@ struct ShapePlan
 
 // Cost constants (see the header comment).
 inline constexpr double kShapeSeamTax          = 0.10;
+// Sesja 135: maximin plan selection - plans are ranked by the quality of
+// their weakest seam in steps of this size (cost breaks ties inside a step).
+inline constexpr double kShapeMaximinBucket    = 0.05;
 inline constexpr double kShapeTrimTax          = 0.15;
 inline constexpr double kShapeNoChorusTax      = 0.50;
 inline constexpr double kShapeDynamicsDbPerCost= 10.0;

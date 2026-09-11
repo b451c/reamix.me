@@ -2217,6 +2217,34 @@ if(REAMIX_BUILD_TESTS)
              COMMAND test_shape_planner
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    # test_open_seam_caps — sesja 135 (DEV-121) self-validation of the
+    # open-seam gates in the shared pair scorer (edge caps, brightness
+    # collapse). Hand-computed values on a synthetic track (ADR-065).
+    add_executable(test_open_seam_caps
+      tests/parity/test_open_seam_caps.cpp
+      src/remix/PairScorer.cpp
+      src/remix/Quality.cpp
+      src/remix/SignalNorm.cpp
+      src/remix/TransitionCost.cpp
+      src/remix/RepetitionPrior.cpp
+      src/remix/BeatGrid.cpp
+      src/remix/SegmentData.cpp
+      src/analysis/Recurrence.cpp
+      src/dsp/WaveformXcorr.cpp
+      src/dsp/SosFilt.cpp
+    )
+    target_include_directories(test_open_seam_caps PRIVATE src ${POCKETFFT_DIR})
+    if(MSVC)
+      target_compile_options(test_open_seam_caps PRIVATE /W3)
+    else()
+      target_compile_options(test_open_seam_caps PRIVATE
+        -Wall -Wextra -Wno-unused-parameter
+        -ffp-contract=off)
+    endif()
+    add_test(NAME open_seam_caps
+             COMMAND test_open_seam_caps
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
   # test_parse_weights_field_coverage — sesja 86 ADR-076 CI guardrail.
   # Verifies tools/calibration_harness_parse_weights.h reads every JSONL
   # field that orchestrator.py emits + maps it onto the matching

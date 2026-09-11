@@ -103,4 +103,35 @@ BeatGridResult cleanBeatGrid(const double* beat_times, int n_beats,
     return out;
 }
 
+std::vector<int> latticeDownbeatIdx(const std::vector<bool>& beat_is_synthetic,
+                                    const std::vector<int>& real_downbeat_idx,
+                                    int bar_beats)
+{
+    std::vector<int> out;
+    const int n = static_cast<int>(beat_is_synthetic.size());
+    if (n == 0 || real_downbeat_idx.empty() || bar_beats < 1) return out;
+    std::vector<int> real = real_downbeat_idx;
+    std::sort(real.begin(), real.end());
+    int a = 0;
+    while (a < n) {
+        if (! beat_is_synthetic[static_cast<std::size_t>(a)]) { ++a; continue; }
+        int b = a;
+        while (b < n && beat_is_synthetic[static_cast<std::size_t>(b)]) ++b;   // zone [a, b)
+        // Anchor: the last real downbeat before the zone, else the first after it.
+        int anchor = -1;
+        auto it = std::lower_bound(real.begin(), real.end(), a);
+        if (it != real.begin()) anchor = *(it - 1);
+        else if (it != real.end()) anchor = *it;
+        if (anchor >= 0) {
+            const int first = anchor + static_cast<int>(std::ceil(static_cast<double>(a - anchor) / bar_beats)) * bar_beats;
+            for (int idx = first; idx < b; idx += bar_beats)
+                if (idx >= a) out.push_back(idx);
+        }
+        a = b;
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
 } // namespace reamix::remix

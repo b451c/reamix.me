@@ -163,4 +163,20 @@ double edgeEnergyQualityV2(const SignalBaselines& b, double energy_diff_db,
 bool loudnessRejectV2(const SignalBaselines& b, double rms_i, double rms_j,
                       double energy_diff_db);
 
+// Sesja 135 (DEV-121): brightness collapse of an open cut-in, in units of
+// the track's own p90 consecutive log-centroid step. Contexts of
+// `context_beats`: O = the beats the ear just heard (.. i], L = the landing
+// [j ..), P = what preceded the landing in the original [.. j). The remix
+// step log(mean L / mean O) minus the song's own DROP into the landing
+// min(log(mean L / mean P), 0): a landing the song itself darkens into is
+// not charged, a landing the song continues flat into is charged the whole
+// step. Negative = the landing is darker than the ear was set up for; a
+// rise is never charged (the value is only meaningful when negative). On the
+// 31 rated open seams of the sesja-134 rounds the four Daft Punk verse ->
+// filtered-outro cut-ins rated "dynamika" sit at -1.95 .. -2.52, every
+// rated-clean seam at >= -1.00 (tools/dev/shape_eval/cutin_probe.py).
+// 0.0 when the centroid baseline is invalid or the indices are out of range.
+double centroidCollapseV2(const SignalBaselines& b, const double* spectral_centroid,
+                          int n_beats, int i, int j, int context_beats) noexcept;
+
 } // namespace reamix::remix

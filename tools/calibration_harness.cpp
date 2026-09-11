@@ -687,6 +687,7 @@ int main (int argc, char** argv)
         const reamix::remix::BoundarySeamJudge judge (jin);
         if (! judge.valid()) { std::fprintf (stderr, "  ERROR: judge invalid\n"); return 1; }
         std::set<int> dbSet (grid.downbeat_idx.begin(), grid.downbeat_idx.end());
+        for (int idx : reamix::remix::latticeDownbeatIdx (bundle->beatIsSynthetic, grid.downbeat_idx, grid.bar_beats)) dbSet.insert (idx);   // sesja 135
         auto nearestBeat = [&] (double t) {
             int b = (int) std::distance (bt.begin(), std::lower_bound (bt.begin(), bt.end(), t));
             if (b >= n) b = n - 1;
@@ -702,7 +703,7 @@ int main (int argc, char** argv)
             return std::make_pair (best, kind); };
         std::printf ("# from_sec,to_sec,i,j,snap_from_ms,snap_to_ms,j_is_downbeat,j_section_start,"
                      "strict_q,strict_gate,relaxed_q,relaxed_gate,nogate_q,tail_step_db,energy,edge_energy,centroid,transient,mfcc,edge_cont,edge_dist,sec_kind,n_beats,head_sec,tail_sec,"
-                     "edge_step_db,cent_ij,rms_ij_db,onset_ij,cent_i,cent_j,cent_jp\n");
+                     "edge_step_db,cent_ij,rms_ij_db,onset_ij,cent_i,cent_j,cent_jp,cent_collapse\n");   // cent_collapse: sesja 135 gate 4 value (open judge)
         std::ifstream f (args.judgeSeams.toStdString());
         std::string ta, tb;
         while (f >> ta >> tb)
@@ -728,7 +729,11 @@ int main (int argc, char** argv)
             const double ci = sc_.empty() ? 0.0 : sc_[(std::size_t) i], cj = sc_.empty() ? 0.0 : sc_[(std::size_t) j], cjp = sc_.empty() || j == 0 ? 0.0 : sc_[(std::size_t) j - 1];
             const double rmsDb = rm_.empty() ? 0.0 : 20.0 * std::log10 (std::max (rm_[(std::size_t) j], 1e-6) / std::max (rm_[(std::size_t) i], 1e-6));
             const double onIJ = on_.empty() ? 0.0 : on_[(std::size_t) j] - on_[(std::size_t) i];
-            std::printf ("%.3f,%.3f,%d,%d,%.0f,%.0f,%d,%d,%.3f,%d,%.3f,%d,%.3f,%.1f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.2f,%d,%d,%.1f,%.1f,%.1f,%.3f,%.1f,%.3f,%.3f,%.3f,%.3f\n",
+            // Sesja 135: the collapse value is computed only when the open judge reaches gate 4
+            // (gate 3 fired first = not computed); recompute it here so the column is always filled.
+            const double centCollapse = reamix::remix::centroidCollapseV2 (*judge.track().baselines, sc_.empty() ? nullptr : sc_.data(),
+                                                                           n, i, j, reamix::remix::kOpenSeamContextBeats);
+            std::printf ("%.3f,%.3f,%d,%d,%.0f,%.0f,%d,%d,%.3f,%d,%.3f,%d,%.3f,%.1f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.2f,%d,%d,%.1f,%.1f,%.1f,%.3f,%.1f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
                          a, b, i, j, snapFrom * 1000.0, snapTo * 1000.0, dbSet.count (j) ? 1 : 0, sectionAt (j).first,
                          strict.rejected ? -1.0 : strict.quality, strict.gate,
                          relaxed.rejected ? -1.0 : relaxed.quality, relaxed.gate,
@@ -736,7 +741,7 @@ int main (int argc, char** argv)
                          nogate.energy_match, nogate.edge_energy_match, nogate.centroid_match,
                          nogate.transient_continuity, nogate.mfcc_continuity, nogate.edge_continuity, nogate.edge_distance,
                          sectionAt (j).second, n, bt.front(), (double) bundle->nativeSamples / (double) bundle->nativeSr - bt.back(),
-                         nogate.energy_diff_db, std::max (0.0, 1.0 - std::fabs (ci - cj) * 5.0), rmsDb, onIJ, ci, cj, cjp);
+                         nogate.energy_diff_db, std::max (0.0, 1.0 - std::fabs (ci - cj) * 5.0), rmsDb, onIJ, ci, cj, cjp, centCollapse);
         }
         std::printf ("# sections (beat ranges, kind):");
         for (const auto& sc : sections) std::printf (" %d-%d/%d", sc.b0, sc.b1, sc.kind);
@@ -1025,6 +1030,16 @@ int main (int argc, char** argv)
             (int) bundle->downbeatTimes.size(), std::max (1, (int) bundle->timeSigNum));
         s << "  \"bar_beats\": " << grid.bar_beats << ",\n";
         s << "  \"grid_synthetic\": " << (grid.synthetic_downbeats ? 1 : 0) << ",\n";
+        // Sesja 135 (DEV-122): lattice beats + the planner's lattice bar starts.
+        s << "  \"beat_synthetic\": [";
+        for (std::size_t i = 0; i < bundle->beatIsSynthetic.size(); ++i)
+            s << (i > 0 ? ", " : "") << (bundle->beatIsSynthetic[i] ? 1 : 0);
+        s << "],\n  \"lattice_downbeat_idx\": [";
+        {
+            const auto lat = reamix::remix::latticeDownbeatIdx (bundle->beatIsSynthetic, grid.downbeat_idx, grid.bar_beats);
+            for (std::size_t i = 0; i < lat.size(); ++i) s << (i > 0 ? ", " : "") << lat[i];
+        }
+        s << "],\n";
         s << "  \"downbeat_times_clean\": [";
         for (std::size_t i = 0; i < grid.downbeats.size(); ++i)
         {
@@ -1066,6 +1081,52 @@ int main (int argc, char** argv)
                     s << (m > 0 ? ", " : "") << juce::String (em[(std::size_t) k * B + m], 2);
                 s << "]";
             }
+            s << "],\n";
+        }
+        // Sesja 135 (DEV-121 cut-in probe): the per-beat scalars and the
+        // 59-dim feature rows the pair scorer reads, the voice-band mel START
+        // edges, and the grid-snapped sections as the shape planner sees them
+        // (beat ranges + kind), so the offline section-character probe runs on
+        // exactly the arrays a C++ term would read.
+        writeVec ("spectral_centroid", bundle->feat.spectralCentroid, false);
+        writeVec ("onset_strength",    bundle->feat.onsetStrength,    false);
+        writeVec ("edge_rms_start",    bundle->feat.edgeRmsStart,     false);
+        writeVec ("edge_rms_end",      bundle->feat.edgeRmsEnd,       false);
+        {
+            const int B = reamix::analysis::FeatureExtractor::kEdgeMelBands;
+            const auto& em = bundle->feat.edgeMelStart;
+            const int nb = em.empty() ? 0 : (int) (em.size() / (std::size_t) B);
+            s << "  \"edge_mel_start\": [";
+            for (int k = 0; k < nb; ++k)
+            {
+                s << (k > 0 ? ", [" : "[");
+                for (int m = 0; m < B; ++m)
+                    s << (m > 0 ? ", " : "") << juce::String (em[(std::size_t) k * B + m], 2);
+                s << "]";
+            }
+            s << "],\n";
+        }
+        {
+            const int nf = bundle->feat.nFeat, nb = bundle->feat.nBeats;
+            const auto& fe = bundle->feat.features;
+            s << "  \"n_features\": " << nf << ",\n  \"features\": [";
+            for (int k = 0; k < nb && (std::size_t) (k + 1) * (std::size_t) nf <= fe.size(); ++k)
+            {
+                s << (k > 0 ? ", [" : "[");
+                for (int m = 0; m < nf; ++m)
+                    s << (m > 0 ? ", " : "") << juce::String (fe[(std::size_t) k * (std::size_t) nf + m], 5);
+                s << "]";
+            }
+            s << "],\n";
+        }
+        {
+            std::vector<double> segStarts, segEnds; std::vector<int> segKinds;
+            for (const auto& sg : bundle->uiSegments) { segStarts.push_back (sg.startSec); segEnds.push_back (sg.endSec); segKinds.push_back ((int) sg.kind); }
+            const auto sections = reamix::remix::shapeSectionsFromSeconds (bundle->beatTimes.data(), (int) bundle->beatTimes.size(),
+                                                                            segStarts.data(), segEnds.data(), segKinds.data(), (int) segStarts.size());
+            s << "  \"sections\": [";
+            for (std::size_t k = 0; k < sections.size(); ++k)
+                s << (k > 0 ? ", [" : "[") << sections[k].b0 << ", " << sections[k].b1 << ", " << sections[k].kind << "]";
             s << "]\n";
         }
         s << "}\n";
