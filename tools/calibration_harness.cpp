@@ -457,6 +457,8 @@ struct Run
     bool         disableBoundaryFamily { false };   // sesja 130 - "disable_boundary_family" (ADR-116 step 3 A/B)
     bool         disableShapePlanner   { false };   // sesja 131 - "disable_shape_planner" (ADR-117 A/B)
     double       shapeSeamBeats        { 1.0 };     // sesja 134 - "shape_seam_beats" (planner seam crossfade; 0 = Renderer default)
+    int          shapeRecipe           { 0 };       // sesja 136 - "shape_recipe" (0 = tiers, 1 = ending, 2 = q, 3 = balanced)
+    double       shapeSeamMaxSec       { 0.0 };     // sesja 136 - "shape_seam_max_sec" (cap on the planner seam crossfade; 0 = none)
     juce::String outWav;
     juce::String outCsv;
 
@@ -526,6 +528,8 @@ Run parseRun (const juce::var& v)
     r.disableBoundaryFamily = (bool) v.getProperty ("disable_boundary_family", false);   // sesja 130
     r.disableShapePlanner   = (bool) v.getProperty ("disable_shape_planner", false);     // sesja 131 (ADR-117)
     r.shapeSeamBeats        = (double) v.getProperty ("shape_seam_beats", 1.0);         // sesja 134
+    r.shapeRecipe           = (int) v.getProperty ("shape_recipe", 0);                  // sesja 136
+    r.shapeSeamMaxSec       = (double) v.getProperty ("shape_seam_max_sec", 0.0);       // sesja 136
     r.outWav = v.getProperty ("out_wav", juce::String()).toString();
     r.outCsv = v.getProperty ("out_csv", juce::String()).toString();
     if (r.outWav.isEmpty() || r.outCsv.isEmpty())
@@ -574,6 +578,8 @@ reamix::ui::RemixOutput driveRemixPipeline (
     pin.disable_boundary_family = run.disableBoundaryFamily;   // sesja 130 (ADR-116 step 3)
     pin.disable_shape_planner   = run.disableShapePlanner;     // sesja 131 (ADR-117)
     pin.shapeSeamCrossfadeBeats = run.shapeSeamBeats;          // sesja 134
+    pin.shapeRecipeMode         = run.shapeRecipe;             // sesja 136
+    pin.shapeSeamMaxSec         = run.shapeSeamMaxSec;         // sesja 136
 
     std::atomic<bool>          done { false };
     reamix::ui::RemixOutput    result;

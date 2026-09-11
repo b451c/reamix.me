@@ -157,6 +157,39 @@ struct ShapePlannerInputs
     // one equal-power crossfade above the 200 ms band cap). 0 = the
     // Renderer's default (0.15 beat multi-band). Audition: one beat.
     double seam_crossfade_beats = 0.0;
+    // Sesja 136 (ADR-117 step 5, "Audition's recipe"): recipe_mode != 0
+    // bypasses the tiers, the maximin selection and the chorus tax above.
+    // Round 2 (sesja 135) lost 0/7 to Audition; the audit
+    // (meta/research/sesja-136-recipe-audit.md) found the tier order (whole
+    // sections first), the chorus tax in maximin units, a 0.88 s crossfade and
+    // length-driven fragments behind the losses, and q separating rated ok from
+    // bad seams at AUC 0.74 only. Audition's 28 rated cut points on our grid:
+    // the plan always starts at 0 and ends at the file end, +-5 s, 1-3 seams,
+    // landings NOT bound to section starts (5/28 on downbeats, 0/28 on phrase
+    // starts, often the pickup beat before a bar line, 9/28 in lattice zones).
+    // Recipe: cut candidates = downbeats, the beat before each downbeat, the
+    // first bar of every section, lattice bar starts (db_set carries them);
+    // every seam is judged OPEN (`seam_open`: the edge / rms caps and the
+    // brightness-collapse cap are the only gates) above `recipe_q_floor`;
+    // pieces >= `recipe_min_piece_beats`; the FEWEST seams win outright, then
+    // the mode ranks the plans of that seam count (2 s / 0.1 q steps):
+    //   1 "ending"   longest last piece (the song's own ending), then the
+    //                longest shortest piece, landing class, closest length
+    //   2 "q"        best worst q, then the longest shortest piece, landing
+    //                class, closest length
+    //   3 "balanced" longest shortest piece, landing class, closest length
+    // Landing class: section-start zone 2, downbeat / pickup / lattice 1.
+    // Prototype: tools/dev/shape_eval/recipe_planner.py (C++ == prototype on
+    // the round-3 cases). A recipe plan reports tier 'R'.
+    int    recipe_mode            = 0;
+    double recipe_q_floor         = 0.25;
+    int    recipe_min_piece_beats = 8;
+    int    recipe_max_seams       = 3;
+    // Sesja 136: cap on the seam crossfade in seconds (0 = none; applies to
+    // every planner seam). Drake x0.25's one-beat seam at 67 BPM = 0.88 s
+    // overlapped two different 16th-note patterns ("podwojne uderzenie");
+    // Audition's crossfades are 0.44-0.61 s on every corpus case.
+    double seam_crossfade_max_sec = 0.0;
 };
 
 struct ShapePiece
@@ -212,6 +245,13 @@ inline constexpr double kShapeSeamTax          = 0.10;
 inline constexpr double kShapeMaximinBucket    = 0.05;
 inline constexpr double kShapeTrimTax          = 0.15;
 inline constexpr double kShapeNoChorusTax      = 0.50;
+// Sesja 136: the no-chorus tax in maximin steps. Two rated data points bound
+// it: Tiesto x0.25's no-chorus 1-seam plan (q 0.39, rated ok) must beat its
+// chorus plan (worst seam 0.25, rated bad) - so at most 2 steps; Avicii x0.25
+// (sesja 132) needed its chorus plan (0.54) over the no-chorus one (0.60,
+// rated "no drop") - so at least 2 steps. Sesja 135's 10 steps forced the
+// Tiesto regression.
+inline constexpr int    kShapeNoChorusTaxSteps = 2;
 inline constexpr double kShapeDynamicsDbPerCost= 10.0;
 inline constexpr int    kShapeContextBeats     = 8;
 inline constexpr double kShapeBinSec           = 0.5;
@@ -221,6 +261,48 @@ inline constexpr int    kShapeMinSections      = 3;
 // 8 beats); with the edge caps the DP otherwise closes with 2 beats of the
 // last chorus + the file tail (Dance Monkey x0.15: 336-338), a truncation.
 inline constexpr int    kShapeMinEndBeats      = 8;
+// Sesja 136 (ADR-117 step 5): structure limits from Audition's 12 rated
+// plans (1-3 seams, 4 once; intro pieces down to one beat) and the round-3 /
+// s136 audit (the merged whole + trim search otherwise chains 8-beat
+// fragments of middle sections through six high-q seams: Daft Punk x0.25
+// 9 pieces, Calvin Harris 1:09 a 2-bar chorus - the ear's "fragment").
+// Bar / half-bar ends exist for the FIRST section (heads) and the LAST
+// section (tails) only; middle sections are whole or phrase-trimmed.
+inline constexpr int    kShapeMaxSeams         = 3;
+// The first piece (intro head) and the last piece (ending tail) may be one
+// bar: Audition's rated-clean plans open with 1-6 s and close with 6.4 s
+// (Daft Punk x0.25: 4.9 s intro -> 141.6-177.7 -> the last 6.4 s = beats
+// 407-413 + the file tail; our 8-beat minimum blocked that ending and the
+// planner took the rated-bad inst -> outro-start seam instead).
+inline constexpr int    kShapeMinEndBars       = 1;
+// A trimmed MIDDLE piece shorter than kShapeFragmentBeats costs
+// kShapeFragmentSteps maximin steps (the ear's "fragment"): without it the
+// merged search chained five 8-beat pieces through q 0.88 seams on Calvin
+// Harris 1:09 (a 2-bar chorus) against the rated-great whole-section plan
+// (worst q 0.59); with 1 step the chain still won (17 - 5 vs 11), with 2 it
+// loses (7 vs 11) while the rated-ok Alice x0.25 plan (one 8-beat chorus
+// head, worst 0.60 -> 10) keeps beating its 8-beat-tail alternative (9) and
+// Calvin 0:19's rated-great plan (2-bar chorus head, 0.65 -> 10) beats the
+// 1-seam intro -> ending plan (0.47 -> 9). First / last pieces are exempt.
+inline constexpr int    kShapeFragmentBeats    = 16;
+inline constexpr int    kShapeFragmentSteps    = 2;
+// Round 4 (sesja 136): the planner added a second seam to Daft Punk x0.33
+// for +0.02 q - a skip of two bars INSIDE the outro (347-371 -> 379, rated
+// "nie ten fragment z taktu") where Audition's 1-seam plan (the same first
+// cut) was rated clean three times. A general per-seam step reshuffled the
+// rated-ok plans of Alice x0.25, Daft Punk x0.25 and Calvin Harris 1:09, so
+// the step is narrow: a seam that leaves AND lands in outro-kind sections
+// (a skip inside the ending, where the ear expects a verbatim run - every
+// Audition ending is one) costs one maximin step. Daft Punk x0.25's rated-ok
+// outro seam (366 -> 399, a 32-beat skip) keeps its plan under it.
+inline constexpr int    kShapeEndingSkipSteps  = 1;
+inline constexpr int    kOutroKind             = 11;  // reamix::theme::SegmentKind::Outro
+// Seam crossfade = one beat (Audition), but Audition detects the double
+// tempo on slow tracks (Drake 0.444 s = half our 0.85 s period) and the
+// round-4 ear called our 0.5 s cap "za dlugi" on Drake and heard the seams
+// "na fejdach" on Dance Monkey (0.5 s cap under its 0.61 s beat): a beat
+// period above this many seconds is halved instead of capped.
+inline constexpr double kShapeSeamHalveAboveSec = 0.65;
 
 ShapePlan planShape(const ShapePlannerInputs& in);
 

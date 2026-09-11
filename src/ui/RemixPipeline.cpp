@@ -845,6 +845,8 @@ void RemixPipeline::run()
                 sin.bar_beats   = gridBarBeats;   // sesja 135: section-start zone = the first bar
                 sin.beat_is_synthetic = bundle.beatIsSynthetic.empty() ? nullptr : &bundle.beatIsSynthetic;   // sesja 135 (DEV-122)
                 sin.seam_crossfade_beats = in_.shapeSeamCrossfadeBeats;
+                sin.recipe_mode           = in_.shapeRecipeMode;   // sesja 136 (ADR-117 step 5)
+                sin.seam_crossfade_max_sec = in_.shapeSeamMaxSec;
                 auto judgeFn = [&judge] (bool relaxed, bool open)
                 {
                     return [&judge, relaxed, open] (int i, int j) -> std::optional<reamix::remix::ShapeSeamScore>

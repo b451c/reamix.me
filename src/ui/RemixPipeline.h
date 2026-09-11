@@ -80,6 +80,16 @@ public:
         // whole window with one equal-power crossfade). 0 = the Renderer's
         // default 0.15-beat multi-band seam - harness key "shape_seam_beats".
         double                shapeSeamCrossfadeBeats { 1.0 };
+        // Sesja 136 (ADR-117 step 5): the planner's "Audition recipe" mode
+        // (ShapePlannerInputs::recipe_mode: 0 = the tiered planner, 1 =
+        // ending, 2 = q, 3 = balanced) - harness key "shape_recipe"; and the
+        // cap on the planner seam crossfade in seconds (0 = none) - harness
+        // key "shape_seam_max_sec".
+        int                   shapeRecipeMode { 0 };
+        // Default 0.5 s: Audition's crossfades are 0.44-0.61 s on every
+        // corpus case; our one-beat seam at 67 BPM (0.88 s) overlapped two
+        // 16th-note patterns on Drake x0.25 ("podwojne uderzenie").
+        double                shapeSeamMaxSec { 0.0 };
 
         // ADR-051 (sesja 61) — Block Assembly mode. Active when
         // userBlocks non-empty AND queue.size() ≥ 2. Mutually exclusive
