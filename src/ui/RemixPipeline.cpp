@@ -861,6 +861,28 @@ void RemixPipeline::run()
                         for (const auto& sm : plan.seams)
                             std::fprintf (f, "  seam %d -> %d q %.3f ed %.2f excess %+.1f dB\n",
                                           sm.i, sm.j, sm.score.q, sm.score.edge_distance, sm.excess_db);
+                        if (std::getenv ("REAMIX_SHAPE_SEAMS") != nullptr)
+                        {
+                            // Every seam the search asked about: section-boundary pairs with the
+                            // judge's verdict (gate 1 = 8 dB hard block, 2 = p98 loudness reject).
+                            auto sectionOf = [&] (int b) {
+                                for (std::size_t k = 0; k < sections.size(); ++k)
+                                    if (b >= sections[k].b0 && b < sections[k].b1) return (int) k;
+                                return -1; };
+                            for (const auto& jd : plan.diag.judged)
+                            {
+                                const auto sc = judge.score (jd.i, jd.j);
+                                std::fprintf (f, "  judged %d -> %d (sec %d kind %d -> sec %d kind %d) %s q %.3f ed %.2f gate %d excess %+.1f\n",
+                                              jd.i, jd.j, sectionOf (jd.i), sectionOf (jd.i) >= 0 ? sections[(std::size_t) sectionOf (jd.i)].kind : -1,
+                                              sectionOf (jd.j), sectionOf (jd.j) >= 0 ? sections[(std::size_t) sectionOf (jd.j)].kind : -1,
+                                              jd.strict_ok ? "OK" : (jd.relaxed_ok ? "relaxed-only" : (sc.rejected ? "GATED" : "low-q")),
+                                              sc.rejected ? -1.0 : sc.quality, sc.edge_distance, sc.gate,
+                                              [&] { const int K = reamix::remix::kShapeContextBeats; auto ctx = [&] (int a, int b) {
+                                                        a = std::max (0, a); b = std::min (nBeatsAll, b); if (b <= a || sin.rms_energy == nullptr) return 0.0;
+                                                        double m = 0; for (int k = a; k < b; ++k) m += sin.rms_energy[k]; return 20.0 * std::log10 (std::max (m / (b - a), 1e-6)); };
+                                                    return ctx (jd.j - K, jd.j) - ctx (jd.i - K + 1, jd.i + 1); }());
+                            }
+                        }
                         std::fclose (f);
                     }
                 }

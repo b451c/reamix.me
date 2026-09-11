@@ -84,6 +84,13 @@ bool sameKinds (const ShapePlan& p, std::vector<int> kinds)
 bool test1_chorus_kept()
 {
     Fixture f;
+    // The chorus seam scores LOWER than the verse seam: the raw-cheaper plan
+    // without a chorus must not shadow the chorus plan inside the DP (the
+    // no-chorus tax is applied at pick time; the chorus flag is DP state).
+    f.judge = [] (int i, int j) -> std::optional<ShapeSeamScore> {
+        if (i == 15 && j == 48) return ShapeSeamScore { 0.60, 1.0, 0.5 };
+        return ShapeSeamScore { 0.70, 1.0, 0.5 };
+    };
     const ShapePlan p = planShape (f.inputs (40.0));
     CHECK (p.ok, "plan expected");
     CHECK (p.tier == 'A', "whole sections suffice");

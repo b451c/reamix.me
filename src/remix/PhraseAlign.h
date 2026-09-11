@@ -107,9 +107,17 @@ struct PhraseAlign
     // Bar offsets per beat. `db_set` = beat indices that are downbeats.
     // Sections (may be null / empty) are [start, end) in seconds on the same
     // grid; a beat inside no section counts bars from the first downbeat.
+    // `snap_to_downbeat` (DEV-120, sesja 132): section boundaries snapped to
+    // the nearest downbeat within two beats (the rule buildUiSegments uses).
+    // ON for the boundary family (BoundaryFamily::build) so every section
+    // start the UI shows is a phrase start; OFF for the continuation phrase
+    // gate, whose behaviour on the 50-125 % ratios the ear confirmed (sesje
+    // 126-129) - measured in sesja 132: snapping the gate too changed 14 of 51
+    // normal-ratio cases (Woodkid x0.75 to a red cut, Goldberg to one loop x4).
     static std::vector<int> barOffsets(const double* beat_times, int n,
                                        const std::set<int>& db_set,
-                                       const analysis::Segment* segs, int n_segs)
+                                       const analysis::Segment* segs, int n_segs,
+                                       bool snap_to_downbeat = false)
     {
         std::vector<int> bar_index(static_cast<std::size_t>(n < 0 ? 0 : n), -1);
         int bar = -1;
@@ -119,20 +127,43 @@ struct PhraseAlign
         }
         std::vector<int> out = bar_index;
         if (segs == nullptr || n_segs <= 0) return out;
-        // Section start bar = bar of the first beat at/after the section start.
-        std::vector<int> seg_bar(static_cast<std::size_t>(n_segs), -1);
+        // DEV-120 (sesja 132): section boundaries come from the section model
+        // on its own beat grid and can sit a beat off the engine's downbeat.
+        // "The first beat at/after the raw start" then lands in the previous
+        // bar whenever the raw boundary precedes the downbeat, shifting every
+        // offset of that section by one bar - its real start stops being a
+        // phrase start (High Hopes final chorus, the Without Me outros were
+        // unlandable for the boundary family). With `snap_to_downbeat` each
+        // boundary snaps to the NEAREST downbeat (the rule buildUiSegments
+        // uses for the UI) when one lies within two beats; otherwise (and
+        // always for the continuation gate) the first beat at/after it.
+        std::vector<double> snapped(static_cast<std::size_t>(n_segs), 0.0);
+        std::vector<int>    seg_bar(static_cast<std::size_t>(n_segs), -1);
+        const double period = (n >= 2) ? (beat_times[n - 1] - beat_times[0]) / static_cast<double>(n - 1) : 0.0;
         for (int s = 0; s < n_segs; ++s) {
-            for (int b = 0; b < n; ++b) {
-                if (beat_times[b] >= segs[s].start - 1e-6) {
-                    seg_bar[static_cast<std::size_t>(s)] = bar_index[static_cast<std::size_t>(b)];
-                    break;
+            int best = -1;
+            double best_dt = 2.0 * period + 1e-6;
+            if (snap_to_downbeat)
+                for (const int d : db_set) {
+                    if (d < 0 || d >= n) continue;
+                    const double dt = std::abs(beat_times[d] - segs[s].start);
+                    if (dt < best_dt) { best_dt = dt; best = d; }
                 }
+            if (best < 0) {
+                for (int b = 0; b < n; ++b)
+                    if (beat_times[b] >= segs[s].start - 1e-6) { best = b; break; }
             }
+            snapped[static_cast<std::size_t>(s)] = best >= 0 ? beat_times[best] : segs[s].start;
+            seg_bar[static_cast<std::size_t>(s)] = best >= 0 ? bar_index[static_cast<std::size_t>(best)] : -1;
         }
         for (int b = 0; b < n; ++b) {
             const double t = beat_times[b];
             for (int s = 0; s < n_segs; ++s) {
-                if (t >= segs[s].start - 1e-6 && t < segs[s].end - 1e-6) {
+                const double s_start = snap_to_downbeat ? snapped[static_cast<std::size_t>(s)] : segs[s].start;
+                const double s_end   = snap_to_downbeat
+                    ? ((s + 1 < n_segs) ? snapped[static_cast<std::size_t>(s) + 1] : segs[s].end)
+                    : segs[s].end;
+                if (t >= s_start - 1e-6 && t < s_end - 1e-6) {
                     const int sb = seg_bar[static_cast<std::size_t>(s)];
                     const int bi = bar_index[static_cast<std::size_t>(b)];
                     out[static_cast<std::size_t>(b)] = (sb < 0 || bi < 0) ? -1 : bi - sb;

@@ -75,7 +75,10 @@ struct BoundaryFamily
         f.n_beats     = n;
         f.phrase_bars = phrase_bars;
         if (beat_times == nullptr || n <= 0 || db_set.empty() || phrase_bars <= 0) return f;
-        const std::vector<int> offset = PhraseAlign::barOffsets(beat_times, n, db_set, segs, n_segs);
+        // DEV-120 (sesja 132): boundaries snapped to the nearest downbeat, so
+        // every section start the UI shows is a phrase start (landable).
+        const std::vector<int> offset = PhraseAlign::barOffsets(beat_times, n, db_set, segs, n_segs,
+                                                                /*snap_to_downbeat*/ true);
         f.phrase_start.assign(static_cast<std::size_t>(n), 0);
         for (const int b : db_set) {
             if (b < 0 || b >= n) continue;

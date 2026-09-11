@@ -25,6 +25,7 @@ struct State
     double min_q     = 1.0;
     int    prev_p    = -1;
     int    prev_bin  = -1;
+    int    prev_c    = 0;
     bool   chorus    = false;
     bool   valid() const noexcept { return std::isfinite(cost); }
 };
@@ -94,12 +95,18 @@ double seamExcessDb(const ShapePlannerInputs& in, int i, int j)
     return contextDb(in, j - K, j) - contextDb(in, i - K + 1, i + 1);
 }
 
+// DP table over (piece, length bin, chorus kept). The chorus flag is part of
+// the state: the no-chorus tax is applied when a plan is picked, so two plans
+// of equal length that differ in whether a chorus survives must both reach the
+// end (sesja 132, Avicii x0.25: the raw-cheaper intro + verse + verse -> ending
+// plan (q 0.60) shadowed intro + verse + chorus -> ending (q 0.54) at the same
+// bin and the tax never saw the chorus plan).
 struct Search
 {
     std::vector<Piece>  pieces;
-    std::vector<State>  table;   // pieces x bins
+    std::vector<State>  table;   // pieces x bins x 2
     int                 nb = 0;
-    State& at(int p, int bin) { return table[static_cast<std::size_t>(p) * nb + bin]; }
+    State& at(int p, int bin, int c) { return table[(static_cast<std::size_t>(p) * nb + bin) * 2 + c]; }
 };
 
 using SeamFn    = std::function<std::optional<ShapeSeamScore>(int, int)>;
@@ -122,12 +129,12 @@ void runSearch(const ShapePlannerInputs& in, Search& s, SeamCache& cache, double
 {
     const int P = static_cast<int>(s.pieces.size());
     s.nb = static_cast<int>(std::ceil(max_len / kShapeBinSec)) + 2;
-    s.table.assign(static_cast<std::size_t>(P) * s.nb, State{});
+    s.table.assign(static_cast<std::size_t>(P) * s.nb * 2, State{});
     const double head = in.beat_times[0];
     auto binOf = [] (double sec) { return static_cast<int>(std::lround(sec / kShapeBinSec)); };
     auto put = [&] (int p, int bin, const State& st) {
         if (bin < 0 || bin >= s.nb) return;
-        State& cur = s.at(p, bin);
+        State& cur = s.at(p, bin, st.chorus ? 1 : 0);
         if (! cur.valid() || st.cost < cur.cost) cur = st;
     };
     for (int p = 0; p < P; ++p) {
@@ -140,8 +147,9 @@ void runSearch(const ShapePlannerInputs& in, Search& s, SeamCache& cache, double
     }
     for (int p = 0; p < P; ++p) {
         const Piece& pc = s.pieces[p];
-        for (int bin = 0; bin < s.nb; ++bin) {
-            const State cur = s.at(p, bin);
+        for (int bin = 0; bin < s.nb; ++bin)
+        for (int c = 0; c < 2; ++c) {
+            const State cur = s.at(p, bin, c);
             if (! cur.valid()) continue;
             for (int q = p + 1; q < P; ++q) {
                 const Piece& qc = s.pieces[q];
@@ -157,7 +165,7 @@ void runSearch(const ShapePlannerInputs& in, Search& s, SeamCache& cache, double
                     min_q = std::min(min_q, sc->q);
                 }
                 State st;
-                st.cost = cur.cost + add; st.min_q = min_q; st.prev_p = p; st.prev_bin = bin;
+                st.cost = cur.cost + add; st.min_q = min_q; st.prev_p = p; st.prev_bin = bin; st.prev_c = c;
                 st.chorus = cur.chorus || qc.p.kind == kChorusKind;
                 put(q, bin + binOf(qc.dur), st);
             }
@@ -170,8 +178,9 @@ double closestDev(const ShapePlannerInputs& in, Search& s)
     double best = std::numeric_limits<double>::infinity();
     for (int p = 0; p < static_cast<int>(s.pieces.size()); ++p) {
         if (s.pieces[p].p.b1 != in.n_beats) continue;
-        for (int bin = 0; bin < s.nb; ++bin) {
-            const State& st = s.at(p, bin);
+        for (int bin = 0; bin < s.nb; ++bin)
+        for (int c = 0; c < 2; ++c) {
+            const State& st = s.at(p, bin, c);
             if (! st.valid() || st.min_q < in.min_q) continue;
             best = std::min(best, std::fabs(bin * kShapeBinSec - in.target_sec));
         }
@@ -192,11 +201,12 @@ std::optional<ShapePlan> pickPlan(const ShapePlannerInputs& in, Search& s, SeamC
     const int P = static_cast<int>(s.pieces.size());
     const double head = in.beat_times[0];
     double best_cost = std::numeric_limits<double>::infinity();
-    int best_p = -1, best_bin = -1;
+    int best_p = -1, best_bin = -1, best_c = 0;
     for (int p = 0; p < P; ++p) {
         if (s.pieces[p].p.b1 != in.n_beats) continue;
-        for (int bin = 0; bin < s.nb; ++bin) {
-            const State& st = s.at(p, bin);
+        for (int bin = 0; bin < s.nb; ++bin)
+        for (int c = 0; c < 2; ++c) {
+            const State& st = s.at(p, bin, c);
             if (! st.valid() || st.min_q < in.min_q) continue;
             const double dev = bin * kShapeBinSec - in.target_sec;
             if (std::fabs(dev) > window) continue;
@@ -205,19 +215,19 @@ std::optional<ShapePlan> pickPlan(const ShapePlannerInputs& in, Search& s, SeamC
             const double cost = std::isfinite(window)
                 ? st.cost + ((has_chorus && ! st.chorus) ? kShapeNoChorusTax : 0.0)
                 : std::fabs(dev) * 1e3 + st.cost;
-            if (cost < best_cost) { best_cost = cost; best_p = p; best_bin = bin; }
+            if (cost < best_cost) { best_cost = cost; best_p = p; best_bin = bin; best_c = c; }
         }
     }
     if (best_p < 0) return std::nullopt;
 
     ShapePlan plan;
     plan.ok = true; plan.tier = tier; plan.cost = best_cost;
-    int p = best_p, bin = best_bin;
+    int p = best_p, bin = best_bin, c = best_c;
     while (p >= 0) {
-        const State& st = s.at(p, bin);
+        const State& st = s.at(p, bin, c);
         plan.pieces.push_back(s.pieces[p].p);
-        const int pp = st.prev_p, pb = st.prev_bin;
-        p = pp; bin = pb;
+        const int pp = st.prev_p, pb = st.prev_bin, pcx = st.prev_c;
+        p = pp; bin = pb; c = pcx;
     }
     std::reverse(plan.pieces.begin(), plan.pieces.end());
     plan.est_sec = head;
@@ -279,6 +289,16 @@ ShapePlan planShape(const ShapePlannerInputs& in)
         diag.seams_tried   = static_cast<int>(strict.map.size());
         diag.seams_strict  = passing(strict, in.min_q);
         diag.seams_relaxed = passing(relaxed, in.min_q);
+        for (const auto& kv : strict.map) {
+            ShapePlan::Diag::Judged jd{kv.first.first, kv.first.second, false, false, -1.0};
+            if (kv.second.has_value()) { jd.q = kv.second->q; jd.strict_ok = kv.second->q >= in.min_q; }
+            auto rit = relaxed.map.find(kv.first);
+            if (rit != relaxed.map.end() && rit->second.has_value()) {
+                jd.relaxed_ok = rit->second->q >= in.min_q;
+                if (jd.q < 0.0) jd.q = rit->second->q;
+            }
+            diag.judged.push_back(jd);
+        }
         p.diag = diag;
         return p;
     };

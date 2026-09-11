@@ -129,6 +129,8 @@ struct ShapePlan
         int    pieces_whole = 0, pieces_trim = 0;
         int    seams_tried = 0, seams_strict = 0, seams_relaxed = 0;   // section / phrase seams judged, passing (q >= min_q)
         double closest_dev_whole = 0.0, closest_dev_trim = 0.0;        // best |est - target| reachable with passing seams (any window)
+        struct Judged { int i, j; bool strict_ok, relaxed_ok; double q; };
+        std::vector<Judged> judged;                                    // every seam the search asked about (strict judge; relaxed when asked)
     } diag;
 
     // Beat path for the renderer: consecutive beats inside every piece, one

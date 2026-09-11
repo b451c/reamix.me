@@ -22,6 +22,7 @@
 //      edge distance, unknown distance never masked, tier 0 never masks.
 
 #include "remix/BoundaryFamily.h"
+#include "remix/PhraseAlign.h"
 #include "remix/SpliceAcceptance.h"
 #include "remix/TransitionCost.h"
 
@@ -165,6 +166,30 @@ TransitionCostResult runPool (bool disableFamily, const std::vector<float>& feat
     return computeTransitionCosts (in);
 }
 
+// DEV-120 (sesja 132): a raw model boundary one beat BEFORE the downbeat
+// (chorus start at 5.75 bars instead of bar 6) must still make the real
+// chorus start (bar 6, beat 24) a phrase start for the boundary family
+// (snapped to the nearest downbeat), while the continuation gate's offsets
+// (snap off) keep the sesja-126 rule: the first beat at/after the raw start
+// (beat 23, bar 5) is the section's start bar, so beat 24 is bar 1 of it.
+bool testSnappedBoundary()
+{
+    const auto bt = beatTimes();
+    const auto db = downbeatSet();
+    auto segs = sections();
+    segs[1].start = 23 * kPeriod;   // raw chorus start = beat 23 (one beat early)
+    segs[0].end   = segs[1].start;
+    const BoundaryFamily f = BoundaryFamily::build (bt.data(), kBeats, db, segs.data(), (int) segs.size());
+    CHECK (f.isPhraseStart (24), "chorus start snapped to bar 6 = phrase start");
+    CHECK (f.isPhraseStart (56), "chorus bar 8 counted from the snapped start");
+    CHECK (! f.isPhraseStart (28), "bar 7 is not a phrase start after snapping");
+    const auto gate = PhraseAlign::barOffsets (bt.data(), kBeats, db, segs.data(), (int) segs.size(), false);
+    CHECK (gate[24] == 1, "continuation gate keeps the first-beat-at/after rule (beat 24 = bar 1 of the raw section)");
+    const auto snapped = PhraseAlign::barOffsets (bt.data(), kBeats, db, segs.data(), (int) segs.size(), true);
+    CHECK (snapped[24] == 0 && snapped[23] == 5, "snapped offsets: beat 24 opens the chorus, beat 23 still belongs to the intro");
+    return true;
+}
+
 bool testPoolAdmission()
 {
     const auto bt   = beatTimes();
@@ -248,6 +273,7 @@ int main()
     int failed = 0;
     struct { const char* name; bool (*fn)(); } tests[] = {
         { "phrase starts + pairs", testPhraseStarts },
+        { "snapped raw boundary (DEV-120)", testSnappedBoundary },
         { "pool admission",        testPoolAdmission },
         { "acceptance mask",       testAcceptanceMask },
     };
