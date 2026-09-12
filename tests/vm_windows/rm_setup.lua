@@ -1,6 +1,6 @@
 -- reamix Windows VM leg: run via `reaper.exe -nonewinst rm_setup.lua` (ReamixCmd task).
 -- New project + media item selected + reamix window open; writes window rects to rm_out.txt.
-local media = "C:\\Users\\basic\\Downloads\\YTDown_YouTube_Christina-Aguilera-Dirrty-Official-HD-Vi_Media_4Rg3sAb8Id8_009_128k.mp3"
+local media = "C:\\Users\\basic\\Downloads\\reamix_test.mp3"  -- any mp3 copied to the VM
 local out = {}
 reaper.Main_OnCommand(40023, 0)            -- new project (no prompt when clean)
 reaper.InsertTrackAtIndex(0, false)

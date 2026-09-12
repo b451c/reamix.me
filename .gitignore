@@ -86,7 +86,8 @@ __pycache__/
 .venv/
 .venv-*/
 tools/.venv-calibration/
-tools/.slsk-credentials.local
+# local-only credentials / config next to the tools, never committed
+tools/*.local
 references/listening/dev-028/runs/
 references/listening/dev-028/corpus-pulls/
 

@@ -86,7 +86,7 @@ static int toggleActionState(int command)
 // for Space / Esc / Enter. SWS-style accelerator hook intercepts keys at the
 // REAPER message-pump level and dispatches to MainComponent when the user has
 // interacted with our window (focused or mouse-over fallback for docked).
-// Pattern lifted from /Volumes/@Basic/Projekty/EditView/cpp/src/main.cpp:152.
+// Pattern lifted from the EditView (SneakPeak) sibling project: accelerator hook in its main.cpp.
 
 static int translateAccelReamix(MSG* msg, accelerator_register_t* /*ctx*/)
 {

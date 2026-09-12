@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/Meshuggah - obZen - 03 - Bleed.flac",
+    "source_path": "Meshuggah - obZen - 03 - Bleed.flac",
     "start_beat": 0,
     "end_beat": 28,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/Meshuggah - obZen - 03 - Bleed.flac",
+    "source_path": "Meshuggah - obZen - 03 - Bleed.flac",
     "start_beat": 80,
     "end_beat": 114,
     "source_start_sec": 44.64616780045351,

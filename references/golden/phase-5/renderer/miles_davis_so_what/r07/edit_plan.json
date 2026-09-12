@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 So What.flac",
+    "source_path": "01 So What.flac",
     "start_beat": 0,
     "end_beat": 24,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 So What.flac",
+    "source_path": "01 So What.flac",
     "start_beat": 57,
     "end_beat": 135,
     "source_start_sec": 25.161179138321994,

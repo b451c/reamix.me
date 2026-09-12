@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/121. Eminem - Without Me.mp3",
+    "source_path": "121. Eminem - Without Me.mp3",
     "start_beat": 0,
     "end_beat": 13,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/121. Eminem - Without Me.mp3",
+    "source_path": "121. Eminem - Without Me.mp3",
     "start_beat": 46,
     "end_beat": 57,
     "source_start_sec": 24.493650793650794,
@@ -33,7 +33,7 @@
   },
   {
     "clip_index": 3,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/121. Eminem - Without Me.mp3",
+    "source_path": "121. Eminem - Without Me.mp3",
     "start_beat": 106,
     "end_beat": 112,
     "source_start_sec": 56.66575963718821,

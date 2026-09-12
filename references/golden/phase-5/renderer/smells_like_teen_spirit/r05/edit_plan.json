@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/145. Nirvana - Smells Like Teen Spirit.mp3",
+    "source_path": "145. Nirvana - Smells Like Teen Spirit.mp3",
     "start_beat": 0,
     "end_beat": 13,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/145. Nirvana - Smells Like Teen Spirit.mp3",
+    "source_path": "145. Nirvana - Smells Like Teen Spirit.mp3",
     "start_beat": 70,
     "end_beat": 117,
     "source_start_sec": 35.65378684807256,

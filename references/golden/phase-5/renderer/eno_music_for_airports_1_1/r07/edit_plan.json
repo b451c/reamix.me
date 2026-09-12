@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/Brian Eno - Ambient 1 - Music for Airports - 01 - 1+1.flac",
+    "source_path": "Brian Eno - Ambient 1 - Music for Airports - 01 - 1+1.flac",
     "start_beat": 0,
     "end_beat": 42,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/Brian Eno - Ambient 1 - Music for Airports - 01 - 1+1.flac",
+    "source_path": "Brian Eno - Ambient 1 - Music for Airports - 01 - 1+1.flac",
     "start_beat": 67,
     "end_beat": 83,
     "source_start_sec": 49.053650793650796,

@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 - Nutshell.flac",
+    "source_path": "01 - Nutshell.flac",
     "start_beat": 0,
     "end_beat": 18,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/01 - Nutshell.flac",
+    "source_path": "01 - Nutshell.flac",
     "start_beat": 38,
     "end_beat": 40,
     "source_start_sec": 29.57201814058957,

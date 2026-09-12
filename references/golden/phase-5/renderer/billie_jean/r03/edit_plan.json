@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/182. Michael Jackson - Billie Jean.mp3",
+    "source_path": "182. Michael Jackson - Billie Jean.mp3",
     "start_beat": 0,
     "end_beat": 18,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/182. Michael Jackson - Billie Jean.mp3",
+    "source_path": "182. Michael Jackson - Billie Jean.mp3",
     "start_beat": 99,
     "end_beat": 116,
     "source_start_sec": 51.00231292517007,

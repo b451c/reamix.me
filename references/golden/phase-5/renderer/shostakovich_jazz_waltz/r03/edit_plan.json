@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/17 - Jazz Suite no. 1_ I. Waltz.flac",
+    "source_path": "17 - Jazz Suite no. 1_ I. Waltz.flac",
     "start_beat": 0,
     "end_beat": 28,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/17 - Jazz Suite no. 1_ I. Waltz.flac",
+    "source_path": "17 - Jazz Suite no. 1_ I. Waltz.flac",
     "start_beat": 68,
     "end_beat": 78,
     "source_start_sec": 25.046394557823128,
@@ -33,7 +33,7 @@
   },
   {
     "clip_index": 3,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/17 - Jazz Suite no. 1_ I. Waltz.flac",
+    "source_path": "17 - Jazz Suite no. 1_ I. Waltz.flac",
     "start_beat": 150,
     "end_beat": 164,
     "source_start_sec": 54.48875283446712,

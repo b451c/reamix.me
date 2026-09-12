@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/lead vocal+fx.flac",
+    "source_path": "lead vocal+fx.flac",
     "start_beat": 0,
     "end_beat": 37,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/lead vocal+fx.flac",
+    "source_path": "lead vocal+fx.flac",
     "start_beat": 100,
     "end_beat": 126,
     "source_start_sec": 47.6172335600907,

@@ -9,7 +9,7 @@
   },
   "drag_attempts": 2,
   "oracle": {
-   "png": "/home/basic/reamix_vm/reamix_after_run1_picker.png",
+   "png": "reamix_after_run1_picker.png",
    "size": [
     568,
     288
@@ -39,7 +39,7 @@
    "green": true
   },
   "modal_oracle": {
-   "png": "/home/basic/reamix_vm/reamix_after_run1_modal.png",
+   "png": "reamix_after_run1_modal.png",
    "size": [
     350,
     250
@@ -89,7 +89,7 @@
   },
   "drag_attempts": 1,
   "oracle": {
-   "png": "/home/basic/reamix_vm/reamix_after_run2_picker.png",
+   "png": "reamix_after_run2_picker.png",
    "size": [
     568,
     288
@@ -119,7 +119,7 @@
    "green": true
   },
   "modal_oracle": {
-   "png": "/home/basic/reamix_vm/reamix_after_run2_modal.png",
+   "png": "reamix_after_run2_modal.png",
    "size": [
     350,
     250

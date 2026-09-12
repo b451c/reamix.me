@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/2 - Dance Monkey.flac",
+    "source_path": "2 - Dance Monkey.flac",
     "start_beat": 0,
     "end_beat": 18,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/2 - Dance Monkey.flac",
+    "source_path": "2 - Dance Monkey.flac",
     "start_beat": 87,
     "end_beat": 98,
     "source_start_sec": 53.13138321995465,

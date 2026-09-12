@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/02. Daft Punk - Aerodynamic.flac",
+    "source_path": "02. Daft Punk - Aerodynamic.flac",
     "start_beat": 0,
     "end_beat": 21,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/02. Daft Punk - Aerodynamic.flac",
+    "source_path": "02. Daft Punk - Aerodynamic.flac",
     "start_beat": 62,
     "end_beat": 74,
     "source_start_sec": 30.480498866213154,
@@ -33,7 +33,7 @@
   },
   {
     "clip_index": 3,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/02. Daft Punk - Aerodynamic.flac",
+    "source_path": "02. Daft Punk - Aerodynamic.flac",
     "start_beat": 116,
     "end_beat": 116,
     "source_start_sec": 59.64852607709751,

@@ -39,6 +39,7 @@ where remix_tool/ package lives).
 
 from __future__ import annotations
 
+import os
 import argparse
 import hashlib
 import json
@@ -257,7 +258,8 @@ def _serialize_clips(plan: Any) -> List[Dict[str, Any]]:
     return [
         {
             "clip_index":         int(c.clip_index),
-            "source_path":        str(c.source_path),
+            # basename only: golden files are public, keep local library paths out
+            "source_path":        os.path.basename(str(c.source_path)),
             "start_beat":         int(c.start_beat),
             "end_beat":           int(c.end_beat),
             "source_start_sec":   float(c.source_start_sec),

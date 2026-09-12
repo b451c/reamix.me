@@ -1,7 +1,7 @@
 [
   {
     "clip_index": 1,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/0104 - Iron (acoustic).flac",
+    "source_path": "0104 - Iron (acoustic).flac",
     "start_beat": 0,
     "end_beat": 50,
     "source_start_sec": 0.0,
@@ -17,7 +17,7 @@
   },
   {
     "clip_index": 2,
-    "source_path": "/Volumes/@Basic/Muzyka/Soulseek Downloads/0104 - Iron (acoustic).flac",
+    "source_path": "0104 - Iron (acoustic).flac",
     "start_beat": 115,
     "end_beat": 127,
     "source_start_sec": 54.014331065759634,
