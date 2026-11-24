@@ -73,6 +73,7 @@ public:
     std::shared_ptr<std::atomic<bool>> aliveFlag() { return alive_; }
 
 private:
+    void runStages();
     void postProgress (const juce::String& step, double p01);
     void postCompletion (AnalysisBundlePtr bundle, const juce::String& error);
 

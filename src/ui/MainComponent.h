@@ -265,10 +265,12 @@ private:
     reamix::BeatDetector          beatDetector_;
     reamix::analysis::SectionClassifier sectionClassifier_;   // sesja 121 (DEV-098), optional model
     std::mutex                    beatDetectorLoadMutex_;
-    bool                          beatDetectorLoaded_ { false };
+    std::atomic<bool>             beatDetectorLoaded_ { false };
     juce::String                  beatDetectorLoadError_;
 
     std::unique_ptr<juce::Thread> preWarmThread_;
+    void                          startModelPreWarm();
+    juce::String                  analyzeWhenModelReadyPath_;   // message thread only
     std::atomic<bool>             preWarmAborted_ { false };
 
     // ── Workers ──────────────────────────────────────────────────────
@@ -427,7 +429,7 @@ private:
     bool welcomeShown_         { false };  // Sesja 111 KROK 3
     bool startupErrorShown_    { false };  // Sesja 111 KROK 4
     bool updateAvailableShown_ { false };  // Sesja 111 v1.0.2 update-check
-    std::atomic<bool> updateCheckAborted_ { false };
+    std::shared_ptr<std::atomic<bool>> updateCheckAborted_ { std::make_shared<std::atomic<bool>> (false) };
 
     std::optional<reamix::ui::WaveformView::SelectionRange> selectedRange_;
     // sesja 122: the span the last loop-spot chip click set; exempt from the

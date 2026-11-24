@@ -161,6 +161,25 @@ bool AnalyzePipeline::loadAudio (const juce::String& path,
 
 void AnalyzePipeline::run()
 {
+    // An exception escaping a juce::Thread terminates REAPER. Stages 3-5 catch
+    // their own; this covers the rest (audio load, sections, loop spots) and
+    // allocation failure on a very long file.
+    try
+    {
+        runStages();
+    }
+    catch (const std::bad_alloc&)
+    {
+        postCompletion (nullptr, "Not enough memory to analyze this file");
+    }
+    catch (const std::exception& e)
+    {
+        postCompletion (nullptr, juce::String ("Analysis failed: ") + e.what());
+    }
+}
+
+void AnalyzePipeline::runStages()
+{
     auto bundle = std::make_shared<AnalysisBundle>();
     bundle->sourcePath = in_.sourcePath;
 

@@ -2381,56 +2381,7 @@ MainComponent::MainComponent()
     startTimer (kSelectedItemPollMs);
 
     // DEV-021 ONNX pre-warm.
-    preWarmThread_ = std::make_unique<BeatDetectorPreWarmThread> ([this]
-    {
-        if (preWarmAborted_.load()) return;
-
-        // Sesja 111 — visible download progress while the pre-warm thread
-        // pulls the ~80 MB beat-this ONNX. Without this the plugin window
-        // appears frozen on first launch (no item selected yet, SourcePanel
-        // shows empty state). StatusBar.setBusy already supplies an accent
-        // spinner + 60 Hz loading-line animation — premium feel for free.
-        auto onDownloadProgress = [this] (juce::int64 downloaded, juce::int64 total)
-        {
-            if (preWarmAborted_.load()) return;
-            const auto mbDone  = static_cast<int> ((downloaded + 500'000) / 1'000'000);
-            const auto mbTotal = total > 0 ? static_cast<int> ((total + 500'000) / 1'000'000) : 0;
-            // When the final byte arrives, switch the label to "Loading model" so
-            // the user sees forward motion through the ~1-3 s SHA-256 verify +
-            // ONNX session load that follows. Without this, the bar lingers at
-            // "Downloading · 83 / 83 MB" with a spinning indicator, which reads
-            // as "stuck" rather than "validating".
-            juce::String label;
-            if (total > 0 && downloaded >= total)
-                label = juce::String::fromUTF8 ("Loading AI model\xe2\x80\xa6");
-            else if (mbTotal > 0)
-                label = juce::String::fromUTF8 ("Downloading AI model \xc2\xb7 ")
-                      + juce::String (mbDone) + " / " + juce::String (mbTotal) + " MB";
-            else
-                label = juce::String::fromUTF8 ("Downloading AI model \xc2\xb7 ")
-                      + juce::String (mbDone) + " MB";
-            juce::MessageManager::callAsync ([this, label]
-            {
-                if (preWarmAborted_.load()) return;
-                statusBar_.setBusy (label);
-            });
-        };
-
-        juce::String err;
-        const bool ok = ensureBeatDetectorReady (err, onDownloadProgress);
-
-        juce::MessageManager::callAsync ([this, ok, err]
-        {
-            if (preWarmAborted_.load()) return;
-            statusBar_.clearBusy();
-            if (! ok && err.isNotEmpty())
-            {
-                statusBar_.setError (err);
-                showStartupErrorWithPlatformHint (err);
-            }
-        });
-    });
-    preWarmThread_->startThread();
+    startModelPreWarm();
 
     // Sesja 111 (KROK 3) — first-launch welcome modal. Deferred via
     // MessageManager::callAsync so the constructor finishes (and the plugin
@@ -2451,10 +2402,11 @@ MainComponent::MainComponent()
     // status-bar hint so the user knows Preview won't work before clicking
     // it — premium UX vs the prior "click Preview → cisza → confused"
     // first-run experience.
-    juce::Timer::callAfterDelay (2500, [this]
+    juce::Timer::callAfterDelay (2500, [safe = juce::Component::SafePointer<MainComponent> (this)]
     {
+        if (safe == nullptr) return;
         if (! reamix::ui::PreviewController::probeSwsAvailable())
-            statusBar_.setText (juce::String::fromUTF8 (
+            safe->statusBar_.setText (juce::String::fromUTF8 (
                 "Preview disabled \xe2\x80\x94 install SWS Extension (sws-extension.org)"));
     });
 }
@@ -2476,7 +2428,7 @@ MainComponent::~MainComponent()
     // Sesja 111 v1.0.2 — flag update-check thread to skip any pending
     // network read / message-thread callback. Thread is detached so we
     // don't join here; the flag check inside each step prevents UAF.
-    updateCheckAborted_.store (true);
+    updateCheckAborted_->store (true);
 
     // Pipeline workers — wait for any in-flight thread before our members
     // (beatDetector_, analysisBundles_, etc.) get destroyed. Alive flags
@@ -2505,10 +2457,17 @@ MainComponent::~MainComponent()
     {
         if (path.isNotEmpty()) juce::File (path).deleteFile();
     }
-    if (tmpWavPath_.isNotEmpty())
+    // tmpWavPath_ is "what Preview plays": a remix temp WAV, or the user's
+    // SOURCE file while the source is shown (Edit, tab switch, cache clear).
+    // Delete only a file this plugin wrote (RemixCache.h: reamix_<hash>.wav
+    // in the temp directory) - never the source.
+    if (tmpWavPath_.isNotEmpty() && tmpWavPath_ != currentSourcePath_)
     {
         juce::File f (tmpWavPath_);
-        if (f.existsAsFile()) f.deleteFile();
+        if (f.existsAsFile()
+            && f.getFileName().startsWith ("reamix_")
+            && f.isAChildOf (juce::File::getSpecialLocation (juce::File::tempDirectory)))
+            f.deleteFile();
     }
 
     removeKeyListener (&transportBar_);
@@ -2534,6 +2493,94 @@ void MainComponent::reapStoppedWorkers()
                 return w == nullptr || ! w->isThreadRunning();
             }),
         stoppingRemix_.end());
+}
+
+// The beat model is downloaded / loaded ONLY here, on a worker thread.
+// Called at construction and again from startAnalyze when the model is not
+// ready (first-run download still running, or an earlier attempt failed, e.g.
+// REAPER started offline): the retry clears the cached error.
+void MainComponent::startModelPreWarm()
+{
+    if (preWarmThread_ != nullptr)
+    {
+        if (preWarmThread_->isThreadRunning()) return;
+        preWarmThread_.reset();
+    }
+    {
+        std::lock_guard<std::mutex> lock (beatDetectorLoadMutex_);
+        beatDetectorLoadError_.clear();
+    }
+
+    preWarmThread_ = std::make_unique<BeatDetectorPreWarmThread> ([this]
+    {
+        if (preWarmAborted_.load()) return;
+
+        // Sesja 111 — visible download progress while the pre-warm thread
+        // pulls the ~80 MB beat-this ONNX. Without this the plugin window
+        // appears frozen on first launch (no item selected yet, SourcePanel
+        // shows empty state). StatusBar.setBusy already supplies an accent
+        // spinner + 60 Hz loading-line animation — premium feel for free.
+        auto onDownloadProgress = [this] (juce::int64 downloaded, juce::int64 total)
+        {
+            if (preWarmAborted_.load()) return;
+            const auto mbDone  = static_cast<int> ((downloaded + 500'000) / 1'000'000);
+            const auto mbTotal = total > 0 ? static_cast<int> ((total + 500'000) / 1'000'000) : 0;
+            // When the final byte arrives, switch the label to "Loading model" so
+            // the user sees forward motion through the ~1-3 s SHA-256 verify +
+            // ONNX session load that follows. Without this, the bar lingers at
+            // "Downloading · 83 / 83 MB" with a spinning indicator, which reads
+            // as "stuck" rather than "validating".
+            juce::String label;
+            if (total > 0 && downloaded >= total)
+                label = juce::String::fromUTF8 ("Loading AI model\xe2\x80\xa6");
+            else if (mbTotal > 0)
+                label = juce::String::fromUTF8 ("Downloading AI model \xc2\xb7 ")
+                      + juce::String (mbDone) + " / " + juce::String (mbTotal) + " MB";
+            else
+                label = juce::String::fromUTF8 ("Downloading AI model \xc2\xb7 ")
+                      + juce::String (mbDone) + " MB";
+            const double frac = total > 0 ? static_cast<double> (downloaded) / static_cast<double> (total) : 0.0;
+            juce::MessageManager::callAsync ([this, label, frac]
+            {
+                if (preWarmAborted_.load()) return;
+                statusBar_.setBusy (label);
+                if (analyzeWhenModelReadyPath_.isNotEmpty()
+                    && analyzeWhenModelReadyPath_ == currentSourcePath_)
+                    sourcePanel_.setAnalyzing (true, frac, label);
+            });
+        };
+
+        juce::String err;
+        const bool ok = ensureBeatDetectorReady (err, onDownloadProgress);
+
+        juce::MessageManager::callAsync ([this, ok, err]
+        {
+            if (preWarmAborted_.load()) return;
+            statusBar_.clearBusy();
+
+            // An Analyze click that arrived before the model was ready.
+            const bool pending = analyzeWhenModelReadyPath_.isNotEmpty()
+                              && analyzeWhenModelReadyPath_ == currentSourcePath_;
+            analyzeWhenModelReadyPath_.clear();
+
+            if (! ok)
+            {
+                if (pending)
+                {
+                    sourcePanel_.setAnalyzing (false, 0.0);
+                    resized();
+                }
+                if (err.isNotEmpty())
+                {
+                    statusBar_.setError (err);
+                    showStartupErrorWithPlatformHint (err);
+                }
+                return;
+            }
+            if (pending) startAnalyze();
+        });
+    });
+    preWarmThread_->startThread();
 }
 
 bool MainComponent::ensureBeatDetectorReady (juce::String& outErrorMessage,
@@ -2611,39 +2658,17 @@ void MainComponent::startAnalyze()
     lastSeekSec_.reset();
     waveformView_.clearSelection();
 
-    // Sesja 111 — if click-Analyze races the pre-warm download, this callback
-    // surfaces progress in SourcePanel (already showing the analyzing layout)
-    // as the "Downloading model · X / Y MB" stage label. Once ensureDownloaded
-    // returns, the analyze pipeline progress callback below takes over.
-    const juce::String downloadingForPath = currentSourcePath_;
-    auto onDownloadProgress = [this, downloadingForPath] (juce::int64 downloaded, juce::int64 total)
+    // The model is fetched / loaded by the pre-warm thread only, never on the
+    // message thread: waiting here froze REAPER for the whole first-run
+    // download, and a failed download stayed failed until restart. Not ready
+    // -> queue this analysis and (re)start the pre-warm; its completion
+    // callback re-enters startAnalyze.
+    if (! beatDetectorLoaded_.load())
     {
-        const auto mbDone  = static_cast<int> ((downloaded + 500'000) / 1'000'000);
-        const auto mbTotal = total > 0 ? static_cast<int> ((total + 500'000) / 1'000'000) : 0;
-        const double frac  = total > 0 ? static_cast<double> (downloaded) / static_cast<double> (total) : 0.0;
-        juce::String stage;
-        if (total > 0 && downloaded >= total)
-            stage = juce::String::fromUTF8 ("Loading model\xe2\x80\xa6");
-        else if (mbTotal > 0)
-            stage = juce::String::fromUTF8 ("Downloading model \xc2\xb7 ")
-                  + juce::String (mbDone) + " / " + juce::String (mbTotal) + " MB";
-        else
-            stage = juce::String::fromUTF8 ("Downloading model \xc2\xb7 ")
-                  + juce::String (mbDone) + " MB";
-        juce::MessageManager::callAsync ([this, downloadingForPath, frac, stage]
-        {
-            if (currentSourcePath_ != downloadingForPath) return;
-            sourcePanel_.setAnalyzing (true, frac, stage);
-            statusBar_.setText (stage);
-        });
-    };
-
-    juce::String err;
-    if (! ensureBeatDetectorReady (err, onDownloadProgress))
-    {
-        sourcePanel_.setAnalyzing (false, 0.0);
-        resized();
-        statusBar_.setError (err);
+        analyzeWhenModelReadyPath_ = currentSourcePath_;
+        sourcePanel_.setAnalyzing (true, 0.0, "Preparing AI model");
+        statusBar_.setText ("Preparing AI model...");
+        startModelPreWarm();
         return;
     }
 
@@ -6092,19 +6117,22 @@ void MainComponent::checkForUpdatesAsync()
     // feedback_release_tag_bump_ui_version_lockstep.md.
     constexpr const char* kCurrentVersion = "v1.0.7";
 
-    std::thread ([this]
+    // The thread is detached and can outlive this component: it owns a copy
+    // of the abort flag and touches `this` only on the message thread after
+    // checking it.
+    std::thread ([this, aborted = updateCheckAborted_]
     {
-        if (updateCheckAborted_.load()) return;
+        if (aborted->load()) return;
 
         juce::URL url ("https://api.github.com/repos/b451c/reamix.me/releases/latest");
         auto stream = url.createInputStream (
             juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
                 .withConnectionTimeoutMs (10000));
 
-        if (! stream || updateCheckAborted_.load()) return;
+        if (! stream || aborted->load()) return;
 
         const auto json = stream->readEntireStreamAsString();
-        if (updateCheckAborted_.load() || json.isEmpty()) return;
+        if (aborted->load() || json.isEmpty()) return;
 
         const auto parsed = juce::JSON::parse (json);
         if (! parsed.isObject()) return;
@@ -6118,11 +6146,11 @@ void MainComponent::checkForUpdatesAsync()
 
         if (! isStrictlyNewer (*latest, *current)) return;
 
-        if (updateCheckAborted_.load()) return;
+        if (aborted->load()) return;
 
-        juce::MessageManager::callAsync ([this, tagName]
+        juce::MessageManager::callAsync ([this, aborted, tagName]
         {
-            if (updateCheckAborted_.load()) return;
+            if (aborted->load()) return;
             showUpdateAvailableModal (tagName);
         });
     }).detach();
