@@ -2,7 +2,6 @@
 #include "remix/ShapePlanner.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -426,173 +425,6 @@ std::optional<ShapePlan> pickPlan(const ShapePlannerInputs& in, Search& s, SeamC
     return plan;
 }
 
-// ---------------------------------------------------------------------------
-// Sesja 136 (ADR-117 step 5): "Audition's recipe" - see ShapePlannerInputs::
-// recipe_mode. Pieces are [0, c1) [j1, c2) ... [jk, n): every cut point c and
-// landing j comes from the candidate set, the seam is (c - 1, j).
-struct RState
-{
-    double min_piece = 1e9;   // shortest piece so far, seconds
-    int    land      = 0;     // landing-class sum
-    double min_q     = 1.0;   // worst seam so far
-    int    prev_j    = 0, prev_bin = 0, cut_c = -1;   // back pointer: the previous piece's start + bin, this seam's cut point
-};
-
-int landingClass(const ShapePlannerInputs& in, int j)
-{
-    if (sectionStartLanding(in, j)) return 2;
-    if (latticeLanding(in, j)) return 1;
-    if (in.db_set != nullptr && (in.db_set->count(j) != 0 || in.db_set->count(j + 1) != 0)) return 1;
-    return 0;
-}
-
-using RKey = std::array<long long, 5>;
-
-long long bucket2s(double sec) { return static_cast<long long>(std::floor(sec / 2.0 + 1e-9)); }
-long long bucketQ(double q)    { return static_cast<long long>(std::floor(q * 10.0 + 1e-9)); }
-
-// Dominance inside one (piece start, length bin) state.
-RKey recipeDomKey(const ShapePlannerInputs& in, const RState& st)
-{
-    if (in.recipe_mode == 2) return { bucketQ(st.min_q), bucket2s(st.min_piece), st.land, 0, 0 };
-    return { bucket2s(st.min_piece), st.land, bucketQ(st.min_q), 0, 0 };
-}
-
-// Ranking of complete plans with the same seam count.
-RKey recipeFinalKey(const ShapePlannerInputs& in, const RState& st, double last_sec, double dev_sec)
-{
-    const long long closeness = -static_cast<long long>(std::llround(std::fabs(dev_sec) * 1000.0));
-    if (in.recipe_mode == 1) return { bucket2s(last_sec), bucket2s(st.min_piece), st.land, closeness, bucketQ(st.min_q) };
-    if (in.recipe_mode == 2) return { bucketQ(st.min_q), bucket2s(st.min_piece), st.land, closeness, 0 };
-    return { bucket2s(st.min_piece), st.land, closeness, bucketQ(st.min_q), 0 };
-}
-
-std::optional<ShapePlan> planRecipe(const ShapePlannerInputs& in, SeamCache& open, ShapePlan::Diag& diag)
-{
-    const int n = in.n_beats;
-    std::set<int> C;
-    if (in.db_set != nullptr)
-        for (const int d : *in.db_set) {
-            if (d >= 1 && d < n) C.insert(d);
-            if (d - 1 >= 1 && d - 1 < n) C.insert(d - 1);   // the pickup beat before a bar line
-        }
-    const int zone = std::max(1, in.bar_beats);
-    for (int s = 0; s < in.n_sections; ++s)
-        for (int k = 0; k < zone; ++k) {
-            const int b = in.sections[s].b0 + k;
-            if (b >= 1 && b < n && b < in.sections[s].b1) C.insert(b);
-        }
-    const std::vector<int> cands(C.begin(), C.end());
-    diag.pieces_whole = static_cast<int>(cands.size());
-    const int    minP  = std::max(1, in.recipe_min_piece_beats);
-    const double slack = in.window_sec;
-    const int    nb    = static_cast<int>(std::ceil((in.target_sec + slack) / kShapeBinSec)) + 2;
-    auto binOf    = [] (double sec) { return static_cast<int>(std::lround(sec / kShapeBinSec)); };
-    auto pieceLen = [&] (int j, int c) {
-        const double a = (j == 0) ? 0.0 : in.beat_times[j];
-        const double b = (c >= n) ? in.track_sec : in.beat_times[c];
-        return b - a;
-    };
-    auto seamOk = [&] (int i, int j) -> const ShapeSeamScore* {
-        if (! phaseOk(in, i + 1, j)) return nullptr;         // sesja 136: the bar-phase rule
-        const auto& sc = seamScore(open, i, j);
-        if (! sc.has_value() || sc->q < in.recipe_q_floor) return nullptr;
-        return &*sc;
-    };
-
-    using Key = std::pair<int, int>;   // (piece start j, length bin at that start)
-    const int maxSeams = std::max(1, in.recipe_max_seams);
-    std::vector<std::map<Key, RState>> layers(static_cast<std::size_t>(maxSeams) + 1);
-    layers[0][{0, 0}] = RState{};
-    struct Best { RKey key {}; int k = 0, j = 0, bin = 0; double est = 0.0; RState st; bool set = false; } best;
-    for (int k = 0; k < maxSeams; ++k) {
-        auto& nxt = layers[static_cast<std::size_t>(k) + 1];
-        for (const auto& [key, st] : layers[static_cast<std::size_t>(k)]) {
-            const int j = key.first, bin = key.second;
-            for (const int c : cands) {
-                if (c <= j || c - j < minP) continue;
-                const double plen = pieceLen(j, c);
-                const int nbin = bin + binOf(plen);
-                if (nbin >= nb) break;                      // cands ascend: every later cut is longer
-                for (const int j2 : cands) {
-                    if (j2 <= c) continue;
-                    const ShapeSeamScore* sc = seamOk(c - 1, j2);
-                    if (sc == nullptr) continue;
-                    RState st2;
-                    st2.min_piece = std::min(st.min_piece, plen);
-                    st2.land      = st.land + landingClass(in, j2);
-                    st2.min_q     = std::min(st.min_q, sc->q);
-                    st2.prev_j = j; st2.prev_bin = bin; st2.cut_c = c;
-                    auto it = nxt.find({j2, nbin});
-                    if (it == nxt.end() || recipeDomKey(in, st2) > recipeDomKey(in, it->second)) nxt[{j2, nbin}] = st2;
-                }
-            }
-        }
-        for (const auto& [key, st] : nxt) {                   // close with the ending piece [j, n)
-            const int j = key.first, bin = key.second;
-            if (n - j < minP) continue;
-            const double last = pieceLen(j, n);
-            const double est  = bin * kShapeBinSec + last;
-            const double dev  = est - in.target_sec;
-            if (std::fabs(dev) > slack) continue;
-            RState fin = st; fin.min_piece = std::min(st.min_piece, last);
-            const RKey fk = recipeFinalKey(in, fin, last, dev);
-            if (! best.set || fk > best.key) best = Best { fk, k + 1, j, bin, est, fin, true };
-        }
-        if (best.set) break;                                  // the fewest seams win outright
-    }
-    diag.seams_tried  = static_cast<int>(open.map.size());
-    diag.seams_strict = passing(open, in.recipe_q_floor);
-    for (const auto& kv : open.map) {
-        ShapePlan::Diag::Judged jd{kv.first.first, kv.first.second, false, false, -1.0};
-        if (kv.second.has_value()) { jd.q = kv.second->q; jd.strict_ok = jd.relaxed_ok = kv.second->q >= in.recipe_q_floor; }
-        diag.judged.push_back(jd);
-    }
-    if (! best.set) return std::nullopt;
-
-    std::vector<std::pair<int, int>> cuts;                   // (i, j) in plan order
-    {
-        int j = best.j, bin = best.bin;
-        for (int k = best.k; k >= 1; --k) {
-            const RState& st = layers[static_cast<std::size_t>(k)].at({j, bin});
-            cuts.emplace_back(st.cut_c - 1, j);
-            j = st.prev_j; bin = st.prev_bin;
-        }
-        std::reverse(cuts.begin(), cuts.end());
-    }
-    auto sectionOf = [&] (int b) {
-        for (int s = 0; s < in.n_sections; ++s)
-            if (b >= in.sections[s].b0 && b < in.sections[s].b1) return s;
-        return in.n_sections - 1;
-    };
-    ShapePlan plan;
-    plan.ok = true; plan.tier = 'R'; plan.cost = static_cast<double>(cuts.size());
-    int start = 0;
-    for (std::size_t k = 0; k <= cuts.size(); ++k) {
-        const int end = (k < cuts.size()) ? cuts[k].first + 1 : n;
-        ShapePiece pc;
-        pc.section = sectionOf(start); pc.b0 = start; pc.b1 = end;
-        const ShapeSection& sec = in.sections[pc.section];
-        pc.kind = sec.kind;
-        pc.trim = (start == sec.b0 && end == sec.b1) ? ShapePiece::Trim::Whole
-                : (start == sec.b0 ? ShapePiece::Trim::Head : ShapePiece::Trim::Tail);
-        plan.pieces.push_back(pc);
-        if (k < cuts.size()) start = cuts[k].second;
-    }
-    plan.est_sec = best.est; plan.dev_sec = best.est - in.target_sec;
-    for (const auto& [i, j] : cuts) {
-        ShapeSeam sm;
-        sm.i = i; sm.j = j; sm.open = true;
-        sm.score       = seamScore(open, i, j).value_or(ShapeSeamScore{});
-        sm.excess_db   = seamExcessDb(in, i, j);
-        sm.overlap_sec = seamOverlap(in, j);
-        plan.min_q     = std::min(plan.min_q, sm.score.q);
-        plan.seams.push_back(sm);
-    }
-    plan.diag = diag;
-    return plan;
-}
-
 } // namespace
 
 RemixPath ShapePlan::toPath() const
@@ -627,18 +459,8 @@ ShapePlan planShape(const ShapePlannerInputs& in)
     bool has_chorus = false;
     for (int s = 0; s < in.n_sections; ++s) has_chorus = has_chorus || in.sections[s].kind == kChorusKind;
 
-    // Sesja 136: Audition's recipe replaces the tiers when asked for.
-    if (in.recipe_mode != 0) {
-        if (! in.seam_open) return none;
-        SeamCache ropen; ropen.fn = &in.seam_open;
-        ShapePlan::Diag rdiag;
-        if (auto p = planRecipe(in, ropen, rdiag)) return *p;
-        none.diag = rdiag;
-        return none;
-    }
-
     const std::set<int> ps = phraseStarts(in);
-    const double max_len = in.target_sec + std::max(in.window_sec, in.window_relaxed_sec) + kShapeBinSec;
+    const double max_len = in.target_sec + in.window_sec + kShapeBinSec;
     SeamCache strict;  strict.fn  = &in.seam;
     SeamCache relaxed; relaxed.fn = &in.seam_relaxed;
     SeamCache open;    open.fn    = &in.seam_open;   // sesja 134: open seams, every tier
@@ -686,12 +508,10 @@ ShapePlan planShape(const ShapePlannerInputs& in)
     diag.closest_dev_whole = closestDev(in, wide);
     diag.closest_dev_trim  = diag.closest_dev_whole;
     if (auto p = pickPlan(in, wide, strict, open, in.window_sec, has_chorus, 'A')) return finish(letter(*p, 'A'));
-    if (auto p = pickPlan(in, wide, strict, open, in.window_relaxed_sec, has_chorus, 'C')) return finish(*p);
     if (in.seam_relaxed) {
         runSearch(in, wide, relaxed, open, max_len);
         diag.closest_dev_trim = closestDev(in, wide);
         if (auto p = pickPlan(in, wide, relaxed, open, in.window_sec, has_chorus, 'D')) return finish(*p);
-        if (auto p = pickPlan(in, wide, relaxed, open, in.window_relaxed_sec, has_chorus, 'E')) return finish(*p);
     }
 
     // Tier F: the complete plan closest to the target at any length (the

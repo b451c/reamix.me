@@ -55,12 +55,8 @@ public:
     //
     // Returns true when all 5 symbols resolve (SWS Extension installed +
     // compatible). Subsequent instances of PreviewController all observe
-    // the same availability via isSwsAvailable().
+    // the same availability.
     static bool resolveSwsSymbols (void* getFuncPtr);
-
-    // Post-resolution availability flag. False until resolveSwsSymbols
-    // returns true; stable across the REAPER session afterwards.
-    bool isSwsAvailable() const noexcept;
 
     // Sesja 111 v1.0.3 — explicit probe that re-attempts symbol resolution
     // and returns the current availability. Used by MainComponent on a

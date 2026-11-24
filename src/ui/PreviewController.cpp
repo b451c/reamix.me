@@ -110,11 +110,6 @@ namespace
     }
 }
 
-bool PreviewController::isSwsAvailable() const noexcept
-{
-    return s_swsAvailable;
-}
-
 bool PreviewController::probeSwsAvailable()
 {
     ensureSwsResolved();

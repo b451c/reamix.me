@@ -65,13 +65,6 @@ set(POCKETFFT_DIR "${CMAKE_SOURCE_DIR}/vendor")
 
 # --- Main target ---
 
-# ADR-097 sesja 107 — dev calibration build flag DROPPED. AdvancedWeightsPanel
-# + AdvancedWeightsWindow + DevCalibrationStorage now ship in every build as
-# opt-in advanced settings (hidden by default; opened from gear → Advanced...
-# button per SettingsPopover). The earlier REAMIX_DEV_CALIBRATION compile-time
-# separation per ADR-087 STATUS UPDATE 1 (sesja 98) was superseded by ADR-097
-# OSS direction (sesja 106) — community preset sharing requires the panel to
-# be part of the shipped dylib.
 file(GLOB_RECURSE REAMIX_SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 add_library(reaper_reamix SHARED ${REAMIX_SOURCES})
 
@@ -102,7 +95,6 @@ juce_add_binary_data(reamix_font_binary SOURCES
 target_link_libraries(reaper_reamix PRIVATE
   reamix_font_binary
   juce::juce_gui_basics
-  juce::juce_gui_extra
   juce::juce_audio_formats
   juce::juce_cryptography
 )
@@ -253,12 +245,6 @@ elseif(UNIX)
     ${WDL_DIR}/swell/swell-modstub-generic.cpp
   )
 endif()
-
-# ADR-097 sesja 107 — symbol verification gate DROPPED. The earlier
-# tests/symbol_verification.sh post-build hook enforced zero AdvancedWeightsPanel
-# / DevCalibrationStorage symbols in production dylib (REAMIX_DEV_CALIBRATION=OFF).
-# After ADR-097 (sesja 107) the panel ships in every build, so the gate is
-# obsolete.
 
 # --- Install ---
 
@@ -2055,12 +2041,10 @@ if(REAMIX_BUILD_TESTS)
   # self-validation. Sesja 106 (ADR-098): perceptual mapping tests removed
   # + schema bumped v1→v2 + testLegacyV1RecordLoads added. Sesja 107
   # (ADR-097): relocated to src/ui/ namespace reamix::ui; compiled in every
-  # build (gate dropped). Coverage: JSONL schema round-trip + legacy v1
-  # forward-compat + hashQualityWeights atDefault sentinel + storage
-  # append/load + Block Assembly β-default helper.
+  # build (gate dropped). Coverage: hashQualityWeights / qualityWeightsAtDefault
+  # atDefault sentinel (the JSONL storage cases went with DevCalibrationStorage).
   add_executable(test_dev_calibration_persistence
     tests/parity/test_dev_calibration_persistence.cpp
-    src/ui/DevCalibrationStorage.cpp
     src/remix/Quality.cpp
     src/remix/SignalNorm.cpp
   )

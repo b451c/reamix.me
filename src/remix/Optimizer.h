@@ -143,7 +143,6 @@ inline constexpr int kMaxTransitionsDefaultOpt = 6;
 // -20 ADR-026 addendum documented this as the facade canonical default.
 // Source-of-truth: `optimizer.py:95 (2026-04-22)`.
 inline constexpr double kDurationToleranceSecDefault = 5.0;
-inline constexpr double kDurationToleranceSecV2      = 8.0;   // DEV-116 sesja 126 (user spec: +-5-8 s, 10 max)
 
 // A1: time_signature default. FALLBACK-DEFAULT — production always passes
 // the BeatDetector-derived value (typically 4 for 4/4; 3 for 3/4; 6 for

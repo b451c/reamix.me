@@ -347,19 +347,6 @@ private:
     // own slider state instead of cross-contaminating.
     std::map<ItemKey, double> targetByPath_;
 
-    // ── Layout primitives ────────────────────────────────────────────
-    class Placeholder : public juce::Component
-    {
-    public:
-        Placeholder (juce::Colour background, juce::Colour bottomBorderColour,
-                     juce::String label);
-        void paint (juce::Graphics&) override;
-    private:
-        juce::Colour background_;
-        juce::Colour bottomBorder_;
-        juce::String label_;
-    };
-
     reamix::ui::ModeTabs            modeTabs_;
     reamix::ui::DurationPanel       durationPanel_;
     reamix::ui::BlockAssemblyPanel  blockAssemblyPanel_;

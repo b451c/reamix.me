@@ -100,36 +100,6 @@ private:
     std::function<void()> onFire_;
 };
 
-// ── Placeholder ─────────────────────────────────────────────────────
-MainComponent::Placeholder::Placeholder (juce::Colour background,
-                                         juce::Colour bottomBorderColour,
-                                         juce::String label)
-    : background_ (background),
-      bottomBorder_ (bottomBorderColour),
-      label_ (std::move (label))
-{
-}
-
-void MainComponent::Placeholder::paint (juce::Graphics& g)
-{
-    using namespace reamix::theme;
-
-    g.fillAll (background_);
-
-    if (! bottomBorder_.isTransparent())
-    {
-        g.setColour (bottomBorder_);
-        g.fillRect (getLocalBounds().withHeight (1).withY (getHeight() - 1));
-    }
-
-    if (label_.isNotEmpty())
-    {
-        g.setColour (Fg4);
-        g.setFont (uiFont (fs::Xs, 500));
-        g.drawText (label_, getLocalBounds(), juce::Justification::centred, false);
-    }
-}
-
 namespace
 {
     constexpr double kDurationMinSec        = 5.0;

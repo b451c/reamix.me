@@ -123,18 +123,6 @@ public:
         NumSlots
     };
 
-    // SpliceMarker — 1px line + 9×7 triangle cap, quality-colored.
-    // Colour comes from theme::Good / Warn / Bad. Step 7 will extend.
-    static void drawSpliceMarker (juce::Graphics&, juce::Rectangle<float> area,
-                                  const juce::Colour& qualityColour);
-
-    // PillBadge — AUTO / qualities / counts. Rounded full-radius, uppercase.
-    // Used by ModeTabs AUTO marker (step 3) and block compatibility (step 8).
-    static void drawPillBadge (juce::Graphics&, juce::Rectangle<float> area,
-                               const juce::String& text,
-                               const juce::Colour& textColour,
-                               const juce::Colour& backgroundColour);
-
     // KbdChip — inline keyboard shortcut indicator inside buttons.
     // Used by TransportBar Play/Stop/Insert (step 3) and menu items (step 5).
     static void drawKbdChip (juce::Graphics&, juce::Rectangle<float> area,

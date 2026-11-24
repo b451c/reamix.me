@@ -235,7 +235,7 @@ bool test10_bar_ends()
         return std::nullopt;
     };
     ShapePlannerInputs in = f.inputs (12.0);
-    in.window_sec = 1.0; in.window_relaxed_sec = 1.0;   // only 12 s fits (10 / 14 s cost the same: one trim tax)
+    in.window_sec = 1.0;   // only 12 s fits (10 / 14 s cost the same: one trim tax)
     CHECK (! planShape (in).ok, "whole intro + outro = 16 s misses a 1 s window; phrase trims cannot help");
     in.bar_ends = true;
     const ShapePlan p = planShape (in);
@@ -285,7 +285,7 @@ bool test12_inside_last_section_floor()
     f.judge = [] (int, int) -> std::optional<ShapeSeamScore> { return std::nullopt; };   // strict: everything gated
     ShapePlannerInputs in = f.inputs (14.0);
     in.bar_ends = true;
-    in.window_sec = 0.25; in.window_relaxed_sec = 0.25;   // sesja 135: excludes the 14.5 s zone plan (outro from 115)
+    in.window_sec = 0.25;   // sesja 135: excludes the 14.5 s zone plan (outro from 115)
     // Open judge: q 0.20 everywhere (below min_q 0.45). 14 s = the whole
     // intro (8 s) + an outro tail from beat 116 (6 s) - an inside-the-outro
     // landing - or an intro head to beat 12 (6 s) + the whole outro (8 s),
@@ -362,7 +362,7 @@ bool test14_bar_ends_everywhere()
     Fixture f;
     f.judge = [] (int, int) -> std::optional<ShapeSeamScore> { return std::nullopt; };
     ShapePlannerInputs in = f.inputs (20.0);
-    in.window_sec = 1.0; in.window_relaxed_sec = 1.0;
+    in.window_sec = 1.0;
     in.seam_open = [] (int, int) -> std::optional<ShapeSeamScore> { return ShapeSeamScore { 0.70, 1.0, 0.5 }; };
     in.seam = [] (int, int) -> std::optional<ShapeSeamScore> { return ShapeSeamScore { 0.70, 1.0, 0.5 }; };
     in.bar_ends = false;
@@ -396,7 +396,7 @@ bool test15_maximin()
     // the seamless intro + A + B + outro (40 s) does not.
     ShapePlannerInputs in = f.inputs (30.0);
     in.n_beats = 96; in.track_sec = 48.0;
-    in.window_sec = 5.0; in.window_relaxed_sec = 5.0;
+    in.window_sec = 5.0;
     const ShapePlan p = planShape (in);
     CHECK (p.ok, "plan expected");
     CHECK (p.seams.size() == 2 && p.seams[0].j == 40 && p.seams[1].j == 80, "the plan with the better worst seam wins over the cheaper one");
@@ -405,10 +405,8 @@ bool test15_maximin()
 }
 } // namespace
 
-// Sesja 136 (ADR-117 step 5): the recipe ignores sections beyond the
-// section-start zones - cut candidates are downbeats, pickups and zones,
-// every seam is open, the fewest seams win, then the mode ranks.
-bool test16_recipe()
+// Sesja 136 (ADR-117 step 5): the cap on the planner seam crossfade.
+bool test16_seam_cap()
 {
     Fixture f;
     ShapePlannerInputs in = f.inputs (20.0);
@@ -422,23 +420,10 @@ bool test16_recipe()
         if (j == 116) return ShapeSeamScore { 0.80, 1.0, 0.5 };
         return ShapeSeamScore { 0.50, 1.0, 0.5 };
     };
-    const ShapePlan t = planShape (in);                      // recipe off: the tiered planner answers (open landings exist)
-    CHECK (t.ok && t.tier != 'R', "tiers: a tiered plan, never tier R");
-    in.recipe_mode = 2;                                      // q: the best worst seam
-    const ShapePlan q = planShape (in);
-    CHECK (q.ok && q.tier == 'R', "recipe plan");
-    CHECK (q.seams.size() == 1 && q.seams[0].j == 116 && q.seams[0].open, "one seam onto the q 0.80 landing");
-    CHECK (q.pieces.size() == 2 && q.pieces[0].b0 == 0 && q.pieces[0].b1 == 28 && q.pieces[1].b1 == kBeats,
-           "intro to the downbeat that makes 14 + 6 = 20 s exactly, ending to the tail");
-    CHECK (std::fabs (q.est_sec - 20.0) < 1e-9 && std::fabs (q.min_q - 0.80) < 1e-12, "length + worst q");
-    CHECK (std::fabs (q.seams[0].overlap_sec - 0.3) < 1e-12, "one beat (0.5 s) capped at 0.3 s");
-    in.recipe_mode = 1;                                      // ending: the longest last piece
-    const ShapePlan e = planShape (in);
-    CHECK (e.ok && e.seams.size() == 1 && e.seams[0].j <= 88, "the ending piece is as long as the length allows (>= 20 s)");
-    CHECK (e.pieces[0].b1 == 8 && e.pieces[0].b1 - e.pieces[0].b0 >= 8, "the shortest intro (8 beats) makes room for it");
-    CHECK (std::fabs (e.dev_sec) <= 5.0 + 1e-9, "inside the slack");
-    in.recipe_min_piece_beats = 40;                          // no plan when pieces must be 20 s each
-    CHECK (! planShape (in).ok, "no plan when the minimum piece cannot fit twice");
+    const ShapePlan t = planShape (in);                      // open landings exist
+    CHECK (t.ok && ! t.seams.empty(), "a tiered plan");
+    for (const auto& sm : t.seams)
+        CHECK (std::fabs (sm.overlap_sec - 0.3) < 1e-12, "one beat (0.5 s) capped at 0.3 s");
     return true;
 }
 
@@ -465,7 +450,7 @@ int main()
     run ("13 section-start zone",              test13_section_start_zone);
     run ("14 bar-granular ends everywhere",    test14_bar_ends_everywhere);
     run ("15 maximin: the worst seam decides", test15_maximin);
-    run ("16 recipe: fewest seams, q / ending", test16_recipe);
+    run ("16 seam crossfade cap",              test16_seam_cap);
     std::printf (failed == 0 ? "ALL PASS\n" : "%d FAILED\n", failed);
     return failed == 0 ? 0 : 1;
 }

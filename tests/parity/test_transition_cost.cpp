@@ -426,8 +426,6 @@ bool runTrack(const std::string& dataDir, const std::string& track,
     in.chroma_prefilter = reamix::remix::CHROMA_PREFILTER_THRESHOLD;
     in.max_candidates_per_beat = 16;
     in.waveform_align_max_shift_ms = 30.0;
-    in.prescreened_pairs = nullptr;
-    in.n_prescreened_pairs = 0;
 
     reamix::remix::TransitionCostResult res =
         reamix::remix::computeTransitionCosts(in);

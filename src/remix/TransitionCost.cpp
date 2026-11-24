@@ -657,15 +657,6 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
         && in.waveform_sample_rate >= VOCAL_BAND_MIN_SR
         && in.vocal_band_waveforms != nullptr;
 
-    // Prescreened pairs set.
-    std::set<std::pair<int, int>> prescreen_set;
-    if (in.prescreened_pairs != nullptr) {
-        for (int k = 0; k < in.n_prescreened_pairs; ++k) {
-            prescreen_set.insert({in.prescreened_pairs[2 * k],
-                                  in.prescreened_pairs[2 * k + 1]});
-        }
-    }
-
     // Adaptive micro-skip: 4 bars = 4 × time_signature beats.
     const int micro_skip = 4 * in.time_signature;
     const int k_target   = std::min(in.max_candidates_per_beat, n);
@@ -697,26 +688,11 @@ TransitionCostResult computeTransitionCosts(const TransitionCostInputs& in)
         // Top-k by chroma (UNSORTED — matches np.argpartition).
         std::vector<int> top_indices = argPartitionTopK(chroma_row, k_target);
 
-        // Prescreened targets for this source beat.
-        std::vector<int> prescreen_targets;
-        for (const auto& p : prescreen_set) {
-            if (p.first == i) prescreen_targets.push_back(p.second);
-        }
-
-        // Combined evaluation list. Duplicates allowed (top-k ∩ prescreen);
-        // last write wins — same as Python dict semantics.
-        std::vector<int> eval_indices = top_indices;
-        eval_indices.insert(eval_indices.end(),
-                            prescreen_targets.begin(), prescreen_targets.end());
-
-        for (int j_raw : eval_indices) {
+        for (int j_raw : top_indices) {
             const int j = j_raw;
-            const bool is_prescreened = prescreen_set.count({i, j}) > 0;
 
-            if (!is_prescreened) {
-                if (chroma_row[j] >= INF || chroma_row[j] > in.chroma_prefilter) {
-                    continue;
-                }
+            if (chroma_row[j] >= INF || chroma_row[j] > in.chroma_prefilter) {
+                continue;
             }
 
             // --- Hard gate: energy -------------------------------------

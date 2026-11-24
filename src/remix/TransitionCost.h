@@ -366,12 +366,6 @@ struct TransitionCostInputs
     int    max_candidates_per_beat    = MAX_CANDIDATES_PER_BEAT_DEFAULT;
     double waveform_align_max_shift_ms = WAVEFORM_ALIGN_MAX_SHIFT_MS_DEFAULT;
 
-    // Prescreened pairs flat array: [pi0, pj0, pi1, pj1, ...]. Bypass the
-    // chroma-prefilter gate (still subject to energy + quality-floor gates).
-    // nullptr → no prescreen.
-    const int* prescreened_pairs;
-    int        n_prescreened_pairs;
-
     // QualityWeights override (sesja 71, ADR-058 calibration). nullptr →
     // use kDefaultQualityWeights (preserves parity tests + production
     // baseline). Calibration callers (tools/calibration_harness) pass a

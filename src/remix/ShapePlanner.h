@@ -18,11 +18,9 @@
 // Tiers (the first that yields a plan wins):
 //   A  whole sections only, length within `window_sec` (+-8 s, user spec)
 //   B  phrase trims allowed, same window
-//   C  phrase trims allowed, `window_relaxed_sec` (10 s, the user's cap)
 //   D  as B with the relaxed judge (`seam_relaxed`: no per-track p98 loudness
 //      reject - the song's own section changes are that distribution's tail;
 //      the 8 dB hard block stays)
-//   E  as C with the relaxed judge
 //   F  best effort (`best_effort` = true, `ok` = false): the complete plan
 //      closest to the target at any length, when no tier makes the window.
 //      The caller uses it only when its own fallback misses the length by
@@ -125,13 +123,12 @@ struct ShapePlannerInputs
     const double*       rms_energy  = nullptr; // per beat, optional (soft dynamics term)
     double              target_sec  = 0.0;
     double              window_sec         = 8.0;
-    double              window_relaxed_sec = 10.0;
     double              min_q              = 0.45;   // kAcceptMinQ
     // Boundary seam judge: leave at the end of beat i, land on beat j.
     // nullopt = a hard gate fired (the seam is not allowed).
     std::function<std::optional<ShapeSeamScore>(int i, int j)> seam;
-    // The same judge without the p98 loudness reject (tiers D / E); empty =
-    // those tiers are skipped.
+    // The same judge without the p98 loudness reject (tier D); empty =
+    // that tier is skipped.
     std::function<std::optional<ShapeSeamScore>(int i, int j)> seam_relaxed;
     // Sesja 134 (DEV-121): the judge with every loudness gate off, for OPEN
     // seams = landings on a section start or anywhere inside the last section
@@ -157,34 +154,6 @@ struct ShapePlannerInputs
     // one equal-power crossfade above the 200 ms band cap). 0 = the
     // Renderer's default (0.15 beat multi-band). Audition: one beat.
     double seam_crossfade_beats = 0.0;
-    // Sesja 136 (ADR-117 step 5, "Audition's recipe"): recipe_mode != 0
-    // bypasses the tiers, the maximin selection and the chorus tax above.
-    // Round 2 (sesja 135) lost 0/7 to Audition; the audit
-    // (meta/research/sesja-136-recipe-audit.md) found the tier order (whole
-    // sections first), the chorus tax in maximin units, a 0.88 s crossfade and
-    // length-driven fragments behind the losses, and q separating rated ok from
-    // bad seams at AUC 0.74 only. Audition's 28 rated cut points on our grid:
-    // the plan always starts at 0 and ends at the file end, +-5 s, 1-3 seams,
-    // landings NOT bound to section starts (5/28 on downbeats, 0/28 on phrase
-    // starts, often the pickup beat before a bar line, 9/28 in lattice zones).
-    // Recipe: cut candidates = downbeats, the beat before each downbeat, the
-    // first bar of every section, lattice bar starts (db_set carries them);
-    // every seam is judged OPEN (`seam_open`: the edge / rms caps and the
-    // brightness-collapse cap are the only gates) above `recipe_q_floor`;
-    // pieces >= `recipe_min_piece_beats`; the FEWEST seams win outright, then
-    // the mode ranks the plans of that seam count (2 s / 0.1 q steps):
-    //   1 "ending"   longest last piece (the song's own ending), then the
-    //                longest shortest piece, landing class, closest length
-    //   2 "q"        best worst q, then the longest shortest piece, landing
-    //                class, closest length
-    //   3 "balanced" longest shortest piece, landing class, closest length
-    // Landing class: section-start zone 2, downbeat / pickup / lattice 1.
-    // Prototype: tools/dev/shape_eval/recipe_planner.py (C++ == prototype on
-    // the round-3 cases). A recipe plan reports tier 'R'.
-    int    recipe_mode            = 0;
-    double recipe_q_floor         = 0.25;
-    int    recipe_min_piece_beats = 8;
-    int    recipe_max_seams       = 3;
     // Sesja 136: cap on the seam crossfade in seconds (0 = none; applies to
     // every planner seam). Drake x0.25's one-beat seam at 67 BPM = 0.88 s
     // overlapped two different 16th-note patterns ("podwojne uderzenie");
@@ -212,7 +181,7 @@ struct ShapeSeam
 
 struct ShapePlan
 {
-    bool   ok      = false;        // a tier A..E plan
+    bool   ok      = false;        // a tier A / B / D plan
     bool   best_effort = false;    // tier F: complete plan outside every window (ok stays false)
     char   tier    = '-';          // 'A' .. 'F'
     double est_sec = 0.0;          // estimated render length (head + pieces + tail)

@@ -643,11 +643,8 @@ void RemixPipeline::run()
 
             oin.time_signature = gridBarBeats;
             oin.hole_aware_length = in_.v2_scoring;   // DEV-114 sesja 126
-            if (in_.v2_scoring)                        // DEV-116 sesja 126: +-8 s flat
-            {
-                oin.duration_tolerance_sec = reamix::remix::kDurationToleranceSecV2;
-                oin.flat_tolerance         = true;
-            }
+            if (in_.v2_scoring)                        // DEV-116 sesja 126: flat window
+                oin.flat_tolerance = true;
             oin.sample_rate    = kAnalysisSampleRate;
 
             // ADR-115 P3 (sesja 123) + DEV-112 (sesja 124) — Edit density in
@@ -666,6 +663,7 @@ void RemixPipeline::run()
             // Duration bar labels read the cut counts (EditTuningBar).
             // DEV-112: a maximum-run gate (cut every N bars) was measured
             // and rejected - sparse pools strand or loop the path.
+            // The effective Duration window is +-5 s (v2 and legacy alike).
             oin.duration_tolerance_sec      = reamix::remix::kDurationToleranceSecDefault;
             {
                 constexpr int kDefaultBars = reamix::remix::COOLDOWN_BARS;
@@ -839,14 +837,12 @@ void RemixPipeline::run()
                 // clean; our composite does not separate the one rejected cut
                 // from the accepted ones), and the seam crossfade is one beat.
                 sin.window_sec  = reamix::remix::kShapeLengthSlackSec;
-                sin.window_relaxed_sec = reamix::remix::kShapeLengthSlackSec;
                 sin.min_q       = kAcceptMinQ;
                 sin.bar_ends    = true;
                 sin.bar_beats   = gridBarBeats;   // sesja 135: section-start zone = the first bar
                 sin.beat_is_synthetic = bundle.beatIsSynthetic.empty() ? nullptr : &bundle.beatIsSynthetic;   // sesja 135 (DEV-122)
                 sin.seam_crossfade_beats = in_.shapeSeamCrossfadeBeats;
-                sin.recipe_mode           = in_.shapeRecipeMode;   // sesja 136 (ADR-117 step 5)
-                sin.seam_crossfade_max_sec = in_.shapeSeamMaxSec;
+                sin.seam_crossfade_max_sec = in_.shapeSeamMaxSec;   // sesja 136 (ADR-117 step 5)
                 auto judgeFn = [&judge] (bool relaxed, bool open)
                 {
                     return [&judge, relaxed, open] (int i, int j) -> std::optional<reamix::remix::ShapeSeamScore>

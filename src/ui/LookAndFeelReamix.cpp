@@ -551,36 +551,6 @@ void LookAndFeelReamix::drawToggleButton (juce::Graphics& g, juce::ToggleButton&
 
 // ── Custom reamix primitives (placeholder impls) ─────────────────────
 
-void LookAndFeelReamix::drawSpliceMarker (juce::Graphics& g, juce::Rectangle<float> area,
-                                          const juce::Colour& qualityColour)
-{
-    // plugin.css:400-416 — 1px line + 9×7 triangle cap at top.
-    // Step-1 placeholder. Full hit-testing + hover behavior lands step 7.
-    g.setColour (qualityColour);
-    g.fillRect (juce::Rectangle<float> (area.getCentreX() - 0.5f, area.getY(),
-                                         1.0f, area.getHeight()));
-    juce::Path tri;
-    tri.startNewSubPath (area.getCentreX() - 4.5f, area.getY() - 1.0f);
-    tri.lineTo          (area.getCentreX() + 4.5f, area.getY() - 1.0f);
-    tri.lineTo          (area.getCentreX(),         area.getY() + 6.0f);
-    tri.closeSubPath();
-    g.fillPath (tri);
-}
-
-void LookAndFeelReamix::drawPillBadge (juce::Graphics& g, juce::Rectangle<float> area,
-                                       const juce::String& text,
-                                       const juce::Colour& textColour,
-                                       const juce::Colour& backgroundColour)
-{
-    // plugin.css:462-473 — full-radius pill, uppercase xs text, 2px/8px padding.
-    using namespace reamix::theme;
-    g.setColour (backgroundColour);
-    g.fillRoundedRectangle (area, area.getHeight() * 0.5f);
-    g.setColour (textColour);
-    g.setFont (uiFont (fs::Xs, 600));
-    g.drawText (text.toUpperCase(), area, juce::Justification::centred, true);
-}
-
 void LookAndFeelReamix::drawKbdChip (juce::Graphics& g, juce::Rectangle<float> area,
                                      const juce::String& text,
                                      const juce::Colour& textColour,

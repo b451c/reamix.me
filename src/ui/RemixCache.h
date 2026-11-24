@@ -268,26 +268,6 @@ public:
         return evictedPath;
     }
 
-    // Drop all entries matching this source. Returns evicted WAV paths.
-    std::vector<juce::String> evictSource (const juce::String& sourcePath)
-    {
-        std::vector<juce::String> paths;
-        for (auto it = entries_.begin(); it != entries_.end(); )
-        {
-            if (it->first.sourcePath == sourcePath)
-            {
-                paths.push_back (it->second.tmpWavPath);
-                index_.erase (it->first);
-                it = entries_.erase (it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
-        return paths;
-    }
-
     // Plugin destruction — return all WAV paths so caller can delete files.
     std::vector<juce::String> evictAll()
     {
